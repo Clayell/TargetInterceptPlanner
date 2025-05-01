@@ -2,7 +2,7 @@ Lunar Transfer Planner
 ========================================
 Provides a GUI for Lunar transfer planning for RSS.
 Select the expected flight time to the Moon, i.e. the time from leaving Earth orbit to Lunar periapsis, this defaults to 4 days.
-The correct launch inclination for immediate launch is shown, and your current latitude is shown for reference. The next two windows for a minimum inclination (i.e. Easterly) launch are also given.
+The correct launch inclination for immediate launch is shown, and your current latitude is shown for reference. The first two windows for a minimum inclination (i.e. Easterly) launch are also given.
 
 Forum Thread: 
 

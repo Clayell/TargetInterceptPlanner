@@ -428,7 +428,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.Space(4);
                     GUILayout.Label("Launch Now Incl", GUILayout.ExpandWidth(true));
-                    GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}°",
+                    GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}\u00B0",
                         "Launch to this inclination now to reach a Lunar parking orbit"), GUILayout.MinWidth(100));
 
                     string tooltip = latitude >= target.orbit.inclination ?

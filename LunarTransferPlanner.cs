@@ -287,20 +287,23 @@ namespace LunarTransferPlanner
             double targetTime = Planetarium.GetUniversalTime() + flightTime * 24d * 3600d + delayTime;
             Vector3d targetPos = target.getPositionAtUT(targetTime);
 
-            Vector3d upVector = Quaternion.AngleAxis((float)(delayTime * 360d / mainBody.rotationPeriod), EarthAxis) * (launchPos - EarthPos).normalized;
+            Vector3d upVector = QuaternionD.AngleAxis(delayTime * 360d / mainBody.rotationPeriod, EarthAxis) * (launchPos - EarthPos).normalized;
 
             Vector3d orbitNorm = Vector3d.Cross(targetPos - EarthPos, upVector).normalized;
-            double inclination = Math.Acos(Vector3d.Dot(orbitNorm, mainBody.angularVelocity.normalized));
+            double inclination = Math.Acos(Vector3d.Dot(orbitNorm, EarthAxis));
             if (inclination > Math.PI / 2)
+            {
                 inclination = Math.PI - inclination;
+                orbitNorm *= -1; // make sure orbitNorm always points roughly northwards
+            }
 
-            Vector3d eastVec = Vector3d.Cross(EarthAxis, upVector).normalized;
+            // When checking this: remember that Unity (and KSP) use a left-handed coordinate system; therefore, the
+            // cross product follows the left-hand rule.
+            Vector3d eastVec = Vector3d.Cross(upVector, EarthAxis).normalized;
             Vector3d northVec = Vector3d.Cross(eastVec, upVector).normalized;
             Vector3d launchVec = Vector3d.Cross(upVector, orbitNorm).normalized;
 
             double azimuth = Math.Acos(Vector3d.Dot(launchVec, northVec));
-            if (Vector3d.Dot(launchVec, eastVec) < 0d)
-                azimuth = Math.PI - azimuth;
 
             return new OrbitData(orbitNorm, inclination * 180d / Math.PI, azimuth * 180d / Math.PI);
         }
@@ -311,7 +314,7 @@ namespace LunarTransferPlanner
             double t = startTime;
             OrbitData launchOrbit = CalcOrbitForTime(target, launchPos, t);
 
-            if (latitude >= target.orbit.inclination)
+            if (Math.Abs(latitude) >= target.orbit.inclination)
             {
                 // High latitude path - find the next easterly launch to the target
                 while (Math.Abs(launchOrbit.azimuth - targetAz) > 0.01d)
@@ -651,7 +654,7 @@ namespace LunarTransferPlanner
                     GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}\u00B0",
                         "Launch to this inclination now to reach a Lunar parking orbit"), GUILayout.MinWidth(100));
 
-                    string tooltip = latitude >= target.orbit.inclination ?
+                    string tooltip = Math.Abs(latitude) >= target.orbit.inclination ?
                         "Launch at this time for an Easterly launch to Lunar parking orbit" :
                         "Launch at this time for a low inclination launch to Lunar parking orbit";
 

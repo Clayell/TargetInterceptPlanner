@@ -166,10 +166,10 @@ namespace LunarTransferPlanner
             }
         }
 
-        private void MakeNumberEditField(ref float value, ref float nextTick, int digits, float step, float minValue)
+        private void MakeNumberEditField(ref float value, ref float nextTick, float step, float minValue)
         {
             GUILayout.BeginHorizontal();
-            string textValue = value.ToString("F" + digits.ToString());
+            string textValue = value.ToString();
             string newlabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40));
             if (textValue != newlabel)
             {
@@ -405,7 +405,7 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(4);
                 GUILayout.Label("Flight Time (days)", GUILayout.ExpandWidth(true));
-                MakeNumberEditField(ref flightTime, ref nextTickFT, 1, 0.1f, 0.1f);
+                MakeNumberEditField(ref flightTime, ref nextTickFT, 0.1f, 0.1f);
 
                 CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
                 if (target == null)
@@ -424,7 +424,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.Space(4);
                     GUILayout.Label("Launch Now Incl", GUILayout.ExpandWidth(true));
-                    GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}°",
+                    GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}Â°",
                         "Launch to this inclination now to reach a Lunar parking orbit"), GUILayout.MinWidth(100));
 
                     string tooltip = latitude >= target.orbit.inclination ?
@@ -440,7 +440,7 @@ namespace LunarTransferPlanner
                     GUILayout.Box(new GUIContent(FormatTime(secondLaunchETA), tooltip), GUILayout.MinWidth(100));
 
                     GUILayout.Label("Warp Margin (sec)", GUILayout.ExpandWidth(true));
-                    MakeNumberEditField(ref warpMargin, ref nextTickWM, 0, 5f, 0f);
+                    MakeNumberEditField(ref warpMargin, ref nextTickWM, 5f, 0f);
 
                     GUILayout.Space(2);
                     GUILayout.BeginHorizontal();

@@ -423,8 +423,12 @@ namespace LunarTransferPlanner
                     double secondLaunchETA = EstimateLaunchTime(target, launchPos, latitude, firstLaunchETA + 3600d);
 
                     GUILayout.Space(4);
+                    GUILayout.Label("Latitude", GUILayout.ExpandWidth(true));
+                    GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), "Latitude of current launch site"), GUILayout.MinWidth(100));
+
+                    GUILayout.Space(4);
                     GUILayout.Label("Launch Now Incl", GUILayout.ExpandWidth(true));
-                    GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}°",
+                    GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}Â°",
                         "Launch to this inclination now to reach a Lunar parking orbit"), GUILayout.MinWidth(100));
 
                     string tooltip = latitude >= target.orbit.inclination ?

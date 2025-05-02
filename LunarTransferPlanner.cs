@@ -184,10 +184,10 @@ namespace LunarTransferPlanner
             }
         }
 
-        private void MakeNumberEditField(ref float value, ref float nextTick, int digits, float step, float minValue)
+        private void MakeNumberEditField(ref float value, ref float nextTick, float step, float minValue)
         {
             GUILayout.BeginHorizontal();
-            string textValue = value.ToString("F" + digits.ToString());
+            string textValue = value.ToString();
             string newlabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40));
             if (textValue != newlabel)
             {
@@ -621,7 +621,7 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(4);
                 GUILayout.Label("Flight Time (days)", GUILayout.ExpandWidth(true));
-                MakeNumberEditField(ref flightTime, ref nextTickFT, 1, 0.1f, 0.1f);
+                MakeNumberEditField(ref flightTime, ref nextTickFT, 0.1f, 0.1f);
 
                 CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
                 if (target == null)
@@ -729,7 +729,7 @@ namespace LunarTransferPlanner
                     }
 
                     GUILayout.Label("Warp Margin (sec)", GUILayout.ExpandWidth(true));
-                    MakeNumberEditField(ref warpMargin, ref nextTickWM, 0, 5f, 0f);
+                    MakeNumberEditField(ref warpMargin, ref nextTickWM, 5f, 0f);
 
                     GUILayout.Space(2);
                     GUILayout.BeginHorizontal();

@@ -645,10 +645,6 @@ namespace LunarTransferPlanner
                     GUILayout.Box(new GUIContent(String.Format("{0:0 m/s}", dV), "Required dV for the selected flight time"), GUILayout.MinWidth(100));
 
                     GUILayout.Space(4);
-                    GUILayout.Label("Latitude", GUILayout.ExpandWidth(true));
-                    GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), "Latitude of current launch site"), GUILayout.MinWidth(100));
-
-                    GUILayout.Space(4);
                     GUILayout.BeginHorizontal();
                     GUILayout.Label("Launch Now Incl", GUILayout.ExpandWidth(true));
                     bool showParking0_pressed = GUILayout.Button("...", GUILayout.MinWidth(20));

@@ -314,7 +314,7 @@ namespace LunarTransferPlanner
             double t = startTime;
             OrbitData launchOrbit = CalcOrbitForTime(target, launchPos, t);
 
-            if (Math.Abs(latitude) >= target.orbit.inclination)
+            if (latitude >= target.orbit.inclination)
             {
                 // High latitude path - find the next easterly launch to the target
                 while (Math.Abs(launchOrbit.azimuth - targetAz) > 0.01d)
@@ -654,7 +654,7 @@ namespace LunarTransferPlanner
                     GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}\u00B0",
                         "Launch to this inclination now to reach a Lunar parking orbit"), GUILayout.MinWidth(100));
 
-                    string tooltip = Math.Abs(latitude) >= target.orbit.inclination ?
+                    string tooltip = latitude >= target.orbit.inclination ?
                         "Launch at this time for an Easterly launch to Lunar parking orbit" :
                         "Launch at this time for a low inclination launch to Lunar parking orbit";
 

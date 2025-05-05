@@ -295,6 +295,8 @@ namespace LunarTransferPlanner
                 inclination = Math.PI - inclination;
 
             Vector3d eastVec = Vector3d.Cross(EarthAxis, upVector).normalized;
+            Vector3d northVec = Vector3d.Cross(eastVec, upVector).normalized;
+            Vector3d launchVec = Vector3d.Cross(upVector, orbitNorm).normalized;
 
             double azimuth = Math.Acos(Vector3d.Dot(launchVec, northVec));
             if (Vector3d.Dot(launchVec, eastVec) < 0d)

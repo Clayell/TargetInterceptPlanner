@@ -88,7 +88,7 @@ namespace LunarTransferPlanner
         // gui stuff
         float flightTime = 4f;
         float nextTickFT = 0f;
-        float tliAltitudeKM = 200f;       // Parking orbit altitude (circular orbit assumed).
+        float tliAltitudeKM = 200f;       // Parking orbit altitude (circular orbit assumed)
         float nextTickTA = 0f;
         bool showParking0 = false;       // Expand/collapse time in parking orbit for launch now
         bool showParking1 = false;       // Expand/collapse time in parking orbit for first window

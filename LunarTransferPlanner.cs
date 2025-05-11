@@ -86,15 +86,16 @@ namespace LunarTransferPlanner
         Rect        windowRect = new Rect(100,100,-1,-1);
         bool        isWindowOpen = true;
         // gui stuff
-        const float tliAltitudeKM = 200f;       // Parking orbit altitude (circular orbit assumed). Not so important to be in the GUI.
-        float       flightTime = 4f;
-        float       nextTickFT = 0f;
-        bool        showParking0 = false;       // Expand/collapse time in parking orbit for launch now
-        bool        showParking1 = false;       // Expand/collapse time in parking orbit for first window
-        bool        showParking2 = false;       // Expand/collapse time in parking orbit for second window
-        float       warpMargin = 60f;
-        float       nextTickWM = 0f;
-        string      windowTitle = "";
+        float flightTime = 4f;
+        float nextTickFT = 0f;
+        float tliAltitudeKM = 200f;       // Parking orbit altitude (circular orbit assumed)
+        float nextTickTA = 0f;
+        bool showParking0 = false;       // Expand/collapse time in parking orbit for launch now
+        bool showParking1 = false;       // Expand/collapse time in parking orbit for first window
+        bool showParking2 = false;       // Expand/collapse time in parking orbit for second window
+        float warpMargin = 60f;
+        float nextTickWM = 0f;
+        string windowTitle = "";
         GUISkin     skin;
 
 #region boring stuff
@@ -150,6 +151,7 @@ namespace LunarTransferPlanner
             settings.AddValue("windowRect.xMin", windowRect.xMin);
             settings.AddValue("windowRect.yMin", windowRect.yMin);
             settings.AddValue("flightTime", flightTime);
+            settings.AddValue("tliAltitudeKM", tliAltitudeKM);
             settings.AddValue("warpMargin", warpMargin);
             settings.Save(AssemblyLoader.loadedAssemblies.GetPathByType(typeof(LunarTransferPlanner)) + "/settings.cfg");
         }
@@ -164,6 +166,7 @@ namespace LunarTransferPlanner
                 Util.TryReadValue(ref x, settings, "windowRect.xMin");
                 Util.TryReadValue(ref y, settings, "windowRect.yMin");
                 Util.TryReadValue(ref flightTime, settings, "flightTime");
+                Util.TryReadValue(ref tliAltitudeKM, settings, "tliAltitudeKM");
                 Util.TryReadValue(ref warpMargin, settings, "warpMargin");
                 windowRect = new Rect(x, y, windowRect.width, windowRect.height);
                 LoadMutableToolbarSettings(settings);
@@ -616,18 +619,22 @@ namespace LunarTransferPlanner
 
                 windowTitle = "Lunar Transfer";
 
-                GUILayout.Space(4);
-                GUILayout.Label("Flight Time (days)", GUILayout.ExpandWidth(true));
-                MakeNumberEditField(ref flightTime, ref nextTickFT, 1, 0.1f, 0.1f);
-
                 CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
                 if (target == null)
                 {
                     GUILayout.Space(4);
-                    GUILayout.Box("Cannot find the Moon", GUILayout.MinWidth(80));
+                    GUILayout.Box("ERROR: Cannot find the Moon", GUILayout.MinWidth(80));
                 }
                 else
                 {
+                    GUILayout.Space(4);
+                    GUILayout.Label("Flight Time (days)", GUILayout.ExpandWidth(true));
+                    MakeNumberEditField(ref flightTime, ref nextTickFT, 1, 0.1f, 0.1f);
+
+                    GUILayout.Space(4);
+                    GUILayout.Label("Circ. Parking Orbit (km)", GUILayout.ExpandWidth(true));
+                    MakeNumberEditField(ref tliAltitudeKM, ref nextTickTA, 0, 5.0f, 140.0f);
+                    
                     double latitude = 0d;
                     Vector3d launchPos = GetLaunchPos(target.referenceBody, ref latitude);
 
@@ -643,7 +650,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.Space(4);
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("Launch Now Incl", GUILayout.ExpandWidth(true));
+                    GUILayout.Label("Launch Now Incl.", GUILayout.ExpandWidth(true));
                     bool showParking0_pressed = GUILayout.Button("...", GUILayout.MinWidth(20));
                     GUILayout.EndHorizontal();
 

@@ -29,7 +29,6 @@ using UnityEngine;
 using System.Linq;
 using Contracts.Agents.Mentalities;
 using KerbalConstructionTime;
-using System.Drawing;
 
 namespace LunarTransferPlanner
 {

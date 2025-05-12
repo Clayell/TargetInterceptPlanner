@@ -29,6 +29,7 @@ using UnityEngine;
 using System.Linq;
 using Contracts.Agents.Mentalities;
 using KerbalConstructionTime;
+using System.Drawing;
 
 namespace LunarTransferPlanner
 {
@@ -90,6 +91,7 @@ namespace LunarTransferPlanner
         float nextTickFT = 0f;
         float tliAltitudeKM = 200f;       // Parking orbit altitude (circular orbit assumed)
         float nextTickTA = 0f;
+        bool showInfo = false;       // Expand/collapse tooltips
         bool showParking0 = false;       // Expand/collapse time in parking orbit for launch now
         bool showParking1 = false;       // Expand/collapse time in parking orbit for first window
         bool showParking2 = false;       // Expand/collapse time in parking orbit for second window
@@ -535,12 +537,6 @@ namespace LunarTransferPlanner
             double orbitPeriod = 2 * Math.PI * Math.Sqrt((orbitRadius * orbitRadius * orbitRadius) / gravParameter);
             double flightTimeBeforeTLI = rotationAngle / 360 * orbitPeriod;
 
-            // Launch and maneuver planning take some time, say 15 minutes. If time to TLI is less than that, add an orbit.
-            if (flightTimeBeforeTLI < 15 * 60)
-            {
-                flightTimeBeforeTLI += orbitPeriod;
-            }
-
             return flightTimeBeforeTLI;
         }
 
@@ -550,7 +546,7 @@ namespace LunarTransferPlanner
 
             // Search in this range
             const float minPossibleDV = 3000;
-            const float maxPossibleDV = 4200;
+            const float maxPossibleDV = 6000;
 
             // Current search range, will be gradually narrowed
             float lowerBound = minPossibleDV;
@@ -566,6 +562,7 @@ namespace LunarTransferPlanner
                 double flightTimeAfterTLI = EstimateFlightTimeAfterTLI(target, dV);
                 double flightTimeBeforeTLI = EstimateFlightTimeBeforeTLI(target, launchPos, 0d);
                 double estimatedFlightTime = flightTimeBeforeTLI + flightTimeAfterTLI;
+                double expectedFlightTime = flightTime * (24 * 60 * 60);
 
                 // Debug.Log(i + " " + dV + " " + flightTime + " " + flightTimeBeforeTLI + " " + flightTimeAfterTLI + " " + estimatedFlightTime);
 
@@ -575,13 +572,13 @@ namespace LunarTransferPlanner
                     lowerBound = dV;
                     continue;
                 }
-                else if (estimatedFlightTime > (flightTime * (24 * 60 * 60) + 60))
+                else if (estimatedFlightTime > (expectedFlightTime + 5))
                 {
                     // dV is too low, set lower bound to current guess and try again
                     lowerBound = dV;
                     continue;
                 }
-                else if (estimatedFlightTime < (flightTime * (24 * 60 * 60) - 60))
+                else if (estimatedFlightTime < (expectedFlightTime - 5))
                 {
                     // dV is too high, set upper bound to current guess and try again
                     upperBound = dV;
@@ -594,7 +591,7 @@ namespace LunarTransferPlanner
                 }
             }
 
-            if (dV == minPossibleDV || dV == maxPossibleDV)
+            if (Math.Abs(dV - minPossibleDV) <= 0.001 * Math.Abs(minPossibleDV) || Math.Abs(dV - maxPossibleDV) <= 0.001 * Math.Abs(maxPossibleDV))
             {
                 // dV is incorrect, the correct value is outside the initial search range
                 dV = float.NaN;
@@ -602,6 +599,7 @@ namespace LunarTransferPlanner
 
             return dV;
         }
+
 
         private string FormatTime(double t)
         {
@@ -631,16 +629,37 @@ namespace LunarTransferPlanner
             }
             else
             {
+
+                double latitude = 0d;
+                Vector3d launchPos = GetLaunchPos(target.referenceBody, ref latitude);
+
+                GUILayout.Space(4);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Latitude:", GUILayout.Height(15), GUILayout.ExpandWidth(false));
+                GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), ""), GUILayout.MinWidth(60), GUILayout.Height(20));
+                GUILayout.Space(5);
+                bool showInfo_pressed = GUILayout.Button(" ?", GUILayout.Width(20));
+                GUILayout.EndHorizontal();
+                //GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), "Latitude of current launch site"), GUILayout.MinWidth(100));
+                if (showInfo) GUILayout.Label("Latitude of current launch site", GUILayout.ExpandWidth(true));
+
+                if (showInfo_pressed)
+                {
+                    showInfo = !showInfo;
+                    // Doing this forces the window to be resized
+                    // Without it, the window will become bigger when controls expand, but never become smaller again
+                    windowRect = new Rect(windowRect.xMin, windowRect.yMin, -1, -1);
+                }
+
                 GUILayout.Space(4);
                 GUILayout.Label("Flight Time (days)", GUILayout.ExpandWidth(true));
                 MakeNumberEditField(ref flightTime, ref nextTickFT, 0.1f, 0.1f);
+                var t = TimeSpan.FromDays(flightTime);
+                GUILayout.Box(new GUIContent($"{t.Days}d {t.Hours}h {t.Minutes}m {t.Seconds}s", ""), GUILayout.MinWidth(100));
 
                 GUILayout.Space(4);
                 GUILayout.Label("Circ. Parking Orbit (km)", GUILayout.ExpandWidth(true));
                 MakeNumberEditField(ref tliAltitudeKM, ref nextTickTA, 5.0f, 140.0f);
-
-                double latitude = 0d;
-                Vector3d launchPos = GetLaunchPos(target.referenceBody, ref latitude);
 
                 OrbitData launchOrbit = CalcOrbitForTime(target, launchPos, 0d);
                 double firstLaunchETA = EstimateLaunchTime(target, launchPos, latitude, 0d);
@@ -650,11 +669,8 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(4);
                 GUILayout.Label("Required dV", GUILayout.ExpandWidth(true));
-                GUILayout.Box(new GUIContent(String.Format("{0:0 m/s}", dV), "Required dV for the selected flight time"), GUILayout.MinWidth(100));
-
-                GUILayout.Space(4);
-                GUILayout.Label("Latitude", GUILayout.ExpandWidth(true));
-                GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), "Latitude of current launch site"), GUILayout.MinWidth(100));
+                GUILayout.Box(new GUIContent(String.Format("{0:0.00 m/s}", dV), ""), GUILayout.MinWidth(100));
+                if (showInfo) GUILayout.Label("Required delta-V for the selected flight time", GUILayout.ExpandWidth(true));
 
                 GUILayout.Space(4);
                 GUILayout.BeginHorizontal();
@@ -665,6 +681,7 @@ namespace LunarTransferPlanner
                 GUILayout.Space(4);
                 GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}\u00B0",
                     "Launch to this inclination now to reach a Lunar parking orbit"), GUILayout.MinWidth(100));
+                if (showInfo) GUILayout.Label("Launch to this inclination now to reach a Lunar parking orbit", GUILayout.ExpandWidth(true));
 
                 string tooltip = Math.Abs(latitude) >= target.orbit.inclination ?
                     "Launch at this time for an Easterly launch to Lunar parking orbit" :
@@ -688,12 +705,13 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(4);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("First Window     ", GUILayout.ExpandWidth(true));
+                GUILayout.Label("First Window", GUILayout.ExpandWidth(true));
                 bool showParking1_pressed = GUILayout.Button("...", GUILayout.MinWidth(20));
                 GUILayout.EndHorizontal();
 
                 GUILayout.Space(4);
                 GUILayout.Box(new GUIContent(FormatTime(firstLaunchETA), tooltip), GUILayout.MinWidth(100));
+                if (showInfo) GUILayout.Label(tooltip, GUILayout.ExpandWidth(true));
 
                 if (showParking1_pressed)
                 {
@@ -719,6 +737,7 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(4);
                 GUILayout.Box(new GUIContent(FormatTime(secondLaunchETA), tooltip), GUILayout.MinWidth(100));
+                if (showInfo) GUILayout.Label(tooltip, GUILayout.ExpandWidth(true));
 
                 if (showParking2_pressed)
                 {

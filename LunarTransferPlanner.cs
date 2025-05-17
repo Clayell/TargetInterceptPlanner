@@ -640,6 +640,7 @@ namespace LunarTransferPlanner
                 GUILayout.Space(5);
                 bool showInfo_pressed = GUILayout.Button(" ?", GUILayout.Width(20));
                 GUILayout.EndHorizontal();
+
                 if (showInfo) GUILayout.Label("Latitude of current launch site", GUILayout.ExpandWidth(true));
 
                 if (showInfo_pressed)
@@ -668,6 +669,7 @@ namespace LunarTransferPlanner
                 GUILayout.Label("Required \u0394V", GUILayout.ExpandWidth(true));
                 bool showAltitude_pressed = GUILayout.Button("...", GUILayout.Width(30));
                 GUILayout.EndHorizontal();
+
                 GUILayout.Box(new GUIContent(String.Format("{0:0.00 m/s}", dV), ""), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label("Required change in velocity for the maneuver if launched now", GUILayout.ExpandWidth(true));
 
@@ -691,6 +693,7 @@ namespace LunarTransferPlanner
                 GUILayout.Label("Launch Now Incl.", GUILayout.ExpandWidth(true));
                 bool showParking0_pressed = GUILayout.Button("...", GUILayout.Width(30));
                 GUILayout.EndHorizontal();
+
                 GUILayout.Space(4);
                 GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}\u00B0",""), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label("Launch to this inclination now to get into the right parking orbit", GUILayout.ExpandWidth(true));
@@ -719,8 +722,9 @@ namespace LunarTransferPlanner
                 GUILayout.Label("First Window", GUILayout.ExpandWidth(true));
                 bool showParking1_pressed = GUILayout.Button("...", GUILayout.Width(30));
                 GUILayout.EndHorizontal();
+
                 GUILayout.Space(4);
-                GUILayout.Box(new GUIContent(FormatTime(firstLaunchETA), tooltip), GUILayout.MinWidth(100));
+                GUILayout.Box(new GUIContent(FormatTime(firstLaunchETA), ""), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label(tooltip, GUILayout.ExpandWidth(true));
 
                 if (showParking1_pressed)
@@ -743,8 +747,9 @@ namespace LunarTransferPlanner
                 GUILayout.Label("Second Window", GUILayout.ExpandWidth(true));
                 bool showParking2_pressed = GUILayout.Button("...", GUILayout.Width(30));
                 GUILayout.EndHorizontal();
+
                 GUILayout.Space(4);
-                GUILayout.Box(new GUIContent(FormatTime(secondLaunchETA), tooltip), GUILayout.MinWidth(100));
+                GUILayout.Box(new GUIContent(FormatTime(secondLaunchETA), ""), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label(tooltip, GUILayout.ExpandWidth(true));
 
                 if (showParking2_pressed)

@@ -401,11 +401,7 @@ namespace LunarTransferPlanner
         {
             GUILayout.BeginVertical();
 
-                windowTitle = "Lunar Transfer";
-
-                GUILayout.Space(4);
-                GUILayout.Label("Flight Time (days)", GUILayout.ExpandWidth(true));
-                MakeNumberEditField(ref flightTime, ref nextTickFT, 1, 0.1f, 0.1f);
+                windowTitle = "Lunar Transfer"
 
                 CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
                 if (target == null)
@@ -418,13 +414,19 @@ namespace LunarTransferPlanner
                     double latitude = 0d;
                     Vector3d launchPos = GetLaunchPos(target.referenceBody, ref latitude);
 
+                    GUILayout.Space(4);
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Latitude:", GUILayout.Height(15), GUILayout.ExpandWidth(false));
+                    GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), ""), GUILayout.MinWidth(60), GUILayout.Height(20));
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.Space(4);
+                    GUILayout.Label("Flight Time (days)", GUILayout.ExpandWidth(true));
+                    MakeNumberEditField(ref flightTime, ref nextTickFT, 1, 0.1f, 0.1f);
+
                     OrbitData launchOrbit = CalcOrbitForTime(target, launchPos, 0d);
                     double firstLaunchETA = EstimateLaunchTime(target, launchPos, latitude, 0d);
                     double secondLaunchETA = EstimateLaunchTime(target, launchPos, latitude, firstLaunchETA + 3600d);
-
-                    GUILayout.Space(4);
-                    GUILayout.Label("Latitude", GUILayout.ExpandWidth(true));
-                    GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), "Latitude of current launch site"), GUILayout.MinWidth(100));
 
                     GUILayout.Space(4);
                     GUILayout.Label("Launch Now Incl", GUILayout.ExpandWidth(true));

@@ -94,6 +94,7 @@ namespace LunarTransferPlanner
         bool showParking0 = false;       // Expand/collapse time in parking orbit for launch now
         bool showParking1 = false;       // Expand/collapse time in parking orbit for first window
         bool showParking2 = false;       // Expand/collapse time in parking orbit for second window
+        bool showAltitude = false;       // Expand/collapse parking orbit altitude changer
         float warpMargin = 60f;
         float nextTickWM = 0f;
         string windowTitle = "";
@@ -639,7 +640,6 @@ namespace LunarTransferPlanner
                 GUILayout.Space(5);
                 bool showInfo_pressed = GUILayout.Button(" ?", GUILayout.Width(20));
                 GUILayout.EndHorizontal();
-                //GUILayout.Box(new GUIContent(String.Format("{0:0.00}\u00B0", latitude), "Latitude of current launch site"), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label("Latitude of current launch site", GUILayout.ExpandWidth(true));
 
                 if (showInfo_pressed)
@@ -655,10 +655,7 @@ namespace LunarTransferPlanner
                 MakeNumberEditField(ref flightTime, ref nextTickFT, 0.1f, 0.1f);
                 var t = TimeSpan.FromDays(flightTime);
                 GUILayout.Box(new GUIContent($"{t.Days}d {t.Hours}h {t.Minutes}m {t.Seconds}s", ""), GUILayout.MinWidth(100));
-
-                GUILayout.Space(4);
-                GUILayout.Label("Circ. Parking Orbit (km)", GUILayout.ExpandWidth(true));
-                MakeNumberEditField(ref tliAltitudeKM, ref nextTickTA, 5.0f, 140.0f);
+                if (showInfo) GUILayout.Label("Coast duration to the Moon after the maneuver", GUILayout.ExpandWidth(true));
 
                 OrbitData launchOrbit = CalcOrbitForTime(target, launchPos, 0d);
                 double firstLaunchETA = EstimateLaunchTime(target, launchPos, latitude, 0d);
@@ -667,24 +664,40 @@ namespace LunarTransferPlanner
                 double dV = EstimateDV(target, launchPos);
 
                 GUILayout.Space(4);
-                GUILayout.Label("Required dV", GUILayout.ExpandWidth(true));
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Required \u0394V", GUILayout.ExpandWidth(true));
+                bool showAltitude_pressed = GUILayout.Button("...", GUILayout.Width(30));
+                GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent(String.Format("{0:0.00 m/s}", dV), ""), GUILayout.MinWidth(100));
-                if (showInfo) GUILayout.Label("Required delta-V for the selected flight time", GUILayout.ExpandWidth(true));
+                if (showInfo) GUILayout.Label("Required change in velocity for the maneuver if launched now", GUILayout.ExpandWidth(true));
+
+                if (showAltitude_pressed)
+                {
+                    showAltitude = !showAltitude;
+                    // Doing this forces the window to be resized
+                    // Without it, the window will become bigger when controls expand, but never become smaller again
+                    windowRect = new Rect(windowRect.xMin, windowRect.yMin, -1, -1);
+                }
+
+                if (showAltitude)
+                {
+                    GUILayout.Label("Parking Orbit (km)", GUILayout.ExpandWidth(true));
+                    MakeNumberEditField(ref tliAltitudeKM, ref nextTickTA, 5.0f, 140.0f);
+                    if (showInfo) GUILayout.Label("Planned altitude of the circular parking orbit before the maneuver", GUILayout.ExpandWidth(true));
+                }
 
                 GUILayout.Space(4);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Launch Now Incl.", GUILayout.ExpandWidth(true));
-                bool showParking0_pressed = GUILayout.Button("...", GUILayout.MinWidth(20));
+                bool showParking0_pressed = GUILayout.Button("...", GUILayout.Width(30));
                 GUILayout.EndHorizontal();
-
                 GUILayout.Space(4);
-                GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}\u00B0",
-                    ""), GUILayout.MinWidth(100));
+                GUILayout.Box(new GUIContent($"{(launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination):F2}\u00B0",""), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label("Launch to this inclination now to get into the right parking orbit", GUILayout.ExpandWidth(true));
 
                 string tooltip = Math.Abs(latitude) >= target.orbit.inclination ?
-                    "Launch at this time for an Easterly launch to get into the right parking orbit" :
-                    "Launch at this time for a low inclination launch to get into the right parking orbit";
+                    "Launch Easterly at this time to get into the right parking orbit" :
+                    "Launch at this time at this inclination to get into the right parking orbit";
 
                 if (showParking0_pressed)
                 {
@@ -697,7 +710,6 @@ namespace LunarTransferPlanner
                 if (showParking0)
                 {
                     double timeInOrbit0 = EstimateFlightTimeBeforeTLI(target, launchPos, 0d);
-                    GUILayout.Space(4);
                     GUILayout.Label("Time in parking orbit", GUILayout.ExpandWidth(true));
                     GUILayout.Box(new GUIContent(FormatTime(timeInOrbit0), ""), GUILayout.MinWidth(100));
                 }
@@ -705,9 +717,8 @@ namespace LunarTransferPlanner
                 GUILayout.Space(4);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("First Window", GUILayout.ExpandWidth(true));
-                bool showParking1_pressed = GUILayout.Button("...", GUILayout.MinWidth(20));
+                bool showParking1_pressed = GUILayout.Button("...", GUILayout.Width(30));
                 GUILayout.EndHorizontal();
-
                 GUILayout.Space(4);
                 GUILayout.Box(new GUIContent(FormatTime(firstLaunchETA), tooltip), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label(tooltip, GUILayout.ExpandWidth(true));
@@ -723,7 +734,6 @@ namespace LunarTransferPlanner
                 if (showParking1)
                 {
                     double timeInOrbit1 = EstimateFlightTimeBeforeTLI(target, launchPos, firstLaunchETA);
-                    GUILayout.Space(4);
                     GUILayout.Label("Time in parking orbit", GUILayout.ExpandWidth(true));
                     GUILayout.Box(new GUIContent(FormatTime(timeInOrbit1), ""), GUILayout.MinWidth(100));
                 }
@@ -731,9 +741,8 @@ namespace LunarTransferPlanner
                 GUILayout.Space(4);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Second Window", GUILayout.ExpandWidth(true));
-                bool showParking2_pressed = GUILayout.Button("...", GUILayout.MinWidth(20));
+                bool showParking2_pressed = GUILayout.Button("...", GUILayout.Width(30));
                 GUILayout.EndHorizontal();
-
                 GUILayout.Space(4);
                 GUILayout.Box(new GUIContent(FormatTime(secondLaunchETA), tooltip), GUILayout.MinWidth(100));
                 if (showInfo) GUILayout.Label(tooltip, GUILayout.ExpandWidth(true));
@@ -749,15 +758,15 @@ namespace LunarTransferPlanner
                 if (showParking2)
                 {
                     double timeInOrbit2 = EstimateFlightTimeBeforeTLI(target, launchPos, secondLaunchETA);
-                    GUILayout.Space(4);
                     GUILayout.Label("Time in parking orbit", GUILayout.ExpandWidth(true));
                     GUILayout.Box(new GUIContent(FormatTime(timeInOrbit2), ""));
                 }
 
+                GUILayout.Space(4);
                 GUILayout.Label("Warp Margin (sec)", GUILayout.ExpandWidth(true));
                 MakeNumberEditField(ref warpMargin, ref nextTickWM, 5f, 0f);
 
-                GUILayout.Space(2);
+                GUILayout.Space(8);
                 GUILayout.BeginHorizontal();
                 GUI.enabled = KACWrapper.APIReady;
                 bool addAlarm = GUILayout.Button("Add Alarm", GUILayout.MinWidth(80));

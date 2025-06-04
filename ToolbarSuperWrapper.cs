@@ -116,11 +116,13 @@ public abstract class PluginWithToolbarSupport : UnityEngine.MonoBehaviour
         if (applauncherButton == null)
         {
             ToolbarInfo tb = GetToolbarInfo();
-            var m = new System.Collections.Generic.Dictionary<GameScenes, AppScenes>();
-            m.Add(GameScenes.FLIGHT, AppScenes.FLIGHT | AppScenes.MAPVIEW);
-            m.Add(GameScenes.EDITOR, AppScenes.SPH | AppScenes.VAB);
-            m.Add(GameScenes.SPACECENTER, AppScenes.SPACECENTER);
-            // and so on ...
+            var m = new System.Collections.Generic.Dictionary<GameScenes, AppScenes>
+            {
+                { GameScenes.FLIGHT, AppScenes.FLIGHT | AppScenes.MAPVIEW },
+                { GameScenes.EDITOR, AppScenes.SPH | AppScenes.VAB },
+                { GameScenes.SPACECENTER, AppScenes.SPACECENTER },
+                { GameScenes.TRACKSTATION, AppScenes.TRACKSTATION }
+            };
             AppScenes v = AppScenes.NEVER;
             foreach (GameScenes s in tb.visibleInScenes)
             {

@@ -96,7 +96,9 @@ namespace LunarTransferPlanner
         double flightTime = 4; // Desired flight time after maneuver, in days
         double parkingAltitude = 200; // Parking orbit altitude (circular orbit assumed)
         bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
+        bool useAltBehavior_toggled;
         bool useVesselPosition = false; // Use vessel position for latitude instead of launch site position
+        bool inSurfaceVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
         const double EarthSiderealDay = 86164.0905;
         double latitude = 0d;
@@ -106,13 +108,13 @@ namespace LunarTransferPlanner
         string referenceTimeTooltip;
         string inclinationLabel;
         double referenceTime = 0d;
-        bool expandLatLong = false; // Expand/collapse custom Latitude/Longitude specifier
+        bool expandLatLong = false; // Expand/collapse custom Latitude/Longitude picker
         bool expandAltitude = false; // Expand/collapse parking orbit altitude changer
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
         int extraWindowNumber = 2;
-        double maxWindows = 100; // Maximum amount of windows that can be calculated
+        double maxWindows = 100; // Maximum amount of extra windows that can be calculated
         bool showPhasing = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
         bool isLowLatitude;
         bool targetSet = false;
@@ -403,7 +405,7 @@ namespace LunarTransferPlanner
 
         private Vector3d GetLaunchPos(CelestialBody mainBody, ref double Latitude, ref double Longitude, bool useVesselPosition)
         {
-            if (useVesselPosition) // all checks are safe, can go ahead
+            if (useVesselPosition && inSurfaceVessel) // double check if it is safe to avoid null-ref
             {
                 Vessel vessel = FlightGlobals.ActiveVessel;
                 Latitude = vessel.latitude;
@@ -716,7 +718,7 @@ namespace LunarTransferPlanner
                 }
             }
 
-            // sort cache after removing bad stuff
+            // sort cache in ascending order of launch time after removing bad stuff
             cache.Sort((a, b) => a.absoluteLaunchTime.CompareTo(b.absoluteLaunchTime));
 
             // if window exists, return it
@@ -750,6 +752,12 @@ namespace LunarTransferPlanner
                 cache.Add((target, launchPos, inclination, absoluteLaunchTime));
 
                 startTime = newLaunchTime + offset;
+            }
+
+            // prevent excessive growth
+            while (cache.Count > maxWindows)
+            {
+                cache.RemoveAt(cache.Count - 1); // remove the last one
             }
 
             //Debug.Log($"cache count: {cache.Count}");
@@ -1067,6 +1075,20 @@ namespace LunarTransferPlanner
                 isLowLatitude = Math.Abs(latitude) <= inclination;
                 CelestialBody mainBody = target.referenceBody;
                 double dV = EstimateDV(target);
+
+                inSurfaceVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
+                if (!inSurfaceVessel) useVesselPosition = false; // keep this in main window, settings window isn't always open
+
+                if (!isLowLatitude) useAltBehavior_toggled = false; // keep this in main window, settings window isn't always open. if we change useAltBehavior to false instead, the next code will just set it to true again
+
+                if (useAltBehavior != useAltBehavior_toggled)
+                {
+                    useAltBehavior = useAltBehavior_toggled;
+                    //Debug.Log("cache Cleared due to useAltBehavior change");
+                    if (cache.Count > 0) cache.Clear(); // remove local mins so that we can replace them with global mins
+                                                        // technically this only needs to be done when switching from false to true, but switching from true to false without clearing
+                                                        // would result in some extra data in the cache, which might lead to problems if abused
+                }
 
                 if (satellites.Count > 1) // only display target selector screen if needed
                 {
@@ -1425,28 +1447,16 @@ namespace LunarTransferPlanner
             GUILayout.Label($"Find Global Minimum inclination instead of Local Minimum, disabled if latitude is higher than {target.bodyName} inclination");
             GUI.enabled = isLowLatitude;
             BeginCenter();
-            bool useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
+            useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
             EndCenter();
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
             DrawLine();
 
-            if (!isLowLatitude) useAltBehavior_toggled = false; // if we change useAltBehavior to false, the next code will just set it to true again
-
-            if (useAltBehavior != useAltBehavior_toggled)
-            {
-                useAltBehavior = useAltBehavior_toggled;
-                //Debug.Log("cache Cleared due to useAltBehavior change");
-                if (cache.Count > 0) cache.Clear(); // remove local mins so that we can replace them with global mins
-                // technically this only needs to be done when switching from false to true, but switching from true to false without clearing
-                // would result in some extra data in the cache, which might lead to problems if abused
-            }
-
             GUILayout.BeginHorizontal();
-            bool inSurfaceVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
-            if (!inSurfaceVessel) useVesselPosition = false;
-            GUILayout.Label("Use surface vessel position for latitude/longitude instead of launch site position, disabled if not on surface");
+            //Debug.Log($"CLAYELADDEDLOGS HighLogic.LoadedSceneIsFlight: {HighLogic.LoadedSceneIsFlight}, FlightGlobals.ActiveVessel: {FlightGlobals.ActiveVessel}, FlightGlobals.ActiveVessel.Landed: {FlightGlobals.ActiveVessel.Landed}, FlightGlobals.ActiveVessel.Splashed: {FlightGlobals.ActiveVessel.Splashed}");
+            GUILayout.Label("Use surface vessel position for latitude/longitude instead of launch site position, disabled if not on surface"); // can enable when not on surface?
             GUI.enabled = inSurfaceVessel;
             BeginCenter();
             useVesselPosition = GUILayout.Toggle(useVesselPosition, "");

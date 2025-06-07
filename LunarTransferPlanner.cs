@@ -96,7 +96,6 @@ namespace LunarTransferPlanner
         double flightTime = 4; // Desired flight time after maneuver, in days
         double parkingAltitude = 200; // Parking orbit altitude (circular orbit assumed)
         bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
-        bool useAltBehavior_toggled;
         bool useVesselPosition = false; // Use vessel position for latitude instead of launch site position
         bool inSurfaceVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
@@ -114,7 +113,7 @@ namespace LunarTransferPlanner
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
         int extraWindowNumber = 2;
-        double maxWindows = 100; // Maximum amount of extra windows that can be calculated
+        int maxWindows = 100; // Maximum amount of extra windows that can be calculated
         bool showPhasing = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
         bool isLowLatitude;
         bool targetSet = false;
@@ -294,9 +293,12 @@ namespace LunarTransferPlanner
             rect = new Rect(left, top, rect.width, rect.height);
         }
 
-        private void MakeNumberEditField<T>(string controlId, ref T value, double step, double minValue, double maxValue) where T : struct, IConvertible
+        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue) where T : struct, IConvertible
         {
-            double currentValue = Convert.ToDouble(value); // allow ints, doubles, etc.
+            double valueDouble = Convert.ToDouble(value); // allow ints, doubles, etc.
+            double stepDouble = Convert.ToDouble(step);
+            double minValueDouble = Convert.ToDouble(minValue);
+            double maxValueDouble = Convert.ToDouble(maxValue);
 
             // retrieve tick time buffer
             if (!nextTickMap.TryGetValue(controlId, out double nextTick))
@@ -304,41 +306,41 @@ namespace LunarTransferPlanner
 
             // retrieve text buffer
             if (!textBuffer.TryGetValue(controlId, out string textValue))
-                textValue = currentValue.ToString("G17");
+                textValue = valueDouble.ToString("G17");
 
             if (double.TryParse(textValue, out double parsedBufferValue))
             {
-                if (Math.Abs(parsedBufferValue - currentValue) > 1e-9)
+                if (Math.Abs(parsedBufferValue - valueDouble) > 1e-9)
                 {
                     // external change detected, update buffer
-                    textValue = currentValue.ToString("G17");
+                    textValue = valueDouble.ToString("G17");
                     textBuffer[controlId] = textValue;
                 }
             }
             else
             {
                 // invalid buffer, resync
-                textValue = currentValue.ToString("G17");
+                textValue = valueDouble.ToString("G17");
                 textBuffer[controlId] = textValue;
             }
 
             GUILayout.BeginHorizontal();
 
-            string newlabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40));
+            string newLabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40));
 
             // if text changed, update buffer and try to parse value
-            if (newlabel != textValue)
+            if (newLabel != textValue)
             {
-                textBuffer[controlId] = newlabel;
+                textBuffer[controlId] = newLabel;
 
-                if (double.TryParse(newlabel, out double newvalue))
+                if (double.TryParse(newLabel, out double newValue))
                 {
-                    currentValue = Math.Max(minValue, Math.Min(maxValue, newvalue));
+                    valueDouble = Math.Max(minValueDouble, Math.Min(maxValueDouble, newValue));
                 }
             }
             
-            bool hitMinusButton = GUILayout.RepeatButton("\u2013", GUILayout.MinWidth(40)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
-            bool hitPlusButton = GUILayout.RepeatButton("+", GUILayout.MinWidth(40));
+            bool hitMinusButton = GUILayout.RepeatButton("\u2013", GUILayout.MinWidth(40), GUILayout.MaxWidth(100)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
+            bool hitPlusButton = GUILayout.RepeatButton("+", GUILayout.MinWidth(40), GUILayout.MaxWidth(100));
 
             if (hitPlusButton || hitMinusButton)
             {
@@ -348,31 +350,31 @@ namespace LunarTransferPlanner
                     if (hitMinusButton)
                     {
 
-                        double snappedValue = Math.Floor(currentValue / step) * step;
-                        if (Math.Abs(currentValue - snappedValue) > 1e-9)
-                            currentValue = Math.Max(minValue, snappedValue); // snap to next number
+                        double snappedValue = Math.Floor(valueDouble / stepDouble) * stepDouble;
+                        if (Math.Abs(valueDouble - snappedValue) > 1e-9)
+                            valueDouble = Math.Max(minValueDouble, snappedValue); // snap to next number
                         else
-                            currentValue = Math.Max(minValue, currentValue - step); // then decrement
+                            valueDouble = Math.Max(minValueDouble, valueDouble - stepDouble); // then decrement
                     }
                     else
                     {
-                        double snappedValue = Math.Ceiling(currentValue / step) * step;
-                        if (Math.Abs(currentValue - snappedValue) > 1e-9)
-                            currentValue = Math.Min(maxValue, snappedValue); // snap to next number
+                        double snappedValue = Math.Ceiling(valueDouble / stepDouble) * stepDouble;
+                        if (Math.Abs(valueDouble - snappedValue) > 1e-9)
+                            valueDouble = Math.Min(maxValueDouble, snappedValue); // snap to next number
                         else
-                            currentValue = Math.Min(maxValue, currentValue + step); // then increment
+                            valueDouble = Math.Min(maxValueDouble, valueDouble + stepDouble); // then increment
                     }
 
-                    int decimals = Math.Max(0, (int)Math.Ceiling(-Math.Log10(step))); // avoid annoying floating point issues when rounding
-                    currentValue = Math.Round(currentValue, decimals);
+                    int decimals = Math.Max(0, (int)Math.Ceiling(-Math.Log10(stepDouble))); // avoid annoying floating point issues when rounding
+                    valueDouble = Math.Round(valueDouble, decimals);
                     nextTickMap[controlId] = tick + 0.2d; // wait 0.2s before changing again
-                    textBuffer[controlId] = currentValue.ToString($"F{decimals}");
+                    textBuffer[controlId] = valueDouble.ToString($"F{decimals}");
                 }
             }
 
             GUILayout.EndHorizontal();
 
-            value = (T)Convert.ChangeType(currentValue, typeof(T));
+            value = (T)Convert.ChangeType(valueDouble, typeof(T));
         }
 
 
@@ -525,6 +527,8 @@ namespace LunarTransferPlanner
 
         private double EstimateLaunchTime(CelestialBody target, Vector3d launchPos, double startTime, bool useAltBehavior)
         {
+            if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
+            
             const double tolerance = 0.01;
             double coarseStep = 1200 * target.referenceBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
             double maxTimeLimit = useAltBehavior ? target.referenceBody.solarDayLength * 30 : target.referenceBody.solarDayLength; // expand to 30 days if global minimum
@@ -1077,18 +1081,7 @@ namespace LunarTransferPlanner
                 double dV = EstimateDV(target);
 
                 inSurfaceVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
-                if (!inSurfaceVessel) useVesselPosition = false; // keep this in main window, settings window isn't always open
-
-                if (!isLowLatitude) useAltBehavior_toggled = false; // keep this in main window, settings window isn't always open. if we change useAltBehavior to false instead, the next code will just set it to true again
-
-                if (useAltBehavior != useAltBehavior_toggled)
-                {
-                    useAltBehavior = useAltBehavior_toggled;
-                    //Debug.Log("cache Cleared due to useAltBehavior change");
-                    if (cache.Count > 0) cache.Clear(); // remove local mins so that we can replace them with global mins
-                                                        // technically this only needs to be done when switching from false to true, but switching from true to false without clearing
-                                                        // would result in some extra data in the cache, which might lead to problems if abused
-                }
+                //if (!inSurfaceVessel) useVesselPosition = false; // keep this in main window, settings window isn't always open // not needed, we check for isLowLatitude anyway
 
                 if (satellites.Count > 1) // only display target selector screen if needed
                 {
@@ -1444,19 +1437,29 @@ namespace LunarTransferPlanner
             DrawLine();
 ;
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"Find Global Minimum inclination instead of Local Minimum, disabled if latitude is higher than {target.bodyName} inclination");
+            GUILayout.Label($"Find Global Minimum inclination instead of Local Minimum, ignored if latitude is higher than {target.bodyName} inclination");
             GUI.enabled = isLowLatitude;
             BeginCenter();
-            useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
+            bool useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
             EndCenter();
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
+            //if (!isLowLatitude) useAltBehavior_toggled = false; // if we change useAltBehavior to false instead, the next code will just set it to true again // not needed, we check for isLowLatitude anyway
+
+            if (useAltBehavior != useAltBehavior_toggled)
+            {
+                useAltBehavior = useAltBehavior_toggled;
+                //Debug.Log("cache Cleared due to useAltBehavior change");
+                if (cache.Count > 0) cache.Clear(); // remove local mins so that we can replace them with global mins
+                                                    // technically this only needs to be done when switching from false to true, but switching from true to false without clearing
+                                                    // would result in some extra data in the cache, which might lead to problems if abused
+            }
+
             DrawLine();
 
             GUILayout.BeginHorizontal();
-            //Debug.Log($"CLAYELADDEDLOGS HighLogic.LoadedSceneIsFlight: {HighLogic.LoadedSceneIsFlight}, FlightGlobals.ActiveVessel: {FlightGlobals.ActiveVessel}, FlightGlobals.ActiveVessel.Landed: {FlightGlobals.ActiveVessel.Landed}, FlightGlobals.ActiveVessel.Splashed: {FlightGlobals.ActiveVessel.Splashed}");
-            GUILayout.Label("Use surface vessel position for latitude/longitude instead of launch site position, disabled if not on surface"); // can enable when not on surface?
+            GUILayout.Label("Use surface vessel position for latitude/longitude instead of launch site position, ignored if not on surface"); // can enable when not on surface?
             GUI.enabled = inSurfaceVessel;
             BeginCenter();
             useVesselPosition = GUILayout.Toggle(useVesselPosition, "");
@@ -1500,7 +1503,7 @@ namespace LunarTransferPlanner
             DrawLine();
 
             GUILayout.Label("Change Extra Window Number");
-            MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1d, 2d, maxWindows);
+            MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 2, maxWindows);
 
             Tooltip.Instance.RecordTooltip(id);
 

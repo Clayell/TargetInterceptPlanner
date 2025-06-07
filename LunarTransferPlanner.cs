@@ -22,23 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
-using Contracts.Agents.Mentalities;
 using KerbalAlarmClock;
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics; // remove this
 using System.IO;
 using System.Linq;
-using System.Text;
 using UnityEngine;
-using static FinePrint.ContractDefs;
-using static GameParameters;
-using static KSP.UI.Screens.Settings.SettingsSetup;
-using static ProceduralSpaceObject;
-using static SpaceObjectCollider;
-using static UnityEngine.GraphicsBuffer;
 using Debug = UnityEngine.Debug; // remove this
 
 namespace LunarTransferPlanner

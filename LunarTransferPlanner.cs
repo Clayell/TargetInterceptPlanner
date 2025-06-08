@@ -561,8 +561,6 @@ namespace LunarTransferPlanner
             double AzimuthError(double t)
             {
                 double az = CalcOrbitForTime(target, launchPos, t).azimuth;
-                //Debug.Log($"AzimuthError called with t: {t}, targetAzimuth: {targetAzimuth}, current az: {az}");
-                //Debug.Log($"targetAzimuthError: {Math.Abs(((az - targetAzimuth + 540) % 360) - 180)}, 90AzimuthError: {Math.Abs(((az - 90d + 540) % 360) - 180)}");
                 return Math.Abs(((az - targetAzimuth + 540) % 360) - 180);
             }
 
@@ -573,14 +571,11 @@ namespace LunarTransferPlanner
                 double left = upperBound - invphi * (upperBound - lowerBound);
                 double right = lowerBound + invphi * (upperBound - lowerBound);
 
-                //Debug.Log("Step 9");
-
                 double eLeft = AzimuthError(left);
                 double eRight = AzimuthError(right);
 
                 while (Math.Abs(left - right) > epsilon)
                 {
-                    //Debug.Log("Step 10");
 
                     if (eLeft < eRight)
                     {
@@ -637,8 +632,6 @@ namespace LunarTransferPlanner
                 }
             }
 
-            //Debug.Log("Step 1");
-
             double t0 = startTime;
             double t1 = startTime + coarseStep;
             double e0 = AzimuthError(t0);
@@ -646,8 +639,6 @@ namespace LunarTransferPlanner
 
             if (e0 < e1) // either increasing slope, or t0 and t1 are on opposite sides of a min
             {
-                //Debug.Log("Step 2");
-
                 double refinedTime = GoldenSectionSearch(t0, t1);
 
                 if (refinedTime > startTime + tolerance) // t0 and t1 are on opposite sides of a min
@@ -665,8 +656,6 @@ namespace LunarTransferPlanner
 
                 while (e0 <= e1) // increasing slope (we just passed a min)
                 {
-                    //Debug.Log("Step 4");
-
                     t0 = t1;
                     t1 += coarseStep;
                     e0 = e1;
@@ -679,8 +668,6 @@ namespace LunarTransferPlanner
             }
             else if (Math.Abs(e0 - e1) < epsilon) // perfectly balanced between min or max
             {
-                //Debug.Log("Step 5");
-
                 t0 += buffer;
                 t1 += buffer;
                 e0 = AzimuthError(t0);
@@ -700,8 +687,6 @@ namespace LunarTransferPlanner
                     tBest = t1;
                 }
 
-                //Debug.Log("Step 6");
-
                 t0 = t1;
                 e0 = e1;
                 t1 += coarseStep;
@@ -714,8 +699,6 @@ namespace LunarTransferPlanner
 
                 if (Math.Abs(e0 - e1) < epsilon) // perfectly balanced between min
                 {
-                    //Debug.Log("Step 7");
-
                     t0 += buffer;
                     t1 += buffer;
                     e0 = AzimuthError(t0);
@@ -726,11 +709,7 @@ namespace LunarTransferPlanner
             double fineT0 = Math.Max(startTime, tBest - coarseStep);
             double fineT1 = Math.Min(startTime + maxTimeLimit, tBest + coarseStep);
 
-            //Debug.Log("Step 8");
-
             double finalResult = GoldenSectionSearch(fineT0, fineT1);
-
-            double azFinal = CalcOrbitForTime(target, launchPos, finalResult).azimuth;
 
             //Debug.Log($"launchTime found at {finalResult}");
 

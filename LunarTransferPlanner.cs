@@ -561,21 +561,27 @@ namespace LunarTransferPlanner
             double AzimuthError(double t)
             {
                 double az = CalcOrbitForTime(target, launchPos, t).azimuth;
+                //Debug.Log($"AzimuthError called with t: {t}, targetAzimuth: {targetAzimuth}, current az: {az}");
+                //Debug.Log($"targetAzimuthError: {Math.Abs(((az - targetAzimuth + 540) % 360) - 180)}, 90AzimuthError: {Math.Abs(((az - 90d + 540) % 360) - 180)}");
                 return Math.Abs(((az - targetAzimuth + 540) % 360) - 180);
             }
 
             double GoldenSectionSearch(double lowerBound, double upperBound) // adopted from https://en.wikipedia.org/wiki/Golden-section_search
             {
                 // I have no idea why this works, but it works so well
-                double invphi = (Math.Sqrt(5) - 1) / 2;  // positive conjugate of golden ratio
+                double invphi = (Math.Sqrt(5) - 1) / 2; // positive conjugate of golden ratio
                 double left = upperBound - invphi * (upperBound - lowerBound);
                 double right = lowerBound + invphi * (upperBound - lowerBound);
+
+                //Debug.Log("Step 9");
 
                 double eLeft = AzimuthError(left);
                 double eRight = AzimuthError(right);
 
                 while (Math.Abs(left - right) > epsilon)
                 {
+                    //Debug.Log("Step 10");
+
                     if (eLeft < eRight)
                     {
                         upperBound = right;
@@ -631,6 +637,8 @@ namespace LunarTransferPlanner
                 }
             }
 
+            //Debug.Log("Step 1");
+
             double t0 = startTime;
             double t1 = startTime + coarseStep;
             double e0 = AzimuthError(t0);
@@ -638,13 +646,17 @@ namespace LunarTransferPlanner
 
             if (e0 < e1) // either increasing slope, or t0 and t1 are on opposite sides of a min
             {
+                //Debug.Log("Step 2");
+
                 double refinedTime = GoldenSectionSearch(t0, t1);
 
                 if (refinedTime > startTime + tolerance) // t0 and t1 are on opposite sides of a min
                 {
-                    Debug.Log($"launchTime found at {refinedTime}");
+                    //Debug.Log($"launchTime found at {refinedTime}");
                     return refinedTime;
                 }
+
+                //Debug.Log("Increasing Slope");
 
                 t0 = startTime;
                 t1 = t0 + coarseStep;
@@ -653,6 +665,8 @@ namespace LunarTransferPlanner
 
                 while (e0 <= e1) // increasing slope (we just passed a min)
                 {
+                    //Debug.Log("Step 4");
+
                     t0 = t1;
                     t1 += coarseStep;
                     e0 = e1;
@@ -665,6 +679,8 @@ namespace LunarTransferPlanner
             }
             else if (Math.Abs(e0 - e1) < epsilon) // perfectly balanced between min or max
             {
+                //Debug.Log("Step 5");
+
                 t0 += buffer;
                 t1 += buffer;
                 e0 = AzimuthError(t0);
@@ -674,6 +690,8 @@ namespace LunarTransferPlanner
             double tBest = t0;
             double eBest = e0;
 
+            //Debug.Log("Decreasing Slope");
+
             while (e0 > e1) // decreasing slope
             {
                 if (e1 < eBest)
@@ -681,6 +699,8 @@ namespace LunarTransferPlanner
                     eBest = e1;
                     tBest = t1;
                 }
+
+                //Debug.Log("Step 6");
 
                 t0 = t1;
                 e0 = e1;
@@ -694,6 +714,8 @@ namespace LunarTransferPlanner
 
                 if (Math.Abs(e0 - e1) < epsilon) // perfectly balanced between min
                 {
+                    //Debug.Log("Step 7");
+
                     t0 += buffer;
                     t1 += buffer;
                     e0 = AzimuthError(t0);
@@ -704,9 +726,13 @@ namespace LunarTransferPlanner
             double fineT0 = Math.Max(startTime, tBest - coarseStep);
             double fineT1 = Math.Min(startTime + maxTimeLimit, tBest + coarseStep);
 
+            //Debug.Log("Step 8");
+
             double finalResult = GoldenSectionSearch(fineT0, fineT1);
 
-            Debug.Log($"launchTime found at {finalResult}");
+            double azFinal = CalcOrbitForTime(target, launchPos, finalResult).azimuth;
+
+            //Debug.Log($"launchTime found at {finalResult}");
 
             return finalResult;
         }
@@ -1444,9 +1470,10 @@ namespace LunarTransferPlanner
         {
             GUILayout.BeginVertical();
 
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Use Unity Skin", GUILayout.MinWidth(350)); // use this to set the width of the window
+            GUILayout.Label("Hover over text to see additional information", GUILayout.Width(350)); // use this to set the width of the window
 
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Use Unity Skin");
             BeginCenter();
             bool useAltSkin_toggled = GUILayout.Toggle(useAltSkin, "");
             EndCenter();
@@ -1462,7 +1489,7 @@ namespace LunarTransferPlanner
             DrawLine();
             ;
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"Find Global Minimum inclination instead of Local Minimum, ignored if latitude is higher than {target.bodyName} inclination");
+            GUILayout.Label(new GUIContent("Find Global Minimum inclination instead of Local Minimum", $"Ignored if latitude is higher than {target.bodyName} inclination"));
             GUI.enabled = isLowLatitude;
             BeginCenter();
             bool useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
@@ -1477,13 +1504,13 @@ namespace LunarTransferPlanner
                 useAltBehavior = useAltBehavior_toggled;
                 //Debug.Log("cache Cleared due to useAltBehavior change");
                 cache.Clear(); // remove local mins so that we can replace them with global mins
-                               // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
+                // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
             }
 
             DrawLine();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Use surface vessel position for latitude/longitude instead of launch site position, ignored if not on surface"); // can enable when not on surface?
+            GUILayout.Label(new GUIContent("Use surface vessel position for latitude/longitude instead of launch site position", "Ignored if not in a vessel on the surface")); // can enable when not on surface?
             GUI.enabled = inSurfaceVessel;
             BeginCenter();
             useVesselPosition = GUILayout.Toggle(useVesselPosition, "");
@@ -1508,7 +1535,7 @@ namespace LunarTransferPlanner
                 DrawLine();
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("<b>Special Warp</b>: When Principia is installed and the Next Window is more than 1 sidereal day away, change the \"Warp\" button to use 3 warps to avoid overshooting/undershooting the launch window due to perturbations of the target's orbit. It CANNOT be halted once started.");
+                GUILayout.Label(new GUIContent("<b>Special Warp</b>: Change the \"Warp\" button to use 3 warps to avoid overshooting/undershooting the launch window due to perturbations of the target's orbit. It CANNOT be halted once started.", "Only visible when Principia is installed, and only activates when the next window is more than 1 sidereal day away"));
                 BeginCenter();
                 specialWarp = GUILayout.Toggle(specialWarp, "");
                 EndCenter();
@@ -1532,12 +1559,11 @@ namespace LunarTransferPlanner
             DrawLine();
 
             double originalAzimuth = targetAzimuth;
-            GUILayout.Label("Change Target Azimuth");
+            GUILayout.Label(new GUIContent("Change Target Launch Azimuth", "90\u00B0 is the default, which is directly east. 0\u00B0 and 180\u00B0 are North and South respectively. Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
             MakeNumberEditField("targetAzimuth", ref targetAzimuth, 1d, 0d, 360d, true);
             if (targetAzimuth != originalAzimuth)
             {
-                cache.Clear();
-                Debug.Log($"targetAzimuth changed from {originalAzimuth} to {targetAzimuth}");
+                cache.Clear(); // only clear if changed, this doesn't always result in new minimums
             }
 
             Tooltip.Instance.RecordTooltip(id);
@@ -1546,6 +1572,6 @@ namespace LunarTransferPlanner
             GUI.DragWindow();
         }
 
-        // html tags rendered by ksp: <b> and </b>, <i> and </i>
+        // html tags rendered by ksp: <b> and </b>, <i> and </i>, (add more)
     }
 }

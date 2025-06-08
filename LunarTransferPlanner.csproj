@@ -70,12 +70,18 @@
       <HintPath>..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\KSP_x64_Data\Managed\UnityEngine.UI.dll</HintPath>
       <Private>False</Private>
     </Reference>
+	<Reference Include="UnityEngine.TextRenderingModule">
+		<HintPath>..\..\..\..\..\Program Files (x86)\Steam\steamapps\common\Kerbal Space Program\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+		<Private>False</Private>
+	</Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="KACWrapper.cs" />
     <Compile Include="LunarTransferPlanner.cs" />
+    <Compile Include="PrincipiaWrapper.cs" />
     <Compile Include="ToolbarSuperWrapper.cs" />
     <Compile Include="ToolbarWrapper.cs" />
+    <Compile Include="Tooltip.cs" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Properties\" />
@@ -85,7 +91,11 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>xcopy /y "$(TargetPath)" "$(ProjectDir)/GameData/LunarTransferPlanner\Plugins\"</PostBuildEvent>
+    <PostBuildEvent>
+		xcopy /y "$(TargetPath)" "$(ProjectDir)/GameData/LunarTransferPlanner\Plugins\"
+		xcopy /y "$(TargetPath)" "$(KSPDIR)/GameData/LunarTransferPlanner\Plugins\"
+		xcopy /y "$(TargetPath)" "C:/Users/Clayel/KSP Instances/KSP 1/Kerbal Space Program (1.12.5 STOCKALIKE)/GameData/LunarTransferPlanner\Plugins\"
+	</PostBuildEvent>
   </PropertyGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

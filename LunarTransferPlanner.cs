@@ -107,6 +107,7 @@ namespace LunarTransferPlanner
         string referenceTimeTooltip;
         string inclinationLabel;
         double referenceTime = 0d;
+        double targetAzimuth = 90d;
         bool expandLatLong = false; // Expand/collapse custom Latitude/Longitude picker
         bool expandAltitude = false; // Expand/collapse parking orbit altitude changer
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
@@ -195,34 +196,50 @@ namespace LunarTransferPlanner
             SaveMutableToolbarSettings(settings);
             SaveImmutableToolbarSettings(settings);
 
-            settings.AddValue("windowRect.xMin", windowRect.xMin); // 1
-            settings.AddValue("windowRect.yMin", windowRect.yMin); // 2
-            settings.AddValue("settingsRect.xMin", settingsRect.xMin); // 3
-            settings.AddValue("settingsRect.yMin", settingsRect.yMin); // 4
-            settings.AddValue("showSettings", showSettings); // 5
-            settings.AddValue("useAltSkin", useAltSkin); // 6
-            settings.AddValue("flightTime", flightTime); // 7
-            settings.AddValue("parkingAltitude", parkingAltitude); // 8
-            settings.AddValue("useAltBehavior", useAltBehavior); // 9
-            settings.AddValue("useVesselPosition", useVesselPosition); // 10
-            settings.AddValue("latitude", latitude); // 11
-            settings.AddValue("longitude", longitude); // 12
-            settings.AddValue("expandLatLong", expandLatLong); // 13
-            settings.AddValue("expandAltitude", expandAltitude); // 14
-            settings.AddValue("expandParking0", expandParking0); // 15
-            settings.AddValue("expandParking1", expandParking1); // 16
-            settings.AddValue("expandParking2", expandParking2); // 17
-            settings.AddValue("showPhasing", showPhasing); // 18
-            settings.AddValue("maxWindows", maxWindows); // 19
-            settings.AddValue("warpMargin", warpMargin); // 20
-            settings.AddValue("specialWarp", specialWarp); // 21
+            Dictionary<string, object> settingValues = new Dictionary<string, object>
+            {
+                { "windowRect.xMin", windowRect.xMin },
+                { "windowRect.yMin", windowRect.yMin },
+                { "settingsRect.xMin", settingsRect.xMin },
+                { "settingsRect.yMin", settingsRect.yMin },
+                { "showSettings", showSettings },
+                { "useAltSkin", useAltSkin },
+                { "flightTime", flightTime },
+                { "parkingAltitude", parkingAltitude },
+                { "useAltBehavior", useAltBehavior },
+                { "useVesselPosition", useVesselPosition },
+                { "latitude", latitude },
+                { "longitude", longitude },
+                { "expandLatLong", expandLatLong },
+                { "expandAltitude", expandAltitude },
+                { "expandParking0", expandParking0 },
+                { "expandParking1", expandParking1 },
+                { "expandParking2", expandParking2 },
+                { "showPhasing", showPhasing },
+                { "maxWindows", maxWindows },
+                { "warpMargin", warpMargin },
+                { "specialWarp", specialWarp },
+                { "targetAzimuth", targetAzimuth }
+            };
+
+            foreach (KeyValuePair<string, object> kvp in settingValues) settings.AddValue(kvp.Key, kvp.Value);
 
             ConfigNode root = new ConfigNode();
             root.AddNode(settings);
             root.Save(SettingsPath);
 
-            var lines = File.ReadAllLines(SettingsPath).ToList();
-            lines[19 + 4] += " // Changes the maximum amount of windows that can be calculated with the extra window chooser, default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation";
+            Dictionary<string, string> comments = new Dictionary<string, string>
+            {
+                { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser, default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" }
+            };
+
+            List<string> lines = File.ReadAllLines(SettingsPath).ToList();
+            foreach (KeyValuePair<string, string> kvp in comments)
+            {
+                int index = lines.FindIndex(line => line.Contains(kvp.Key));
+                if (index != -1)
+                    lines[index] += $" // {kvp.Value}";
+            }
             File.WriteAllLines(SettingsPath, lines);
         }
 
@@ -258,6 +275,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref maxWindows, settings, "maxWindows");
                     Util.TryReadValue(ref warpMargin, settings, "warpMargin");
                     Util.TryReadValue(ref specialWarp, settings, "specialWarp");
+                    Util.TryReadValue(ref targetAzimuth, settings, "targetAzimuth");
                     windowRect = new Rect(x1, y1, windowRect.width, windowRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
 
@@ -293,7 +311,7 @@ namespace LunarTransferPlanner
             rect = new Rect(left, top, rect.width, rect.height);
         }
 
-        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue) where T : struct, IConvertible
+        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false) where T : struct, IConvertible
         {
             // allow ints, doubles, floats, etc.
             double valueDouble = Convert.ToDouble(value);
@@ -355,7 +373,9 @@ namespace LunarTransferPlanner
                         if (Math.Abs(valueDouble - snappedValue) > 1e-9)
                             valueDouble = Math.Max(minValueDouble, snappedValue); // snap to next number
                         else
-                            valueDouble = Math.Max(minValueDouble, valueDouble - stepDouble); // then decrement
+                            if (valueDouble - stepDouble < minValueDouble && wrapAround)
+                            valueDouble = maxValueDouble;
+                        else valueDouble = Math.Max(minValueDouble, valueDouble - stepDouble); // then decrement
                     }
                     else
                     {
@@ -363,7 +383,9 @@ namespace LunarTransferPlanner
                         if (Math.Abs(valueDouble - snappedValue) > 1e-9)
                             valueDouble = Math.Min(maxValueDouble, snappedValue); // snap to next number
                         else
-                            valueDouble = Math.Min(maxValueDouble, valueDouble + stepDouble); // then increment
+                            if (valueDouble + stepDouble > maxValueDouble && wrapAround)
+                            valueDouble = minValueDouble;
+                        else valueDouble = Math.Min(maxValueDouble, valueDouble + stepDouble); // then increment
                     }
 
                     int decimals = Math.Max(0, (int)Math.Ceiling(-Math.Log10(stepDouble))); // avoid annoying floating point issues when rounding
@@ -533,14 +555,13 @@ namespace LunarTransferPlanner
             const double tolerance = 0.01;
             double coarseStep = 1200 * target.referenceBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
             double maxTimeLimit = useAltBehavior ? target.referenceBody.solarDayLength * 30 : target.referenceBody.solarDayLength; // expand to 30 days if global minimum
-            const double targetAz = 90d;
             const double epsilon = 1e-9;
             const double buffer = 1.0;
 
             double AzimuthError(double t)
             {
                 double az = CalcOrbitForTime(target, launchPos, t).azimuth;
-                return Math.Abs(((az - targetAz + 540) % 360) - 180);
+                return Math.Abs(((az - targetAzimuth + 540) % 360) - 180);
             }
 
             double GoldenSectionSearch(double lowerBound, double upperBound) // adopted from https://en.wikipedia.org/wiki/Golden-section_search
@@ -587,29 +608,23 @@ namespace LunarTransferPlanner
                     double refinedTime = EstimateLaunchTime(target, launchPos, candidateTime, false); // recursive call with useAltBehavior = false
                     if (double.IsNaN(refinedTime)) // no min found within normal time limit to analyze
                     {
-                        //Debug.Log("[Failure] No minimum found within time limit.");
                         return double.NaN;
                     }
 
                     double refinedError = AzimuthError(refinedTime);
-                    //Debug.Log($"[Refined] refinedTime formatted={FormatTime(refinedTime)}, refinedTime current = {currentUT + refinedTime}, refinedError={refinedError}");
 
                     if (refinedError < epsilon) // global minimum found
-                    //if (refinedError < tolerance)
                     {
 
-                        //Debug.Log("[Global Minimum Found]");
                         return refinedTime;
                     }
                     else // global min not found yet
                     {
-                        //Debug.Log("[Local Minimum Found] Not global, continuing search.");
 
                         candidateTime = refinedTime + 3600d;
 
                         if (candidateTime > startTime + maxTimeLimit) // no global min found within extended time limit
                         {
-                            //Debug.Log("[Failure] No global minimum found within time limit.");
                             return double.NaN;
                         }
                     }
@@ -627,6 +642,7 @@ namespace LunarTransferPlanner
 
                 if (refinedTime > startTime + tolerance) // t0 and t1 are on opposite sides of a min
                 {
+                    Debug.Log($"launchTime found at {refinedTime}");
                     return refinedTime;
                 }
 
@@ -690,6 +706,8 @@ namespace LunarTransferPlanner
 
             double finalResult = GoldenSectionSearch(fineT0, fineT1);
 
+            Debug.Log($"launchTime found at {finalResult}");
+
             return finalResult;
         }
 
@@ -703,27 +721,21 @@ namespace LunarTransferPlanner
             for (int i = cache.Count - 1; i >= 0; i--)
             {
                 var entry = cache[i];
-                //Debug.Log($"entry: {entry}");
                 bool expired = currentUT > entry.absoluteLaunchTime;
                 bool targetMismatch = entry.target != target;
-                //Debug.Log($"CLAYELADDEDLOGS Current launchPos: {launchPos}, Cached launchPos: {entry.launchPos}");
                 bool posMismatch = Vector3d.Distance(entry.launchPos, launchPos) >= tolerance; // we restart when changing launch sites, so this only triggers when changing position by vessel or manually
-                //double distance = Vector3d.Distance(entry.launchPos, launchPos);
-                //Debug.Log($"Launch Window Cache launchPos distance: {distance}");
                 bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch)
                 {
                     //Debug.Log($"INVALID: Launch Window Cache {i} with target={entry.target.name}, launchPos={entry.launchPos}, inclination={entry.inclination:F3}, time={entry.absoluteLaunchTime:F3}");
-                    //if (inclinationMismatch) Debug.Log($"CLAYELADDEDLOGS INCLINATION MISMATCH{i}, difference: {Math.Abs(entry.inclination - inclination)}");
-                    //if (posMismatch) Debug.Log("CLAYELADDEDLOGS POSITION MISMATCH");
                     //cache.RemoveAt(i);
                     cache.Clear(); // doing cache.RemoveAt(i) leads to compounding errors with the other remaining launch times, don't do it
                     break;
                 }
             }
 
-            // sort cache in ascending order of launch time after removing bad stuff
+            // sort cache in ascending order of launch time after removing bad entries
             cache.Sort((a, b) => a.absoluteLaunchTime.CompareTo(b.absoluteLaunchTime));
 
             // if window exists, return it
@@ -757,9 +769,15 @@ namespace LunarTransferPlanner
                 cache.Add((target, launchPos, inclination, absoluteLaunchTime));
 
                 startTime = newLaunchTime + offset;
+
+                if (cache.Count > maxWindows)
+                {
+                    Debug.Log("cache.Count has grown greater than maxWindows!");
+                    return double.NaN;
+                }
             }
 
-            // prevent excessive growth
+            // prevent excessive growth, just in case we somehow still have extra windows
             while (cache.Count > maxWindows)
             {
                 cache.RemoveAt(cache.Count - 1); // remove the last one
@@ -1113,10 +1131,10 @@ namespace LunarTransferPlanner
                 if (expandLatLong)
                 {
                     GUILayout.Space(6); // weird spacing
-                    MakeNumberEditField("latitude", ref latitude, 1d, -90d, 90d);
+                    MakeNumberEditField("latitude", ref latitude, 1d, -90d, 90d, true);
                     GUILayout.Space(5);
                     GUILayout.Label(new GUIContent($"Longitude: <b>{longitude:F2}\u00B0</b>", "Longitude of launch location"));
-                    MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d);
+                    MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d, true);
                     launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0);
                 }
                 else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
@@ -1254,7 +1272,7 @@ namespace LunarTransferPlanner
                     EndCenter(false);
                 }
 
-                // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility this label for some reason
+                // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of this label for some reason (always with EndCenter)
                 // its harmless as far as I can tell, but i couldnt figure out a way to actually catch it
 
                 if (specialWarpBuffer != specialWarpActive) // only reset if changed
@@ -1345,7 +1363,7 @@ namespace LunarTransferPlanner
                     specialWarpWait = false;
                 }
 
-                if (warpState == SpecialWarp.Warp2 && !inWarp() && (currentUT > waitingTime + 0.5d))
+                if (warpState == SpecialWarp.Warp2 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
                     //Debug.Log($"currentUT: {currentUT}");
 
@@ -1364,7 +1382,7 @@ namespace LunarTransferPlanner
                     Debug.Log("Special warp 2 in progress");
                 }
 
-                if (warpState == SpecialWarp.Warp3 && !inWarp() && (currentUT > waitingTime + 0.5d))
+                if (warpState == SpecialWarp.Warp3 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
                     //Debug.Log($"currentUT: {currentUT}");
 
@@ -1458,8 +1476,8 @@ namespace LunarTransferPlanner
             {
                 useAltBehavior = useAltBehavior_toggled;
                 //Debug.Log("cache Cleared due to useAltBehavior change");
-                if (cache.Count > 0) cache.Clear(); // remove local mins so that we can replace them with global mins
-                                                    // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
+                cache.Clear(); // remove local mins so that we can replace them with global mins
+                               // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
             }
 
             DrawLine();
@@ -1510,6 +1528,17 @@ namespace LunarTransferPlanner
 
             GUILayout.Label("Change Extra Window Number");
             MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 2, maxWindows);
+
+            DrawLine();
+
+            double originalAzimuth = targetAzimuth;
+            GUILayout.Label("Change Target Azimuth");
+            MakeNumberEditField("targetAzimuth", ref targetAzimuth, 1d, 0d, 360d, true);
+            if (targetAzimuth != originalAzimuth)
+            {
+                cache.Clear();
+                Debug.Log($"targetAzimuth changed from {originalAzimuth} to {targetAzimuth}");
+            }
 
             Tooltip.Instance.RecordTooltip(id);
 

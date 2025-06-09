@@ -83,6 +83,11 @@ namespace LunarTransferPlanner
     [KSPAddon(KSPAddon.Startup.FlightAndKSC, false)]
     public class LunarTransferPlanner : DaMichelToolbarSuperWrapper.PluginWithToolbarSupport
     {
+        const double EarthSiderealDay = 86164.098903691; // this is what RSS uses at RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
+        const double tau = 2 * Math.PI;
+        const double radToDeg = 180d / Math.PI;
+        const double degToRad = Math.PI / 180d;
+
         Rect windowRect = new Rect(100, 100, -1, -1);
         Rect settingsRect = new Rect(100, 100, -1, -1);
         readonly string windowTitle = "Lunar Transfer";
@@ -107,8 +112,6 @@ namespace LunarTransferPlanner
         bool useVesselPosition = false; // Use vessel position for latitude instead of launch site position
         bool inSurfaceVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
-        const double EarthSiderealDay = 86164.098903691; // this is what RSS uses at RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
-        const double tau = 2 * Math.PI;
         double latitude = 0d;
         double longitude = 0d;
         int referenceTimeButton = 0;
@@ -544,7 +547,7 @@ namespace LunarTransferPlanner
             Vector3d upVector = QuaternionD.AngleAxis(delayTime * 360d / mainBody.rotationPeriod, MainAxis) * (launchPos - MainPos).normalized; // use rotationPeriod for sidereal time
 
             Vector3d orbitNorm = Vector3d.Cross(targetPos - MainPos, upVector).normalized;
-            double inclination = Math.Acos(Vector3d.Dot(orbitNorm, MainAxis)); // inclination of the launch orbit, not the target orbit
+            double inclination = Math.Acos(Vector3d.Dot(orbitNorm, MainAxis)); // inclination of the launch orbit, not the target orbit (this should be able to handle retrograde target orbits? test this)
             if (inclination > Math.PI / 2)
             {
                 inclination = Math.PI - inclination;
@@ -561,7 +564,7 @@ namespace LunarTransferPlanner
             double azimuth = Math.Atan2(Vector3d.Dot(launchVec, eastVec), Vector3d.Dot(launchVec, northVec)); // this allows azimuths between 0 and 360
             azimuth = ((azimuth % tau) + tau) % tau;
 
-            return new OrbitData(orbitNorm, inclination * 180d / Math.PI, azimuth * 180d / Math.PI);
+            return new OrbitData(orbitNorm, inclination * radToDeg, azimuth * radToDeg);
         }
 
         private double EstimateLaunchTime(CelestialBody target, Vector3d launchPos, double startTime, bool useAltBehavior)
@@ -833,7 +836,7 @@ namespace LunarTransferPlanner
             //KSP apparently lies about having QuaternionD.FromToRotation because it just gives an error
             Vector3d rotationAxis = Vector3d.Cross(upVector, tliUpVector).normalized;
             double dot = Vector3d.Dot(upVector.normalized, tliUpVector.normalized);
-            double rotationAngle = Math.Acos(Util.Clamp(dot, -1d, 1d) * (180.0 / Math.PI));
+            double rotationAngle = Math.Acos(Util.Clamp(dot, -1d, 1d) * radToDeg);
 
             if (Vector3d.Dot(rotationAxis, MainAxis) < 0)
             {
@@ -1056,7 +1059,7 @@ namespace LunarTransferPlanner
                 bool showPhasing_pressed = GUILayout.Button("T", GUILayout.Width(20));
                 ButtonPressed(showPhasing_pressed, ref showPhasing);
                 GUILayout.EndHorizontal();
-                GUILayout.Box(new GUIContent($"{phaseAngle:F2}\u00B0", $"{phaseAngle * Math.PI / 180d:F5} rads"), GUILayout.MinWidth(60)); // for some reason the tooltip doesn't work for the immediate launch window, idk why
+                GUILayout.Box(new GUIContent($"{phaseAngle:F2}\u00B0", $"{phaseAngle * degToRad:F5} rads"), GUILayout.MinWidth(60)); // for some reason the tooltip doesn't work for the immediate launch window, idk why
             }
             else
             {
@@ -1216,12 +1219,12 @@ namespace LunarTransferPlanner
                 GUILayout.Space(5);
                 if (showAzimuth)
                 {
-                    GUILayout.Box(new GUIContent($"{launchOrbit.azimuth:F2}\u00B0", $"{launchOrbit.azimuth * Math.PI / 180d:F5} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent($"{launchOrbit.azimuth:F2}\u00B0", $"{launchOrbit.azimuth * degToRad:F5} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
                 else
                 {
                     double launchInclination = launchOrbit.azimuth > 90d && launchOrbit.azimuth < 270d ? -launchOrbit.inclination : launchOrbit.inclination;
-                    GUILayout.Box(new GUIContent($"{launchInclination:F2}\u00B0", $"{launchInclination * Math.PI / 180d:F5} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent($"{launchInclination:F2}\u00B0", $"{launchInclination * degToRad:F5} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
 
                     switch (referenceTimeButton)
@@ -1577,17 +1580,17 @@ namespace LunarTransferPlanner
 
             // azimuth to inclination formulas derived from https://www.astronomicalreturns.com/p/section-46-interesting-orbital.html
             double originalAzimuth = targetAzimuth;
-            double azRad = targetAzimuth * Math.PI / 180d;
-            double latRad = latitude * Math.PI / 180d;
+            double azRad = targetAzimuth * degToRad;
+            double latRad = latitude * degToRad;
             if (double.IsNaN(targetInclination)) targetInclination = targetAzimuth <= 90d || targetAzimuth >= 270d
-                ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI
-                : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI; // initialize value, this isnt rounded but rounding led to floating point issues so whatever
+                ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
+                : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // initialize value, this isnt rounded but rounding led to floating point issues so whatever
 
             if (showAzimuth)
             {
                 targetInclination = targetAzimuth <= 90d || targetAzimuth >= 270d
-                ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI
-                : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI; // continuously update value
+                ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
+                : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // continuously update value
 
                 GUILayout.Label(new GUIContent("Change Target Launch Azimuth", "90\u00B0 is the default, which is directly east. Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively. Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
                 MakeNumberEditField("targetAzimuth", ref targetAzimuth, 1d, 0d, 360d, true);
@@ -1604,7 +1607,7 @@ namespace LunarTransferPlanner
                 MakeNumberEditField("targetInclination", ref targetInclination, 1d, -180d, 180d, true);
 
                 //double absInc = Math.Abs(targetInclination);
-                double cosInc = Math.Cos(targetInclination * Math.PI / 180d);
+                double cosInc = Math.Cos(targetInclination * degToRad);
                 double cosLat = Math.Cos(latRad);
                 double sinAz = cosInc / cosLat;
 
@@ -1617,7 +1620,7 @@ namespace LunarTransferPlanner
                 GUILayout.EndHorizontal();
 
                 sinAz = Util.Clamp(sinAz, -1d, 1d);
-                double azInter = Math.Abs(Math.Asin(sinAz) * 180d / Math.PI); // intermediate value for azimuth
+                double azInter = Math.Abs(Math.Asin(sinAz) * radToDeg); // intermediate value for azimuth
 
                 targetAzimuth = targetInclination >= 0
                     ? (targetInclination <= 90d ? azInter : 360d - azInter) // NE (prograde) or NW (retrograde)

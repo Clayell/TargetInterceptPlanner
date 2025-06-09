@@ -543,7 +543,7 @@ namespace LunarTransferPlanner
 
             const double tolerance = 0.01;
             double coarseStep = 1200 * target.referenceBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
-            double maxTimeLimit = useAltBehavior ? target.referenceBody.rotationPeriod * 30 : target.referenceBody.rotationPeriod; // expand to 30 days if global minimum
+            double maxTimeLimit = useAltBehavior ? target.referenceBody.rotationPeriod * 30 : target.referenceBody.rotationPeriod; // expand to 30 days to search for global min
             const double epsilon = 1e-9;
             const double buffer = 1.0;
 
@@ -590,9 +590,10 @@ namespace LunarTransferPlanner
 
             if (useAltBehavior)
             {
-
-                //double currentUT = Planetarium.GetUniversalTime();
                 double candidateTime = startTime;
+
+                double bestTime = double.NaN;
+                double smallestError = double.MaxValue;
 
                 while (candidateTime <= startTime + maxTimeLimit)
                 {
@@ -604,9 +605,14 @@ namespace LunarTransferPlanner
 
                     double refinedError = AzimuthError(refinedTime);
 
+                    if (refinedError < smallestError)
+                    {
+                        smallestError = refinedError;
+                        bestTime = refinedTime;
+                    }
+
                     if (refinedError < epsilon) // global minimum found
                     {
-
                         return refinedTime;
                     }
                     else // global min not found yet
@@ -615,9 +621,10 @@ namespace LunarTransferPlanner
                         candidateTime = refinedTime + 3600d;
 
                         if (candidateTime > startTime + maxTimeLimit) // no global min found within extended time limit
-                        {
-                            return double.NaN;
-                        }
+                        { // return the time closest to 0, even if its not perfect
+                            Debug.Log($"No time found with error of 0 within time limit, returning time {bestTime} with error closest to 0.");
+                            return bestTime;
+                        } 
                     }
                 }
             }

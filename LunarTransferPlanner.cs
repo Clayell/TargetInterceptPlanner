@@ -68,6 +68,14 @@ namespace LunarTransferPlanner
             }
 
         }
+
+        // Unity only has Clamp for floats
+        public static double Clamp(double value, double min, double max)
+        {
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
     }
 
 
@@ -105,9 +113,11 @@ namespace LunarTransferPlanner
         int referenceTimeButton = 0;
         string referenceTimeLabel;
         string referenceTimeTooltip;
-        string inclinationLabel;
+        string label;
         double referenceTime = 0d;
         double targetAzimuth = 90d;
+        double targetInclination = double.NaN;
+        bool showAzimuth = false;
         bool expandLatLong = false; // Expand/collapse custom Latitude/Longitude picker
         bool expandAltitude = false; // Expand/collapse parking orbit altitude changer
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
@@ -210,6 +220,7 @@ namespace LunarTransferPlanner
                 { "useVesselPosition", useVesselPosition },
                 { "latitude", latitude },
                 { "longitude", longitude },
+                { "showAzimuth", showAzimuth },
                 { "expandLatLong", expandLatLong },
                 { "expandAltitude", expandAltitude },
                 { "expandParking0", expandParking0 },
@@ -230,7 +241,8 @@ namespace LunarTransferPlanner
 
             Dictionary<string, string> comments = new Dictionary<string, string>
             {
-                { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser, default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" }
+                { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser, default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
+                { "targetAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" }
             };
 
             List<string> lines = File.ReadAllLines(SettingsPath).ToList();
@@ -266,6 +278,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref useVesselPosition, settings, "useVesselPosition");
                     Util.TryReadValue(ref latitude, settings, "latitude");
                     Util.TryReadValue(ref longitude, settings, "longitude");
+                    Util.TryReadValue(ref showAzimuth, settings, "showAzimuth");
                     Util.TryReadValue(ref expandLatLong, settings, "expandLatLong");
                     Util.TryReadValue(ref expandAltitude, settings, "expandAltitude");
                     Util.TryReadValue(ref expandParking0, settings, "expandParking0");
@@ -311,7 +324,7 @@ namespace LunarTransferPlanner
             rect = new Rect(left, top, rect.width, rect.height);
         }
 
-        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false) where T : struct, IConvertible
+        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false, string minusTooltip = "", string plusTooltip = "") where T : struct, IConvertible
         {
             // allow ints, doubles, floats, etc.
             double valueDouble = Convert.ToDouble(value);
@@ -345,7 +358,7 @@ namespace LunarTransferPlanner
 
             GUILayout.BeginHorizontal();
 
-            string newLabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40), GUILayout.MaxWidth(100));
+            string newLabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40), GUILayout.MaxWidth(100)); // cannot add tooltip to TextField
 
             // if text changed, update buffer and try to parse value
             if (newLabel != textValue)
@@ -354,12 +367,12 @@ namespace LunarTransferPlanner
 
                 if (double.TryParse(newLabel, out double newValue))
                 {
-                    valueDouble = Math.Max(minValueDouble, Math.Min(maxValueDouble, newValue));
+                    valueDouble = Util.Clamp(newValue, minValueDouble, maxValueDouble);
                 }
             }
 
-            bool hitMinusButton = GUILayout.RepeatButton("\u2013", GUILayout.MinWidth(40), GUILayout.MaxWidth(60)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
-            bool hitPlusButton = GUILayout.RepeatButton("+", GUILayout.MinWidth(40), GUILayout.MaxWidth(60));
+            bool hitMinusButton = GUILayout.RepeatButton(new GUIContent("\u2013", minusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
+            bool hitPlusButton = GUILayout.RepeatButton(new GUIContent("+", plusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60));
 
             if (hitPlusButton || hitMinusButton)
             {
@@ -543,7 +556,9 @@ namespace LunarTransferPlanner
             Vector3d northVec = Vector3d.Cross(eastVec, upVector).normalized;
             Vector3d launchVec = Vector3d.Cross(upVector, orbitNorm).normalized;
 
-            double azimuth = Math.Acos(Vector3d.Dot(launchVec, northVec));
+            //double azimuth = Math.Acos(Vector3d.Dot(launchVec, northVec)); // this only allows azimuths between 0 and 180
+            double azimuth = Math.Atan2(Vector3d.Dot(launchVec, eastVec), Vector3d.Dot(launchVec, northVec)); // this allows azimuths between 0 and 360
+            if (azimuth < 0) azimuth += 2 * Math.PI;
 
             return new OrbitData(orbitNorm, inclination * 180d / Math.PI, azimuth * 180d / Math.PI);
         }
@@ -554,7 +569,7 @@ namespace LunarTransferPlanner
 
             const double tolerance = 0.01;
             double coarseStep = 1200 * target.referenceBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
-            double maxTimeLimit = useAltBehavior ? target.referenceBody.solarDayLength * 30 : target.referenceBody.solarDayLength; // expand to 30 days if global minimum
+            double maxTimeLimit = useAltBehavior ? target.referenceBody.rotationPeriod * 30 : target.referenceBody.rotationPeriod; // expand to 30 days if global minimum
             const double epsilon = 1e-9;
             const double buffer = 1.0;
 
@@ -817,7 +832,7 @@ namespace LunarTransferPlanner
             //KSP apparently lies about having QuaternionD.FromToRotation because it just gives an error
             Vector3d rotationAxis = Vector3d.Cross(upVector, tliUpVector).normalized;
             double dot = Vector3d.Dot(upVector.normalized, tliUpVector.normalized);
-            double rotationAngle = Math.Acos(Math.Max(-1.0, Math.Min(1.0, dot))) * (180.0 / Math.PI); // degrees
+            double rotationAngle = Math.Acos(Util.Clamp(dot, -1d, 1d) * (180.0 / Math.PI));
 
             if (Vector3d.Dot(rotationAxis, MainAxis) < 0)
             {
@@ -1104,8 +1119,7 @@ namespace LunarTransferPlanner
                 CelestialBody mainBody = target.referenceBody;
                 double dV = EstimateDV(target);
 
-                inSurfaceVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
-                //if (!inSurfaceVessel) useVesselPosition = false; // keep this in main window, settings window isn't always open // not needed, we check for isLowLatitude anyway
+                inSurfaceVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed); // this needs to be here, as settings window isnt always open
 
                 if (satellites.Count > 1) // only display target selector screen if needed
                 {
@@ -1187,35 +1201,49 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent(inclinationLabel, "Launch to this inclination to get into the right parking orbit (positive = Northeast, negative = Southeast)"), GUILayout.ExpandWidth(true));
+                if (showAzimuth)
+                {
+                    GUILayout.Label(new GUIContent(label + (showAzimuth ? "Az." : "Incl."), "Launch to this azimuth to get into the right parking orbit"), GUILayout.ExpandWidth(true));
+                }
+                else
+                {
+                    GUILayout.Label(new GUIContent(label + (showAzimuth ? "Az." : "Incl."), "Launch to this inclination to get into the right parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.ExpandWidth(true));
+                }
                 ExpandCollapse(ref expandParking0);
                 GUILayout.EndHorizontal();
 
                 GUILayout.Space(5);
-                double launchInclination = launchOrbit.azimuth > 90d ? -launchOrbit.inclination : launchOrbit.inclination;
-                GUILayout.Box(new GUIContent($"{launchInclination:F2}\u00B0", $"{launchInclination * Math.PI / 180d:F5} rads"), GUILayout.MinWidth(100));
-
-                switch (referenceTimeButton)
+                if (showAzimuth)
                 {
-                    case 0:
-                        referenceTimeLabel = "Launch Now";
-                        referenceTimeTooltip = "Change to Next Launch Window";
-                        inclinationLabel = "Launch Now Incl.";
-                        referenceTime = 0d;
-                        break;
-                    case 1:
-                        referenceTimeLabel = "Next Window";
-                        referenceTimeTooltip = $"Change to Launch Window {extraWindowNumber}";
-                        inclinationLabel = "Next Window Incl.";
-                        referenceTime = nextLaunchETA;
-                        break;
-                    case 2:
-                        referenceTimeLabel = $"Window {extraWindowNumber}";
-                        referenceTimeTooltip = "Change to Current Launch Window";
-                        inclinationLabel = $"Window {extraWindowNumber} Incl.";
-                        referenceTime = extraLaunchETA;
-                        break;
+                    GUILayout.Box(new GUIContent($"{launchOrbit.azimuth:F2}\u00B0", $"{launchOrbit.azimuth * Math.PI / 180d:F5} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
+                else
+                {
+                    double launchInclination = launchOrbit.azimuth > 90d && launchOrbit.azimuth < 270d ? -launchOrbit.inclination : launchOrbit.inclination;
+                    GUILayout.Box(new GUIContent($"{launchInclination:F2}\u00B0", $"{launchInclination * Math.PI / 180d:F5} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                }
+
+                    switch (referenceTimeButton)
+                    {
+                        case 0:
+                            referenceTimeLabel = "Launch Now";
+                            referenceTimeTooltip = "Change to Next Launch Window";
+                            label = "Launch Now ";
+                            referenceTime = 0d;
+                            break;
+                        case 1:
+                            referenceTimeLabel = "Next Window";
+                            referenceTimeTooltip = $"Change to Launch Window {extraWindowNumber}";
+                            label = "Next Window ";
+                            referenceTime = nextLaunchETA;
+                            break;
+                        case 2:
+                            referenceTimeLabel = $"Window {extraWindowNumber}";
+                            referenceTimeTooltip = "Change to Current Launch Window";
+                            label = $"Window {extraWindowNumber} ";
+                            referenceTime = extraLaunchETA;
+                            break;
+                    }
 
                 if (expandParking0)
                 {
@@ -1524,7 +1552,16 @@ namespace LunarTransferPlanner
             DrawLine();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("Switch between reference times for the inclination");
+            GUILayout.Label("Show Azimuth instead of Inclination");
+            BeginCenter();
+            showAzimuth = GUILayout.Toggle(showAzimuth, "");
+            EndCenter();
+            GUILayout.EndHorizontal();
+
+            DrawLine();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"Switch between reference times for the launch {(showAzimuth ? "azimuth" : "inclination")}");
             BeginCenter();
             if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.MinWidth(120))) referenceTimeButton = (referenceTimeButton + 1) % 3;
             EndCenter();
@@ -1537,12 +1574,64 @@ namespace LunarTransferPlanner
 
             DrawLine();
 
+            // azimuth to inclination formulas derived from https://www.astronomicalreturns.com/p/section-46-interesting-orbital.html
             double originalAzimuth = targetAzimuth;
-            GUILayout.Label(new GUIContent("Change Target Launch Azimuth", "90\u00B0 is the default, which is directly east. 0\u00B0 and 180\u00B0 are North and South respectively. Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
-            MakeNumberEditField("targetAzimuth", ref targetAzimuth, 1d, 0d, 360d, true);
+            double azRad = targetAzimuth * Math.PI / 180d;
+            double latRad = latitude * Math.PI / 180d;
+            if (double.IsNaN(targetInclination)) targetInclination = targetAzimuth <= 90d || targetAzimuth >= 270d
+                ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI
+                : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI; // initialize value, this isnt rounded but rounding led to floating point issues so whatever
+
+            if (showAzimuth)
+            {
+                targetInclination = targetAzimuth <= 90d || targetAzimuth >= 270d
+                ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI
+                : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * 180d / Math.PI; // continuously update value
+
+                GUILayout.Label(new GUIContent("Change Target Launch Azimuth", "90\u00B0 is the default, which is directly east. Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively. Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
+                MakeNumberEditField("targetAzimuth", ref targetAzimuth, 1d, 0d, 360d, true);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(new GUIContent("Target Launch Inclination", $"Your latitude of {latitude:F2}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively."));
+                GUILayout.Box($"{targetInclination:F2}\u00B0", GUILayout.MaxWidth(100)); // F2 is overkill but just in case
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                GUILayout.Label(new GUIContent("Change Target Launch Inclination", $"Your latitude of {latitude:F2}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively. Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
+
+                GUILayout.BeginHorizontal();
+                MakeNumberEditField("targetInclination", ref targetInclination, 1d, -180d, 180d, true);
+
+                //double absInc = Math.Abs(targetInclination);
+                double cosInc = Math.Cos(targetInclination * Math.PI / 180d);
+                double cosLat = Math.Cos(latRad);
+                double sinAz = cosInc / cosLat;
+
+                if (Math.Abs(sinAz) > 1d)
+                {
+                    GUILayout.FlexibleSpace();
+                    GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {targetInclination:F2}° is unreachable from your latitude of {latitude:F2}°, so it has been clamped to the nearest reachable inclination."));
+                    GUILayout.FlexibleSpace();
+                }
+                GUILayout.EndHorizontal();
+
+                sinAz = Util.Clamp(sinAz, -1d, 1d);
+                double azInter = Math.Abs(Math.Asin(sinAz) * 180d / Math.PI); // intermediate value for azimuth
+
+                targetAzimuth = targetInclination >= 0
+                    ? (targetInclination <= 90d ? azInter : 360d - azInter) // NE (prograde) or NW (retrograde)
+                    : (Math.Abs(targetInclination) <= 90d ? 180d - azInter : 180d + azInter); // SE (prograde) or SW (retrograde)
+
+                targetAzimuth = (targetAzimuth + 360d) % 360d; // normalize just in case
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(new GUIContent("Target Launch Azimuth", "90\u00B0 is the default, which is directly east. Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively."));
+                GUILayout.Box($"{targetAzimuth:F2}\u00B0", GUILayout.MaxWidth(100));
+                GUILayout.EndHorizontal();
+            }
             if (targetAzimuth != originalAzimuth)
             {
-                cache.Clear(); // only clear if changed, this doesn't always result in new minimums
+                cache.Clear(); // only clear if changed, also this doesn't always result in new minimums
             }
 
             Tooltip.Instance.RecordTooltip(id);

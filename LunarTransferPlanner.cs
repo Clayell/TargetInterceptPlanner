@@ -107,7 +107,7 @@ namespace LunarTransferPlanner
         bool useVesselPosition = false; // Use vessel position for latitude instead of launch site position
         bool inSurfaceVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
-        const double EarthSiderealDay = 86164.0905;
+        const double EarthSiderealDay = 86164.098903691; // this is what RSS uses at RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
         const double tau = 2 * Math.PI;
         double latitude = 0d;
         double longitude = 0d;

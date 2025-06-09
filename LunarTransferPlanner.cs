@@ -550,7 +550,7 @@ namespace LunarTransferPlanner
             double AzimuthError(double t)
             {
                 double az = CalcOrbitForTime(target, launchPos, t).azimuth;
-                return Math.Abs(((az - targetAzimuth + 540) % 360) - 180);
+                return Math.Abs(((az - targetAzimuth + 540d) % 360d) - 180d);
             }
             // dont turn this into InclinationError, CalcOrbitForTime is limited in which inclinations it can return, but it can return 0 to 360 of azimuth
 
@@ -605,20 +605,19 @@ namespace LunarTransferPlanner
 
                     double refinedError = AzimuthError(refinedTime);
 
-                    if (refinedError < smallestError)
-                    {
-                        smallestError = refinedError;
-                        bestTime = refinedTime;
-                    }
-
                     if (refinedError < epsilon) // global minimum found
                     {
                         return refinedTime;
                     }
                     else // global min not found yet
                     {
+                        candidateTime = refinedTime + 3600d * target.referenceBody.rotationPeriod / EarthSiderealDay;
 
-                        candidateTime = refinedTime + 3600d;
+                        if (refinedError < smallestError)
+                        {
+                            smallestError = refinedError;
+                            bestTime = refinedTime;
+                        }
 
                         if (candidateTime > startTime + maxTimeLimit) // no global min found within extended time limit
                         { // return the time closest to 0, even if its not perfect

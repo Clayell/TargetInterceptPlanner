@@ -108,6 +108,7 @@ namespace LunarTransferPlanner
         bool inSurfaceVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
         const double EarthSiderealDay = 86164.0905;
+        const double tau = 2 * Math.PI;
         double latitude = 0d;
         double longitude = 0d;
         int referenceTimeButton = 0;
@@ -558,7 +559,7 @@ namespace LunarTransferPlanner
 
             //double azimuth = Math.Acos(Vector3d.Dot(launchVec, northVec)); // this only allows azimuths between 0 and 180
             double azimuth = Math.Atan2(Vector3d.Dot(launchVec, eastVec), Vector3d.Dot(launchVec, northVec)); // this allows azimuths between 0 and 360
-            if (azimuth < 0) azimuth += 2 * Math.PI;
+            azimuth = ((azimuth % tau) + tau) % tau;
 
             return new OrbitData(orbitNorm, inclination * 180d / Math.PI, azimuth * 180d / Math.PI);
         }
@@ -840,7 +841,7 @@ namespace LunarTransferPlanner
             }
 
             // Convert angle to time in orbit
-            double orbitPeriod = 2 * Math.PI * Math.Sqrt(Math.Pow(orbitRadius, 3) / gravParameter);
+            double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / gravParameter);
             //double offset = 180; // for some reason it just constantly underestimates by ~3 minutes, no idea why
             //rotationAngle = (rotationAngle + (offset / orbitPeriod) * 360.0) % 360.0;
             double flightTimeBeforeTLI = rotationAngle / 360.0 * orbitPeriod;

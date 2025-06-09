@@ -492,33 +492,6 @@ namespace LunarTransferPlanner
             }
         }
 
-
-        //private Vector3d GetPositionAtTime(CelestialBody body, double time)
-        //{
-        //    if (body != null && PrincipiaInstalled)
-        //    {
-        //        Debug.Log("GetPositionAtTime: Principia Active");
-        //        var xyz = PrincipiaWrapper.CelestialGetPosition(body.flightGlobalsIndex, time);
-
-        //        double x = PrincipiaWrapper.Reflection.GetMemberValue<double>(xyz, "x");
-        //        double y = PrincipiaWrapper.Reflection.GetMemberValue<double>(xyz, "y");
-        //        double z = PrincipiaWrapper.Reflection.GetMemberValue<double>(xyz, "z");
-
-        //        return new Vector3d(x, y, z);
-        //    }
-        //    else if (body != null && body is CelestialBody stockBody)
-        //    {
-        //        Debug.Log("GetPositionAtTime: Principia Inactive");
-        //        return stockBody.getPositionAtUT(time);
-        //    }
-        //    else
-        //    {
-        //        throw new ArgumentNullException("Invalid body passed to GetPositionAtTime");
-        //    }
-        //}
-
-
-
         private readonly struct OrbitData
         {
             public OrbitData(Vector3d n, double i, double a)
@@ -542,7 +515,7 @@ namespace LunarTransferPlanner
 
             double targetTime = Planetarium.GetUniversalTime() + flightTime * mainBody.solarDayLength + delayTime;
             Vector3d targetPos = target.getPositionAtUT(targetTime); // this doesn't take into account changing target inclination due to principia
-            //Vector3d targetPos = GetPositionAtTime(target, targetTime);
+            //CelestialGetPosition is the corresponding method for Principia, but it doesn't work for a future time. FIX
 
             Vector3d upVector = QuaternionD.AngleAxis(delayTime * 360d / mainBody.rotationPeriod, MainAxis) * (launchPos - MainPos).normalized; // use rotationPeriod for sidereal time
 
@@ -1378,11 +1351,9 @@ namespace LunarTransferPlanner
                     {
                         if (warpState == SpecialWarp.Warp1)
                         {
-                            //Debug.Log("Begining special warp 1");
+                            Debug.Log("Special warp 1 in progress"); // keep this log
                             TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
                             TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
-                            Debug.Log("Special warp 1 in progress");
-                            //specialWarp2 = true;
                             warpState = SpecialWarp.Warp2;
                             specialWarpWait = true;
                         }
@@ -1403,59 +1374,22 @@ namespace LunarTransferPlanner
 
                 if (warpState == SpecialWarp.Warp2 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
-                    //Debug.Log($"currentUT: {currentUT}");
-
-                    //Debug.Log("Beginning special warp 2");
+                    Debug.Log("Special warp 2 in progress"); // keep this log
                     TimeWarp.fetch.CancelAutoWarp();
-                    //TimeWarp.fetch.CancelAutoWarp(-1, true);
-                    //TimeWarp.SetRate(5, false);
-                    //TimeWarp.SetRate(0, true);
                     TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
                     TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + 3600d * mainBody.rotationPeriod / EarthSiderealDay)); // warp to within an hour
-                    //specialWarp2 = false;
-                    //specialWarp3 = true;
                     warpState = SpecialWarp.Warp3;
                     specialWarpWait = true;
-
-                    Debug.Log("Special warp 2 in progress");
                 }
 
                 if (warpState == SpecialWarp.Warp3 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
-                    //Debug.Log($"currentUT: {currentUT}");
-
-                    //Debug.Log("Beginning special warp 3");
+                    Debug.Log("Special warp 3 in progress"); // keep this log
                     TimeWarp.fetch.CancelAutoWarp();
-                    //TimeWarp.fetch.CancelAutoWarp(-1, true);
-                    //TimeWarp.SetRate(5, false);
-                    //TimeWarp.SetRate(0, true);
                     TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - warpMargin); // now warp to final
                     warpState = SpecialWarp.None;
                     specialWarpWait = false;
-
-                    Debug.Log("Special warp 3 in progress");
                 }
-
-
-
-
-
-                //if (toggleWarp)
-                //{
-                //    if (TimeWarp.CurrentRate > 1d)
-                //    {
-                //        TimeWarp.fetch.CancelAutoWarp();
-                //        TimeWarp.SetRate(0, false);
-                //    }
-                //    else
-                //    {
-                //        TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - warpMargin);
-                //    }
-                //}
-
-
-
-
 
                 if (targetPressed)
                 {

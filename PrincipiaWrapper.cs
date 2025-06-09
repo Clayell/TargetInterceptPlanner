@@ -52,12 +52,6 @@ public static class PrincipiaWrapper
         return true;
     }
 
-    //public static object CelestialGetPosition(int bodyIndex, double time)
-    //{
-    //    var method = Reflection.BindMethod<object>(Principia, "CelestialGetPosition"); // doesnt seem to work for the future?
-    //    return method(bodyIndex, time);
-    //}
-
     private static void Log(string message) =>
         Debug.Log($"[PrincipiaWrapper] {message}");
 

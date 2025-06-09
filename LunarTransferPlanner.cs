@@ -22,8 +22,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
-using Contracts;
-using FinePrint;
 using KerbalAlarmClock;
 using System;
 using System.Collections.Generic;
@@ -32,8 +30,6 @@ using System.Diagnostics; // remove this
 using System.IO;
 using System.Linq;
 using UnityEngine;
-using UnityEngine.UI;
-using static Planetarium;
 using Debug = UnityEngine.Debug; // remove this
 
 namespace LunarTransferPlanner

@@ -22,6 +22,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
+using Contracts;
+using FinePrint;
 using KerbalAlarmClock;
 using System;
 using System.Collections.Generic;
@@ -30,6 +32,8 @@ using System.Diagnostics; // remove this
 using System.IO;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.UI;
+using static Planetarium;
 using Debug = UnityEngine.Debug; // remove this
 
 namespace LunarTransferPlanner
@@ -137,9 +141,6 @@ namespace LunarTransferPlanner
         bool specialWarp = true;
         enum SpecialWarp { None, Warp1, Warp2, Warp3 }
         SpecialWarp warpState = SpecialWarp.None;
-        //bool specialWarp1 = false;
-        //bool specialWarp2 = false;
-        //bool specialWarp3 = false;
         bool specialWarpBuffer = false;
         bool specialWarpWait = false;
         double waitingTime;
@@ -515,7 +516,7 @@ namespace LunarTransferPlanner
 
             double targetTime = Planetarium.GetUniversalTime() + flightTime * mainBody.solarDayLength + delayTime;
             Vector3d targetPos = target.getPositionAtUT(targetTime); // this doesn't take into account changing target inclination due to principia
-            //CelestialGetPosition is the corresponding method for Principia, but it doesn't work for a future time. FIX
+            //CelestialGetPosition is the corresponding method for Principia, but it doesn't work for a future time. TODO
 
             Vector3d upVector = QuaternionD.AngleAxis(delayTime * 360d / mainBody.rotationPeriod, MainAxis) * (launchPos - MainPos).normalized; // use rotationPeriod for sidereal time
 
@@ -807,7 +808,7 @@ namespace LunarTransferPlanner
             // TLI takes place at the point of the orbit that is opposite to the future position of the Moon
             Vector3d tliUpVector = (MainPos - targetPos).normalized;
 
-            //KSP apparently lies about having QuaternionD.FromToRotation because it just gives an error
+            // KSP lies about having QuaternionD.FromToRotation, EulerAngles, and Euler (https://github.com/KSPModdingLibs/KSPCommunityFixes/issues/316)
             Vector3d rotationAxis = Vector3d.Cross(upVector, tliUpVector).normalized;
             double dot = Vector3d.Dot(upVector.normalized, tliUpVector.normalized);
             double rotationAngle = Math.Acos(Util.Clamp(dot, -1d, 1d) * radToDeg);
@@ -1086,10 +1087,11 @@ namespace LunarTransferPlanner
 
             if (satellites == null || satellites.Count == 0)
             {
-                GUILayout.Box("ERROR: There are no moons of this planet!", GUILayout.MinWidth(80));
+                GUILayout.Box("ERROR: There are no satellites of this planet!", GUILayout.MinWidth(80));
             }
             else
             {
+
                 currentUT = Planetarium.GetUniversalTime();
                 if (target == null || !satellites.Contains(target)) target = satellites[0];
                 inclination = GetTargetInclination(target.orbit);
@@ -1135,6 +1137,7 @@ namespace LunarTransferPlanner
                     launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0);
                 }
                 else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
+                //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
                 GUILayout.Space(5);
                 GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {target.bodyName} after the maneuver (in {mainBody.bodyName} solar days)"), GUILayout.ExpandWidth(true));
@@ -1283,7 +1286,7 @@ namespace LunarTransferPlanner
                     EndCenter(false);
                 }
 
-                // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of this label for some reason (always with EndCenter)
+                // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of the above label for some reason (always with BeginCenter or EndCenter)
                 // its harmless as far as I can tell, but i couldnt figure out a way to actually catch it
 
                 if (specialWarpBuffer != specialWarpActive) // only reset if changed
@@ -1296,16 +1299,14 @@ namespace LunarTransferPlanner
                 bool targetPressed = GUILayout.Button(targetSet ? "Unset Target" : $"Target {target.bodyName}", GUILayout.MinWidth(140));
 
                 bool showSettings_pressed;
-
                 if (gearBlack != null && gearGreen != null)
                 {
-                    showSettings_pressed = GUILayout.Button(new GUIContent(useAltSkin ? gearBlack : gearGreen, "Show Settings"), new GUIStyle(GUI.skin.button) { padding = new RectOffset(0, 0, 0, 0) }, GUILayout.Width(20), GUILayout.Height(20)); // remove padding in style to prevent image getting scaled down with unity skin
-
-                    //ButtonPressed(showSettings_pressed, ref showSettings, false);
+                    showSettings_pressed = GUILayout.Button(new GUIContent(useAltSkin ? gearBlack : gearGreen, "Show Settings"), new GUIStyle(GUI.skin.button) { padding = new RectOffset(0, 0, 0, 0) }, GUILayout.Width(20), GUILayout.Height(20));
+                    // remove padding in style to prevent image getting scaled down with unity skin
                 }
                 else
                 {
-                    showSettings_pressed = GUILayout.Button(new GUIContent(" ", "Show Settings (Error: A settings icon is missing!)"), GUILayout.Width(20), GUILayout.Height(20));
+                    showSettings_pressed = GUILayout.Button(new GUIContent("S", "Show Settings (Error: A settings icon is missing!)"), GUILayout.Width(20), GUILayout.Height(20));
                 }
                 ButtonPressed(showSettings_pressed, ref showSettings, false);
                 GUILayout.EndHorizontal();
@@ -1314,7 +1315,7 @@ namespace LunarTransferPlanner
                 {
                     if (!useAltAlarm && !double.IsNaN(nextLaunchETA))
                     {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{target.bodyName} Launch Window", currentUT + nextLaunchETA - warpMargin);
+                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{target.bodyName} Launch Window", currentUT + nextLaunchETA - warpMargin); // remove warpMargin?
                         if (!string.IsNullOrEmpty(alarmId))
                         {
                             //if the alarm was made get the object so we can update it
@@ -1326,7 +1327,7 @@ namespace LunarTransferPlanner
                     }
                     else if (useAltAlarm && !double.IsNaN(extraLaunchETA))
                     {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{target.bodyName} Launch Window {extraWindowNumber}", currentUT + extraLaunchETA - warpMargin);
+                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{target.bodyName} Launch Window {extraWindowNumber}", currentUT + extraLaunchETA - warpMargin); // remove warpMargin?
                         if (!string.IsNullOrEmpty(alarmId))
                         {
                             //if the alarm was made get the object so we can update it
@@ -1544,7 +1545,6 @@ namespace LunarTransferPlanner
                 GUILayout.BeginHorizontal();
                 MakeNumberEditField("targetInclination", ref targetInclination, 1d, -180d, 180d, true);
 
-                //double absInc = Math.Abs(targetInclination);
                 double cosInc = Math.Cos(targetInclination * degToRad);
                 double cosLat = Math.Cos(latRad);
                 double sinAz = cosInc / cosLat;
@@ -1552,7 +1552,7 @@ namespace LunarTransferPlanner
                 if (Math.Abs(sinAz) > 1d)
                 {
                     GUILayout.FlexibleSpace();
-                    GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {targetInclination:F2}° is unreachable from your latitude of {latitude:F2}°, so it has been clamped to the nearest reachable inclination."));
+                    GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {targetInclination:F2}° is unreachable from your latitude of {latitude:F2}°, so it has been automatically converted to the nearest reachable inclination."));
                     GUILayout.FlexibleSpace();
                 }
                 GUILayout.EndHorizontal();
@@ -1571,6 +1571,8 @@ namespace LunarTransferPlanner
                 GUILayout.Box($"{targetAzimuth:F2}\u00B0", GUILayout.MaxWidth(100));
                 GUILayout.EndHorizontal();
             }
+            // its not possible to have both textfields on screen at once, bugs out
+
             if (targetAzimuth != originalAzimuth)
             {
                 cache.Clear(); // only clear if changed, also this doesn't always result in new minimums

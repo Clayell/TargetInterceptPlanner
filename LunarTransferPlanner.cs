@@ -85,8 +85,8 @@ namespace LunarTransferPlanner
     {
         const double EarthSiderealDay = 86164.098903691; // this is what RSS uses at RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
         const double tau = 2 * Math.PI;
-        const double radToDeg = 180d / Math.PI;
-        const double degToRad = Math.PI / 180d;
+        const double radToDeg = 180d / Math.PI; // unity only has floats
+        const double degToRad = Math.PI / 180d; // unity only has floats
 
         Rect windowRect = new Rect(100, 100, -1, -1);
         Rect settingsRect = new Rect(100, 100, -1, -1);
@@ -582,6 +582,7 @@ namespace LunarTransferPlanner
                 double az = CalcOrbitForTime(target, launchPos, t).azimuth;
                 return Math.Abs(((az - targetAzimuth + 540) % 360) - 180);
             }
+            // dont turn this into InclinationError, CalcOrbitForTime is limited in which inclinations it can return, but it can return 0 to 360 of azimuth
 
             double GoldenSectionSearch(double lowerBound, double upperBound) // adopted from https://en.wikipedia.org/wiki/Golden-section_search
             {
@@ -1579,6 +1580,9 @@ namespace LunarTransferPlanner
             DrawLine();
 
             // azimuth to inclination formulas derived from https://www.astronomicalreturns.com/p/section-46-interesting-orbital.html
+            // sin(azimuth) = cos(inclination) / cos(latitude)
+            // cos(inclination) = cos(latitude) * sin(azimuth)
+
             double originalAzimuth = targetAzimuth;
             double azRad = targetAzimuth * degToRad;
             double latRad = latitude * degToRad;

@@ -83,7 +83,10 @@ namespace LunarTransferPlanner
     [KSPAddon(KSPAddon.Startup.FlightAndKSC, false)]
     public class LunarTransferPlanner : DaMichelToolbarSuperWrapper.PluginWithToolbarSupport
     {
-        const double EarthSiderealDay = 86164.098903691; // this is what RSS uses at RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
+        const double EarthSiderealDay = 86164.098903691;
+        const double EarthRadius = 6371000; // meters
+        const double EarthMass = 3.9860043543609598e+14 / 6.673e-11;
+        // Earth sources from RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
         const double tau = 2 * Math.PI;
         const double radToDeg = 180d / Math.PI; // unity only has floats
         const double degToRad = Math.PI / 180d; // unity only has floats
@@ -110,18 +113,19 @@ namespace LunarTransferPlanner
         bool KACInstalled;
         bool PrincipiaInstalled;
 
-        double inclination;
+        double inclination; // inclination of target's orbit
         double currentUT;
         bool showSettings = false; // Show settings UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
-        double flightTime = 4; // Desired flight time after maneuver, in days
-        double parkingAltitude = 200; // Parking orbit altitude (circular orbit assumed)
+        double flightTime = 4.0d; // Desired flight time after maneuver, in solar days of mainBody
+        double parkingAltitude = 200d; // Parking orbit altitude (circular orbit assumed)
         bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
-        bool useVesselPosition = false; // Use vessel position for latitude instead of launch site position
+        bool useVesselPosition = true; // Use vessel position for latitude instead of launch site position, default is true as the KSC location isn't always the same as the actual launch site directly from the VAB
         bool inSurfaceVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
         double latitude = 0d;
         double longitude = 0d;
+        //double altitude = 0d; // height above sea level in meters // currently, this has no effect on the calculations, because the vectors are always normalized
         int referenceTimeButton = 0;
         string referenceTimeLabel;
         string referenceTimeTooltip;
@@ -140,7 +144,7 @@ namespace LunarTransferPlanner
         bool showPhasing = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
         bool isLowLatitude;
         bool targetSet = false;
-        double warpMargin = 60; // Time difference from the launch window that the warp will stop at
+        double warpMargin = 60d; // Time difference from the launch window that the warp will stop at
 
         bool specialWarp = true;
         enum SpecialWarp { None, Warp1, Warp2, Warp3 }
@@ -457,32 +461,38 @@ namespace LunarTransferPlanner
 
         private Vector3d GetLaunchPos(CelestialBody mainBody, ref double Latitude, ref double Longitude, bool useVesselPosition)
         {
+            if (!(useVesselPosition && inSurfaceVessel) && SpaceCenter.Instance == null)
+                return Vector3d.zero;
+
+            // currently, altitude has no effect on the calculations with launchPos, because the vectors are always normalized. uncomment altitude if we do need it
             if (useVesselPosition && inSurfaceVessel) // double check if it is safe to avoid null-ref
             {
                 Vessel vessel = FlightGlobals.ActiveVessel;
                 Latitude = vessel.latitude;
                 Longitude = vessel.longitude;
-                return mainBody.GetWorldSurfacePosition(vessel.latitude, vessel.longitude, 0);
+                //Altitude = vessel.altitude;
             }
-
-            if (SpaceCenter.Instance != null)
+            else
             {
-                PQSCity ksc = FindKSC(FlightGlobals.GetHomeBody());
-                if (ksc)
+                if (SpaceCenter.Instance != null)
                 {
-                    Latitude = ksc.lat;
-                    Longitude = ksc.lon;
-                    return mainBody.GetWorldSurfacePosition(ksc.lat, ksc.lon, 0);
-                }
-                else
-                {
-                    Latitude = SpaceCenter.Instance.Latitude;
-                    Longitude = SpaceCenter.Instance.Longitude;
-                    return mainBody.GetWorldSurfacePosition(SpaceCenter.Instance.Latitude, SpaceCenter.Instance.Longitude, 0);
+                    PQSCity ksc = FindKSC(FlightGlobals.GetHomeBody());
+                    if (ksc)
+                    {
+                        Latitude = ksc.lat;
+                        Longitude = ksc.lon;
+                        //Altitude = ksc.alt;
+                    }
+                    else
+                    {
+                        Latitude = SpaceCenter.Instance.Latitude;
+                        Longitude = SpaceCenter.Instance.Longitude;
+                        //Altitude = 0d; // TODO, find a way to get altitude of SpaceCenter? tbh idek when we use SpaceCenter
+                    }
                 }
             }
 
-            return Vector3d.zero;
+            return mainBody.GetWorldSurfacePosition(Latitude, Longitude, 0d);
         }
 
         private double GetTargetInclination(object orbit)
@@ -514,6 +524,7 @@ namespace LunarTransferPlanner
             public readonly Vector3d normal;
             public readonly double inclination;
             public readonly double azimuth;
+            // add LAN to OrbitData? TODO
         }
 
         private OrbitData CalcOrbitForTime(Vector3d launchPos, double delayTime)
@@ -547,8 +558,6 @@ namespace LunarTransferPlanner
             double azimuth = Math.Atan2(Vector3d.Dot(launchVec, eastVec), Vector3d.Dot(launchVec, northVec)); // this allows azimuths between 0 and 360
             azimuth = ((azimuth % tau) + tau) % tau;
 
-            // add LAN to OrbitData? TODO
-
             return new OrbitData(orbitNorm, inclination * radToDeg, azimuth * radToDeg);
         }
 
@@ -557,7 +566,7 @@ namespace LunarTransferPlanner
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
             const double tolerance = 0.01;
-            double coarseStep = 1200 * mainBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
+            double coarseStep = 1200d * mainBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
             double maxTimeLimit = useAltBehavior ? mainBody.rotationPeriod * 30 : mainBody.rotationPeriod; // expand to 30 days to search for global min
             const double epsilon = 1e-9;
             const double buffer = 1.0;
@@ -600,7 +609,7 @@ namespace LunarTransferPlanner
                     }
                 }
 
-                return (upperBound + lowerBound) / 2;
+                return (upperBound + lowerBound) / 2d;
             }
 
             if (useAltBehavior)
@@ -773,8 +782,8 @@ namespace LunarTransferPlanner
             }
 
             // compute windows from cache.Count+1 up to windowNumber
-            double newLaunchTime = 0;
-            double absoluteLaunchTime = 0;
+            double newLaunchTime = 0d;
+            double absoluteLaunchTime = 0d;
 
             for (int w = cache.Count + 1; w <= windowNumber; w++)
             {
@@ -808,7 +817,7 @@ namespace LunarTransferPlanner
         {
             //CelestialBody mainBody = target.referenceBody;
             double gravParameter = mainBody.gravParameter;
-            double orbitRadius = mainBody.Radius + parkingAltitude * 1000;
+            double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
 
             //if (FlightGlobals.ActiveVessel != null && FlightGlobals.ActiveVessel.mainBody == mainBody && FlightGlobals.ActiveVessel.orbit != null && FlightGlobals.ActiveVessel.orbit.semiMajorAxis > 0)
             // dont check if in orbit, this would be unintuitive and inconsistent with the rest of the ui
@@ -936,13 +945,10 @@ namespace LunarTransferPlanner
             double dV = double.NaN;
             //CelestialBody mainBody = target.referenceBody;
 
-            const double EarthRadius = 6371000.0d;
-            const double EarthMass = 3.9860043543609598e+14 / 6.673e-11;
-
             // Search in this range
             //double minPossibleDV = 2500 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 766 for Kerbin
-            const double minPossibleDV = 1;
-            double maxPossibleDV = 6000 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 1840 for Kerbin
+            const double minPossibleDV = 1d; // no need to have an actual min for dV, especially for vessels
+            double maxPossibleDV = 6000d * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 1840 for Kerbin
             const double tolerance = 0.001;
 
             // Current search range, will be gradually narrowed
@@ -969,13 +975,13 @@ namespace LunarTransferPlanner
                     lowerBound = dV;
                     continue;
                 }
-                else if (flightTimeAfterTLI > (expectedFlightTime + 5))
+                else if (flightTimeAfterTLI > (expectedFlightTime + 5d))
                 {
                     // dV is too low, set lower bound to current guess and try again
                     lowerBound = dV;
                     continue;
                 }
-                else if (flightTimeAfterTLI < (expectedFlightTime - 5))
+                else if (flightTimeAfterTLI < (expectedFlightTime - 5d))
                 {
                     // dV is too high, set upper bound to current guess and try again
                     upperBound = dV;
@@ -1002,15 +1008,15 @@ namespace LunarTransferPlanner
             t = Math.Round(t);
             int days = (int)Math.Floor(t / Math.Round(mainBody.solarDayLength)); // avoid stuff like 3d 24h 0m 0s
             t -= days * Math.Round(mainBody.solarDayLength);
-            int hours = (int)Math.Floor(t / (60 * 60));
+            int hours = (int)Math.Floor(t / (60d * 60d));
             t -= hours * 60d * 60d;
-            int minutes = (int)Math.Floor(t / 60);
+            int minutes = (int)Math.Floor(t / 60d);
             t -= minutes * 60d;
-            if (days > 0)
+            if (days > 0d)
                 return $"{days}d {hours}h {minutes}m {t:F0}s";
-            else if (hours > 0)
+            else if (hours > 0d)
                 return $"{hours}h {minutes}m {t:F0}s";
-            else if (minutes > 0)
+            else if (minutes > 0d)
                 return $"{minutes}m {t:F0}s";
             return $"{t:F0}s";
         }
@@ -1239,7 +1245,10 @@ namespace LunarTransferPlanner
                     GUILayout.Space(5);
                     GUILayout.Label(new GUIContent($"Longitude: <b>{longitude:F2}\u00B0</b>", "Longitude of launch location"));
                     MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d, true);
-                    launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0);
+                    //GUILayout.Space(5);
+                    //GUILayout.Label(new GUIContent($"Altitude: <b>{altitude:F2}</b>", "Altitude of launch location (in meters)"));
+                    //MakeNumberEditField("altitude", ref altitude, 100d, -mainBody.Radius + 5d, targetOrbit.PeA - 5d); // this is a laughably large range, but its the only way to make sure it can cover altitudes below and above sea level
+                    launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0d);
                 }
                 else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
                 //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong

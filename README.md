@@ -10,16 +10,16 @@ Parameters that you can change:
 * The altitude of your parking orbit
 * The target launch azimuth or inclination for the launch window, with a default of 90° azimuth (directly due east)
 * The latitude and longitude of your position
-  * This can be given automatically by the position of your launch site or vessel, or by manually typing in a latitude and longitude
+    * This can be given automatically by the position of your launch site or vessel, or by manually typing in a latitude and longitude
 
 Info given back to help you plan:
 * The time of the next launch window to your parking orbit at the target azimuth/inclination
-  * Also shows the nth launch window from the current time, where n is user-defined (max of 100, but this can be changed in settings)
+    * Also shows the nth launch window from the current time, where n is user-defined (max of 100, but this can be changed in settings)
 * The delta-V of the maneuver from your parking orbit to an intersection with the target
 * The time spent in your parking orbit while waiting for the maneuver
-  * Can also show the phasing angle from the current position
+    * Can also show the phasing angle from the current position
 
-Keep in mind that this mod assumes you can instantly get into the target orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself. (depending on how long it takes you to reach orbit)
+Keep in mind that this mod assumes you can instantly get into the target orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit.
 
 Forum Thread: 
 

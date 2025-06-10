@@ -1,5 +1,5 @@
-Lunar Transfer Planner
-========================================
+# Lunar Transfer Planner
+
 Provides a GUI for planning a transfer to a satellite (natural or artificial) from the surface of the planet on which you are currently on. Usecases include:
 * Launching to the Moon from any position on Earth
 * Launching to the Mun or Minmus from any position on Kerbin
@@ -25,7 +25,7 @@ Forum Thread:
 
 Source Code: https://github.com/KSP-RO/LunarTransferPlanner
 
-##### Mod Relationships
+## Mod Relationships
 Required:
 * ClickThroughBlocker
 
@@ -37,11 +37,10 @@ Compatible with:
 * Principia (specifically, the changing inclination of the target's orbit due to Principia)
 * Any celestial body from any solar system (including satellites of moons, and technically even from the Surface of the Sun/Kerbol?)
 
-
-##### Authors
+## Authors
 RCrockford
 
-#### License
+## License
 The code is subject to the MIT license (see below). 
 
 -----------------------------------

@@ -125,7 +125,7 @@ namespace LunarTransferPlanner
         int referenceTimeButton = 0;
         string referenceTimeLabel;
         string referenceTimeTooltip;
-        string label;
+        string launchLabel;
         double referenceTime = 0d;
         double targetAzimuth = 90d;
         double targetInclination = double.NaN;
@@ -1289,11 +1289,11 @@ namespace LunarTransferPlanner
                 GUILayout.BeginHorizontal();
                 if (showAzimuth)
                 {
-                    GUILayout.Label(new GUIContent(label + (showAzimuth ? "Az." : "Incl."), "Launch to this azimuth to get into the right parking orbit"), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(new GUIContent(launchLabel + (showAzimuth ? "Az." : "Incl."), "Launch to this azimuth to get into the right parking orbit"), GUILayout.ExpandWidth(true));
                 }
                 else
                 {
-                    GUILayout.Label(new GUIContent(label + (showAzimuth ? "Az." : "Incl."), "Launch to this inclination to get into the right parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(new GUIContent(launchLabel + (showAzimuth ? "Az." : "Incl."), "Launch to this inclination to get into the right parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.ExpandWidth(true));
                 }
                 ExpandCollapse(ref expandParking0);
                 GUILayout.EndHorizontal();
@@ -1303,19 +1303,19 @@ namespace LunarTransferPlanner
                     case 0:
                         referenceTimeLabel = "Launch Now";
                         referenceTimeTooltip = "Change to Next Launch Window";
-                        label = "Launch Now ";
+                        launchLabel = "Launch Now ";
                         referenceTime = 0d;
                         break;
                     case 1:
                         referenceTimeLabel = "Next Window";
                         referenceTimeTooltip = $"Change to Launch Window {extraWindowNumber}";
-                        label = "Next Window ";
+                        launchLabel = "Next Window ";
                         referenceTime = nextLaunchETA;
                         break;
                     case 2:
                         referenceTimeLabel = $"Window {extraWindowNumber}";
                         referenceTimeTooltip = "Change to Current Launch Window";
-                        label = $"Window {extraWindowNumber} ";
+                        launchLabel = $"Window {extraWindowNumber} ";
                         referenceTime = extraLaunchETA;
                         break;
                 }

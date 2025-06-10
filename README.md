@@ -1,17 +1,41 @@
 Lunar Transfer Planner
 ========================================
-Provides a GUI for planning a Lunar transfer for RSS.
-Select the expected flight time to the Moon, i.e. the time from leaving Earth orbit to Lunar periapsis. The delta-V required for this maneuver is also given.
-The correct launch inclination for immediate launch is shown, and your current latitude is shown for reference. The first two windows for a minimum inclination (i.e. Easterly) launch are also given, along with the time in a given parking orbit that you will spend while waiting for the lunar transfer.
+Provides a GUI for planning a transfer to a satellite (natural or artificial) from the surface of the planet on which you are currently on. Usecases include:
+* Launching to the Moon from any position on Earth
+* Launching to the Mun or Minmus from any position on Kerbin
+* Rendezvousing with a vessel in orbit
+
+Parameters that you can change:
+* The expected flight time to the satellite (the time from leaving your circular parking orbit to reaching the closest approach to your target)
+* The altitude of your parking orbit
+* The target launch azimuth or inclination for the launch window, with a default of 90° azimuth (directly due east)
+* The latitude and longitude of your position
+  * This can be given automatically by the position of your launch site or vessel, or by manually typing in a latitude and longitude
+
+Info given back to help you plan:
+* The time of the next launch window to your parking orbit at the target azimuth/inclination
+  * Also shows the nth launch window from the current time, where n is user-defined (max of 100, but this can be changed in settings)
+* The delta-V of the maneuver from your parking orbit to an intersection with the target
+* The time spent in your parking orbit while waiting for the maneuver
+  * Can also show the phasing angle from the current position
+
+Keep in mind that this mod assumes you can instantly get into the target orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself. (depending on how long it takes you to reach orbit)
 
 Forum Thread: 
 
 Source Code: https://github.com/KSP-RO/LunarTransferPlanner
 
-##### Dependencies
+##### Mod Relationships
 Required: None
 
-Optional: Toolbar
+Recommended:
+* Toolbar
+* Kerbal Alarm Clock
+
+Compatible with:
+* Principia (specifically, the changing inclination of the target's orbit due to Principia)
+* Any celestial body from any solar system (including satellites of moons, and technically even from the Surface of the Sun/Kerbol?)
+
 
 ##### Authors
 RCrockford

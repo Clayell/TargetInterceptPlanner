@@ -22,16 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ---------------------------------------------------------------------------*/
 
+using ClickThroughFix;
 using KerbalAlarmClock;
+using KSP.UI.Screens;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics; // remove this
 using System.IO;
 using System.Linq;
+using ToolbarControl_NS;
 using UnityEngine;
 using Debug = UnityEngine.Debug; // remove this
-using ClickThroughFix;
 
 namespace LunarTransferPlanner
 {
@@ -79,10 +81,17 @@ namespace LunarTransferPlanner
         }
     }
 
-
+    [KSPAddon(KSPAddon.Startup.MainMenu, true)]
+    public class RegisterToolbar : MonoBehaviour
+    {
+        void Start()
+        {
+            ToolbarControl.RegisterMod("LTP", "Lunar Transfer Planner");
+        }
+    }
 
     [KSPAddon(KSPAddon.Startup.FlightAndKSC, false)]
-    public class LunarTransferPlanner : DaMichelToolbarSuperWrapper.PluginWithToolbarSupport
+    public class LunarTransferPlanner : MonoBehaviour
     {
         const double EarthSiderealDay = 86164.098903691;
         const double EarthRadius = 6371000; // meters
@@ -99,11 +108,12 @@ namespace LunarTransferPlanner
         GUISkin skin;
         Texture2D gearBlack;
         Texture2D gearGreen;
-        bool isWindowOpen = true;
+        bool isWindowOpen = false;
+        bool isKSPGUIActive = true; // for some reason, this only turns to true when you turn off and on the KSP GUI
 
         int currentBody = 0;
         //CelestialBody target = null;
-        object target = null;
+        object target = null; // will later become CelestialBody or Vessel
         CelestialBody mainBody = null;
         Orbit targetOrbit = null;
         string targetName = string.Empty;
@@ -159,20 +169,44 @@ namespace LunarTransferPlanner
         readonly List<(object target, Vector3d launchPos, double inclination, double absoluteLaunchTime)> cache = new List<(object, Vector3d, double, double)>();
         readonly static Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly static Dictionary<string, string> textBuffer = new Dictionary<string, string>();
-        readonly string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LunarTransferPlanner/Plugins/PluginData/settings.cfg");
+        readonly string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LunarTransferPlanner/PluginData/settings.cfg");
+
+        ToolbarControl toolbarControl = null;
 
         #region boring stuff
-        protected override DaMichelToolbarSuperWrapper.ToolbarInfo GetToolbarInfo()
+        //protected override DaMichelToolbarSuperWrapper.ToolbarInfo GetToolbarInfo()
+        //{
+        //    return new DaMichelToolbarSuperWrapper.ToolbarInfo
+        //    {
+        //        name = "LunarTransferPlanner",
+        //        tooltip = "LunarTransferPlanner Show/Hide Gui",
+        //        toolbarTexture = "LunarTransferPlanner/toolbarbutton",
+        //        launcherTexture = "LunarTransferPlanner/launcherbutton",
+        //        visibleInScenes = new GameScenes[] { GameScenes.FLIGHT, GameScenes.SPACECENTER } // need to add tracking station
+        //    };
+        //}
+
+        private void InitToolbar()
         {
-            return new DaMichelToolbarSuperWrapper.ToolbarInfo
+            if (toolbarControl == null)
             {
-                name = "LunarTransferPlanner",
-                tooltip = "LunarTransferPlanner Show/Hide Gui",
-                toolbarTexture = "LunarTransferPlanner/toolbarbutton",
-                launcherTexture = "LunarTransferPlanner/launcherbutton",
-                visibleInScenes = new GameScenes[] { GameScenes.FLIGHT, GameScenes.SPACECENTER } // need to add tracking station
-            };
+                toolbarControl = gameObject.AddComponent<ToolbarControl>();
+                toolbarControl.AddToAllToolbars(ToggleWindow, ToggleWindow,
+                    ApplicationLauncher.AppScenes.SPACECENTER |
+                    ApplicationLauncher.AppScenes.FLIGHT |
+                    ApplicationLauncher.AppScenes.MAPVIEW |
+                    ApplicationLauncher.AppScenes.TRACKSTATION,
+                    "LTP",
+                    "LTP_Button",
+                    "LunarTransferPlanner/PluginData/Icons/button-64",
+                    "LunarTransferPlanner/PluginData/Icons/button-24",
+                    "Lunar Transfer Planner"
+                );
+            }
         }
+
+        //"LunarTransferPlanner/PluginData/Icons/button-64",
+        //"LunarTransferPlanner/PluginData/Icons/button-24",
 
         void Awake()
         {
@@ -188,12 +222,21 @@ namespace LunarTransferPlanner
             gearGreen = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearGreen", false);
 
             LoadSettings();
-            InitializeToolbars();
-            OnGuiVisibilityChange();
+            //InitializeToolbars();
+            //OnGuiVisibilityChange();
+
+            GameEvents.onShowUI.Add(KSPShowGUI);
+            GameEvents.onHideUI.Add(KSPHideGUI);
         }
 
-        public void Start()
+        void KSPShowGUI() => isKSPGUIActive = true;
+
+        void KSPHideGUI() => isKSPGUIActive = false;
+
+        void Start()
         {
+            InitToolbar();
+
             KACWrapper.InitKACWrapper();
             KACInstalled = KACWrapper.APIReady;
 
@@ -203,23 +246,33 @@ namespace LunarTransferPlanner
             Tooltip.RecreateInstance(); // Need to make sure that a new Tooltip instance is created after every scene change
         }
 
-        public void OnDestroy()
+        void OnDestroy()
         {
             SaveSettings();
-            TearDownToolbars();
+            //TearDownToolbars();
+            if (toolbarControl != null)
+            {
+                toolbarControl.OnDestroy();
+                Destroy(toolbarControl);
+            }
+
+            GameEvents.onShowUI.Remove(KSPShowGUI);
+            GameEvents.onHideUI.Remove(KSPHideGUI);
         }
 
 
-        protected override void OnGuiVisibilityChange()
-        {
-            isWindowOpen = isGuiVisible;
-        }
+        //protected override void OnGuiVisibilityChange()
+        //{
+        //    isWindowOpen = isGuiVisible;
+        //}
+
+        private void ToggleWindow() => isWindowOpen = !isWindowOpen;
 
         private void SaveSettings()
         {
             ConfigNode settings = new ConfigNode("SETTINGS");
-            SaveMutableToolbarSettings(settings);
-            SaveImmutableToolbarSettings(settings);
+            //SaveMutableToolbarSettings(settings);
+            //SaveImmutableToolbarSettings(settings);
 
             Dictionary<string, object> settingValues = new Dictionary<string, object>
             {
@@ -227,6 +280,7 @@ namespace LunarTransferPlanner
                 { "windowRect.yMin", windowRect.yMin },
                 { "settingsRect.xMin", settingsRect.xMin },
                 { "settingsRect.yMin", settingsRect.yMin },
+                { "isWindowOpen", isWindowOpen },
                 { "targetVessel", targetVessel },
                 { "showSettings", showSettings },
                 { "useAltSkin", useAltSkin },
@@ -286,6 +340,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref y1, settings, "windowRect.yMin");
                     Util.TryReadValue(ref x2, settings, "settingsRect.xMin");
                     Util.TryReadValue(ref y2, settings, "settingsRect.yMin");
+                    Util.TryReadValue(ref isWindowOpen, settings, "isWindowOpen");
                     Util.TryReadValue(ref targetVessel, settings, "targetVessel");
                     Util.TryReadValue(ref showSettings, settings, "showSettings");
                     Util.TryReadValue(ref useAltSkin, settings, "useAltSkin");
@@ -309,8 +364,8 @@ namespace LunarTransferPlanner
                     windowRect = new Rect(x1, y1, windowRect.width, windowRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
 
-                    LoadMutableToolbarSettings(settings);
-                    LoadImmutableToolbarSettings(settings);
+                    //LoadMutableToolbarSettings(settings);
+                    //LoadImmutableToolbarSettings(settings);
                 }
             }
         }
@@ -318,18 +373,18 @@ namespace LunarTransferPlanner
 
         void OnGUI()
         {
-            if (isWindowOpen && buttonVisible)
+            if (isWindowOpen && isKSPGUIActive)
             {
                 GUI.skin = !useAltSkin ? this.skin : null;
                 windowRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode(), windowRect, MakeMainWindow, windowTitle);
                 ClampToScreen(ref windowRect);
-                Tooltip.Instance.ShowTooltip(this.GetHashCode());
+                Tooltip.Instance?.ShowTooltip(this.GetHashCode());
 
                 if (showSettings)
                 {
                     settingsRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode() + 1, settingsRect, MakeSettingsWindow, settingsTitle);
                     ClampToScreen(ref settingsRect);
-                    Tooltip.Instance.ShowTooltip(this.GetHashCode() + 1);
+                    Tooltip.Instance?.ShowTooltip(this.GetHashCode() + 1);
                 }
             }
         }
@@ -1513,7 +1568,7 @@ namespace LunarTransferPlanner
                 }
             }
 
-            Tooltip.Instance.RecordTooltip(id);
+            Tooltip.Instance?.RecordTooltip(id);
             GUI.DragWindow();
         }
 
@@ -1710,7 +1765,7 @@ namespace LunarTransferPlanner
                 cache.Clear(); // only clear if changed, also this doesn't always result in new minimums
             }
 
-            Tooltip.Instance.RecordTooltip(id);
+            Tooltip.Instance?.RecordTooltip(id);
 
             GUI.DragWindow();
         }

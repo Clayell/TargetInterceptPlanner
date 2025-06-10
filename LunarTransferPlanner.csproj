@@ -71,20 +71,22 @@
       <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
-	    <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
-	    <Private>False</Private>
+      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+      <Private>False</Private>
     </Reference>
     <Reference Include="ClickThroughBlocker">
-	    <HintPath>$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll</HintPath>
-	    <Private>False</Private>
+      <HintPath>$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="ToolbarControl">
+      <HintPath>$(KSPRoot)\GameData\001_ToolbarControl\Plugins\ToolbarControl.dll</HintPath>
+      <Private>False</Private>
     </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="KACWrapper.cs" />
     <Compile Include="LunarTransferPlanner.cs" />
     <Compile Include="PrincipiaWrapper.cs" />
-    <Compile Include="ToolbarSuperWrapper.cs" />
-    <Compile Include="ToolbarWrapper.cs" />
     <Compile Include="Tooltip.cs" />
   </ItemGroup>
   <ItemGroup>

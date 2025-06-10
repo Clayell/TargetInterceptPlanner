@@ -26,7 +26,8 @@ Forum Thread:
 Source Code: https://github.com/KSP-RO/LunarTransferPlanner
 
 ##### Mod Relationships
-Required: None
+Required:
+* ClickThroughBlocker
 
 Recommended:
 * Toolbar

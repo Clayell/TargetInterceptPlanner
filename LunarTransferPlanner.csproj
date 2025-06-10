@@ -70,10 +70,14 @@
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.UI.dll</HintPath>
       <Private>False</Private>
     </Reference>
-	<Reference Include="UnityEngine.TextRenderingModule">
-		<HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
-		<Private>False</Private>
-	</Reference>
+    <Reference Include="UnityEngine.TextRenderingModule">
+	    <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
+	    <Private>False</Private>
+    </Reference>
+    <Reference Include="ClickThroughBlocker">
+	    <HintPath>$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll</HintPath>
+	    <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="KACWrapper.cs" />

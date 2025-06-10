@@ -31,6 +31,7 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 using Debug = UnityEngine.Debug; // remove this
+using ClickThroughFix;
 
 namespace LunarTransferPlanner
 {
@@ -320,13 +321,13 @@ namespace LunarTransferPlanner
             if (isWindowOpen && buttonVisible)
             {
                 GUI.skin = !useAltSkin ? this.skin : null;
-                windowRect = GUILayout.Window(this.GetHashCode(), windowRect, MakeMainWindow, windowTitle);
+                windowRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode(), windowRect, MakeMainWindow, windowTitle);
                 ClampToScreen(ref windowRect);
                 Tooltip.Instance.ShowTooltip(this.GetHashCode());
 
                 if (showSettings)
                 {
-                    settingsRect = GUILayout.Window(this.GetHashCode() + 1, settingsRect, MakeSettingsWindow, settingsTitle);
+                    settingsRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode() + 1, settingsRect, MakeSettingsWindow, settingsTitle);
                     ClampToScreen(ref settingsRect);
                     Tooltip.Instance.ShowTooltip(this.GetHashCode() + 1);
                 }
@@ -1140,8 +1141,6 @@ namespace LunarTransferPlanner
 
         private void MakeMainWindow(int id)
         {
-            GUILayout.BeginVertical();
-
             //CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
             moons = FlightGlobals.currentMainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
             vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && FlightGlobals.currentMainBody != null && vessel.mainBody == FlightGlobals.currentMainBody && vessel.situation == Vessel.Situations.ORBITING).ToList();
@@ -1515,15 +1514,11 @@ namespace LunarTransferPlanner
             }
 
             Tooltip.Instance.RecordTooltip(id);
-
-            GUILayout.EndVertical();
             GUI.DragWindow();
         }
 
         private void MakeSettingsWindow(int id)
         {
-            GUILayout.BeginVertical();
-
             GUILayout.Label("Hover over text to see additional information", GUILayout.Width(500)); // use this to set the width of the window
 
             GUILayout.BeginHorizontal();
@@ -1717,7 +1712,6 @@ namespace LunarTransferPlanner
 
             Tooltip.Instance.RecordTooltip(id);
 
-            GUILayout.EndVertical();
             GUI.DragWindow();
         }
 

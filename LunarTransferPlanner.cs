@@ -174,17 +174,6 @@ namespace LunarTransferPlanner
         ToolbarControl toolbarControl = null;
 
         #region boring stuff
-        //protected override DaMichelToolbarSuperWrapper.ToolbarInfo GetToolbarInfo()
-        //{
-        //    return new DaMichelToolbarSuperWrapper.ToolbarInfo
-        //    {
-        //        name = "LunarTransferPlanner",
-        //        tooltip = "LunarTransferPlanner Show/Hide Gui",
-        //        toolbarTexture = "LunarTransferPlanner/toolbarbutton",
-        //        launcherTexture = "LunarTransferPlanner/launcherbutton",
-        //        visibleInScenes = new GameScenes[] { GameScenes.FLIGHT, GameScenes.SPACECENTER } // need to add tracking station
-        //    };
-        //}
 
         private void InitToolbar()
         {
@@ -205,9 +194,6 @@ namespace LunarTransferPlanner
             }
         }
 
-        //"LunarTransferPlanner/PluginData/Icons/button-64",
-        //"LunarTransferPlanner/PluginData/Icons/button-24",
-
         void Awake()
         {
             skin = (GUISkin)GUISkin.Instantiate(HighLogic.Skin);
@@ -222,8 +208,6 @@ namespace LunarTransferPlanner
             gearGreen = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearGreen", false);
 
             LoadSettings();
-            //InitializeToolbars();
-            //OnGuiVisibilityChange();
 
             GameEvents.onShowUI.Add(KSPShowGUI);
             GameEvents.onHideUI.Add(KSPHideGUI);
@@ -260,19 +244,11 @@ namespace LunarTransferPlanner
             GameEvents.onHideUI.Remove(KSPHideGUI);
         }
 
-
-        //protected override void OnGuiVisibilityChange()
-        //{
-        //    isWindowOpen = isGuiVisible;
-        //}
-
         private void ToggleWindow() => isWindowOpen = !isWindowOpen;
 
         private void SaveSettings()
         {
             ConfigNode settings = new ConfigNode("SETTINGS");
-            //SaveMutableToolbarSettings(settings);
-            //SaveImmutableToolbarSettings(settings);
 
             Dictionary<string, object> settingValues = new Dictionary<string, object>
             {
@@ -363,9 +339,6 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref targetAzimuth, settings, "targetAzimuth");
                     windowRect = new Rect(x1, y1, windowRect.width, windowRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
-
-                    //LoadMutableToolbarSettings(settings);
-                    //LoadImmutableToolbarSettings(settings);
                 }
             }
         }

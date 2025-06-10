@@ -31,10 +31,10 @@ Source Code: https://github.com/KSP-RO/LunarTransferPlanner
 
 #### Required:
 * ClickThroughBlocker
+* ToolbarController
 
 #### Recommended:
-* Toolbar
-* Kerbal Alarm Clock
+* Kerbal Alarm Clock (required for "Add Alarm" button)
 
 #### Compatible with:
 * Principia (specifically, the changing inclination of the target's orbit due to Principia)

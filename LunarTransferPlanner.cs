@@ -98,11 +98,19 @@ namespace LunarTransferPlanner
         bool isWindowOpen = true;
 
         int currentBody = 0;
-        CelestialBody target = null;
+        //CelestialBody target = null;
+        object target = null;
+        CelestialBody mainBody = null;
+        Orbit targetOrbit = null;
+        string targetName = string.Empty;
         Vector3d launchPos;
-        double inclination;
+        bool targetVessel = false;
+        bool moonsInvalid = true;
+        bool vesselsInvalid = true;
         bool KACInstalled;
         bool PrincipiaInstalled;
+
+        double inclination;
         double currentUT;
         bool showSettings = false; // Show settings UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
@@ -141,8 +149,9 @@ namespace LunarTransferPlanner
         bool specialWarpWait = false;
         double waitingTime;
 
-        List<CelestialBody> satellites;
-        readonly List<(CelestialBody target, Vector3d launchPos, double inclination, double absoluteLaunchTime)> cache = new List<(CelestialBody, Vector3d, double, double)>();
+        List<CelestialBody> moons;
+        List<Vessel> vessels;
+        readonly List<(object target, Vector3d launchPos, double inclination, double absoluteLaunchTime)> cache = new List<(object, Vector3d, double, double)>();
         readonly static Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly static Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LunarTransferPlanner/Plugins/PluginData/settings.cfg");
@@ -170,6 +179,9 @@ namespace LunarTransferPlanner
             skin.textField.margin = new RectOffset(3, 1, 1, 1);
             skin.textField.padding = new RectOffset(4, 2, 1, 0);
 
+            gearBlack = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearBlack", false);
+            gearGreen = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearGreen", false);
+
             LoadSettings();
             InitializeToolbars();
             OnGuiVisibilityChange();
@@ -177,9 +189,6 @@ namespace LunarTransferPlanner
 
         public void Start()
         {
-            gearBlack = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearBlack", false);
-            gearGreen = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearGreen", false);
-
             KACWrapper.InitKACWrapper();
             KACInstalled = KACWrapper.APIReady;
 
@@ -213,6 +222,7 @@ namespace LunarTransferPlanner
                 { "windowRect.yMin", windowRect.yMin },
                 { "settingsRect.xMin", settingsRect.xMin },
                 { "settingsRect.yMin", settingsRect.yMin },
+                { "targetVessel", targetVessel },
                 { "showSettings", showSettings },
                 { "useAltSkin", useAltSkin },
                 { "flightTime", flightTime },
@@ -231,7 +241,7 @@ namespace LunarTransferPlanner
                 { "maxWindows", maxWindows },
                 { "warpMargin", warpMargin },
                 { "specialWarp", specialWarp },
-                { "targetAzimuth", targetAzimuth }
+                { "targetAzimuth", targetAzimuth },
             };
 
             foreach (KeyValuePair<string, object> kvp in settingValues) settings.AddValue(kvp.Key, kvp.Value);
@@ -271,6 +281,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref y1, settings, "windowRect.yMin");
                     Util.TryReadValue(ref x2, settings, "settingsRect.xMin");
                     Util.TryReadValue(ref y2, settings, "settingsRect.yMin");
+                    Util.TryReadValue(ref targetVessel, settings, "targetVessel");
                     Util.TryReadValue(ref showSettings, settings, "showSettings");
                     Util.TryReadValue(ref useAltSkin, settings, "useAltSkin");
                     Util.TryReadValue(ref flightTime, settings, "flightTime");
@@ -327,6 +338,8 @@ namespace LunarTransferPlanner
 
         private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false, string minusTooltip = "", string plusTooltip = "") where T : struct, IConvertible
         {
+            const double epsilon = 1e-9;
+
             // allow ints, doubles, floats, etc.
             double valueDouble = Convert.ToDouble(value);
             double stepDouble = Convert.ToDouble(step);
@@ -343,7 +356,7 @@ namespace LunarTransferPlanner
 
             if (double.TryParse(textValue, out double parsedBufferValue))
             {
-                if (Math.Abs(parsedBufferValue - valueDouble) > 1e-9)
+                if (Math.Abs(parsedBufferValue - valueDouble) > epsilon)
                 {
                     // external change detected, update buffer
                     textValue = valueDouble.ToString("G17");
@@ -359,7 +372,7 @@ namespace LunarTransferPlanner
 
             GUILayout.BeginHorizontal();
 
-            string newLabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40), GUILayout.MaxWidth(100)); // cannot add tooltip to TextField
+            string newLabel = GUILayout.TextField(textValue, GUILayout.MinWidth(40), GUILayout.MaxWidth(250)); // cannot add tooltip to TextField
 
             // if text changed, update buffer and try to parse value
             if (newLabel != textValue)
@@ -384,7 +397,7 @@ namespace LunarTransferPlanner
                     {
 
                         double snappedValue = Math.Floor(valueDouble / stepDouble) * stepDouble;
-                        if (Math.Abs(valueDouble - snappedValue) > 1e-9)
+                        if (Math.Abs(valueDouble - snappedValue) > epsilon)
                             valueDouble = Math.Max(minValueDouble, snappedValue); // snap to next number
                         else
                             if (valueDouble - stepDouble < minValueDouble && wrapAround)
@@ -394,7 +407,7 @@ namespace LunarTransferPlanner
                     else
                     {
                         double snappedValue = Math.Ceiling(valueDouble / stepDouble) * stepDouble;
-                        if (Math.Abs(valueDouble - snappedValue) > 1e-9)
+                        if (Math.Abs(valueDouble - snappedValue) > epsilon)
                             valueDouble = Math.Min(maxValueDouble, snappedValue); // snap to next number
                         else
                             if (valueDouble + stepDouble > maxValueDouble && wrapAround)
@@ -503,15 +516,15 @@ namespace LunarTransferPlanner
             public readonly double azimuth;
         }
 
-        private OrbitData CalcOrbitForTime(CelestialBody target, Vector3d launchPos, double delayTime)
+        private OrbitData CalcOrbitForTime(Vector3d launchPos, double delayTime)
         {
             // Form a plane with the launch site, moon and earth centre in, use this as the orbital plane for launch
-            CelestialBody mainBody = target.referenceBody;
+            //CelestialBody mainBody = target.referenceBody;
             Vector3d MainPos = mainBody.position;
             Vector3d MainAxis = mainBody.angularVelocity.normalized;
 
             double targetTime = Planetarium.GetUniversalTime() + flightTime * mainBody.solarDayLength + delayTime;
-            Vector3d targetPos = target.getPositionAtUT(targetTime); // this doesn't take into account changing target inclination due to principia
+            Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime); // this doesn't take into account changing target inclination due to principia
             //CelestialGetPosition is the corresponding method for Principia, but it doesn't work for a future time. TODO
 
             Vector3d upVector = QuaternionD.AngleAxis(delayTime * 360d / mainBody.rotationPeriod, MainAxis) * (launchPos - MainPos).normalized; // use rotationPeriod for sidereal time
@@ -534,22 +547,24 @@ namespace LunarTransferPlanner
             double azimuth = Math.Atan2(Vector3d.Dot(launchVec, eastVec), Vector3d.Dot(launchVec, northVec)); // this allows azimuths between 0 and 360
             azimuth = ((azimuth % tau) + tau) % tau;
 
+            // add LAN to OrbitData? TODO
+
             return new OrbitData(orbitNorm, inclination * radToDeg, azimuth * radToDeg);
         }
 
-        private double EstimateLaunchTime(CelestialBody target, Vector3d launchPos, double startTime, bool useAltBehavior)
+        private double EstimateLaunchTime(Vector3d launchPos, double startTime, bool useAltBehavior)
         {
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
             const double tolerance = 0.01;
-            double coarseStep = 1200 * target.referenceBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
-            double maxTimeLimit = useAltBehavior ? target.referenceBody.rotationPeriod * 30 : target.referenceBody.rotationPeriod; // expand to 30 days to search for global min
+            double coarseStep = 1200 * mainBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
+            double maxTimeLimit = useAltBehavior ? mainBody.rotationPeriod * 30 : mainBody.rotationPeriod; // expand to 30 days to search for global min
             const double epsilon = 1e-9;
             const double buffer = 1.0;
 
             double AzimuthError(double t)
             {
-                double az = CalcOrbitForTime(target, launchPos, t).azimuth;
+                double az = CalcOrbitForTime(launchPos, t).azimuth;
                 return Math.Abs(((az - targetAzimuth + 540d) % 360d) - 180d);
             }
             // dont turn this into InclinationError, CalcOrbitForTime is limited in which inclinations it can return, but it can return 0 to 360 of azimuth
@@ -597,7 +612,7 @@ namespace LunarTransferPlanner
 
                 while (candidateTime <= startTime + maxTimeLimit)
                 {
-                    double refinedTime = EstimateLaunchTime(target, launchPos, candidateTime, false); // recursive call with useAltBehavior = false
+                    double refinedTime = EstimateLaunchTime(launchPos, candidateTime, false); // recursive call with useAltBehavior = false
                     if (double.IsNaN(refinedTime)) // no min found within normal time limit to analyze
                     {
                         return double.NaN;
@@ -611,7 +626,7 @@ namespace LunarTransferPlanner
                     }
                     else // global min not found yet
                     {
-                        candidateTime = refinedTime + 3600d * target.referenceBody.rotationPeriod / EarthSiderealDay;
+                        candidateTime = refinedTime + 3600d * mainBody.rotationPeriod / EarthSiderealDay;
 
                         if (refinedError < smallestError)
                         {
@@ -712,11 +727,11 @@ namespace LunarTransferPlanner
             return finalResult;
         }
 
-        private double GetCachedLaunchTime(CelestialBody target, Vector3d launchPos, double inclination, bool useAltBehavior, int windowNumber)
+        private double GetCachedLaunchTime(Vector3d launchPos, double inclination, bool useAltBehavior, int windowNumber)
         {
             const double tolerance = 0.01;
 
-            double offset = 3600d * target.referenceBody.rotationPeriod / EarthSiderealDay; // 1 hour offset between windows, scale based on EarthSiderealDay
+            double offset = 3600d * mainBody.rotationPeriod / EarthSiderealDay; // 1 hour offset between windows, scale based on EarthSiderealDay
 
             // remove expired or mismatched entries
             for (int i = cache.Count - 1; i >= 0; i--)
@@ -763,7 +778,7 @@ namespace LunarTransferPlanner
 
             for (int w = cache.Count + 1; w <= windowNumber; w++)
             {
-                newLaunchTime = EstimateLaunchTime(target, launchPos, startTime, useAltBehavior);
+                newLaunchTime = EstimateLaunchTime(launchPos, startTime, useAltBehavior);
 
                 absoluteLaunchTime = currentUT + newLaunchTime;
 
@@ -789,9 +804,9 @@ namespace LunarTransferPlanner
             return absoluteLaunchTime;
         }
 
-        private (double flightTime, double rotationAngle) EstimateFlightTimeBeforeTLI(CelestialBody target, Vector3d launchPos, double delayTime)
+        private (double flightTime, double rotationAngle) EstimateFlightTimeBeforeTLI(Vector3d launchPos, double delayTime)
         {
-            CelestialBody mainBody = target.referenceBody;
+            //CelestialBody mainBody = target.referenceBody;
             double gravParameter = mainBody.gravParameter;
             double orbitRadius = mainBody.Radius + parkingAltitude * 1000;
 
@@ -802,7 +817,7 @@ namespace LunarTransferPlanner
             Vector3d MainAxis = mainBody.angularVelocity.normalized;
 
             double targetTime = Planetarium.GetUniversalTime() + flightTime * mainBody.solarDayLength + delayTime;
-            Vector3d targetPos = target.getPositionAtUT(targetTime);
+            Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime);
             //Vector3d targetPos = GetPositionAtTime(target, targetTime);
 
             Vector3d upVector = QuaternionD.AngleAxis(delayTime * 360d / mainBody.rotationPeriod, MainAxis) * ((launchPos - MainPos).normalized * orbitRadius).normalized; // use rotationPeriod for sidereal time
@@ -829,9 +844,9 @@ namespace LunarTransferPlanner
             return (flightTimeBeforeTLI, rotationAngle);
         }
 
-        private double EstimateFlightTimeAfterTLI(CelestialBody target, double dV, bool movingTarget = true)
+        private double EstimateFlightTimeAfterTLI(double dV, bool movingTarget = true)
         {
-            CelestialBody mainBody = target.referenceBody;
+            //CelestialBody mainBody = target.referenceBody;
             double gravParameter = mainBody.gravParameter;
 
             // The formulas are from http://www.braeunig.us/space/orbmech.htm
@@ -873,17 +888,17 @@ namespace LunarTransferPlanner
                 // This is the "normal" call of EstimateFlightTimeAfterTLI from outside
 
                 // Making the recursive call of EstimateFlightTimeAfterTLI with movingTarget = false
-                double approxFlightTime = EstimateFlightTimeAfterTLI(target, dV, false);
+                double approxFlightTime = EstimateFlightTimeAfterTLI(dV, false);
 
                 // Altitude of the Moon at the approximate time of the TLI 
-                r1 = target.orbit.GetRadiusAtUT(Planetarium.GetUniversalTime() + approxFlightTime);
+                r1 = targetOrbit.GetRadiusAtUT(Planetarium.GetUniversalTime() + approxFlightTime);
             }
             else
             {
                 // This is the recursive call of EstimateFlightTimeAfterTLI
 
                 // Altitude of the Moon now
-                r1 = target.orbit.GetRadiusAtUT(Planetarium.GetUniversalTime());
+                r1 = targetOrbit.GetRadiusAtUT(Planetarium.GetUniversalTime());
             }
 
             // True anomaly when the vessel reaches the altitude of the Moon (r1)
@@ -916,10 +931,10 @@ namespace LunarTransferPlanner
             return t1;
         }
 
-        private double EstimateDV(CelestialBody target)
+        private double EstimateDV()
         {
             double dV = double.NaN;
-            CelestialBody mainBody = target.referenceBody;
+            //CelestialBody mainBody = target.referenceBody;
 
             const double EarthRadius = 6371000.0d;
             const double EarthMass = 3.9860043543609598e+14 / 6.673e-11;
@@ -941,7 +956,7 @@ namespace LunarTransferPlanner
                 dV = (lowerBound + upperBound) / 2;
 
                 // calculate flight time for this dV
-                double flightTimeAfterTLI = EstimateFlightTimeAfterTLI(target, dV);
+                double flightTimeAfterTLI = EstimateFlightTimeAfterTLI(dV);
                 //(double flightTimeBeforeTLI, _) = EstimateFlightTimeBeforeTLI(target, launchPos, 0d);
                 //double estimatedFlightTime = flightTimeBeforeTLI + flightTimeAfterTLI; // the inputted flight time is for after the maneuver
                 double expectedFlightTime = flightTime * mainBody.solarDayLength;
@@ -985,8 +1000,8 @@ namespace LunarTransferPlanner
         private string FormatTime(double t)
         {
             t = Math.Round(t);
-            int days = (int)Math.Floor(t / Math.Round(target.referenceBody.solarDayLength)); // avoid stuff like 3d 24h 0m 0s
-            t -= days * Math.Round(target.referenceBody.solarDayLength);
+            int days = (int)Math.Floor(t / Math.Round(mainBody.solarDayLength)); // avoid stuff like 3d 24h 0m 0s
+            t -= days * Math.Round(mainBody.solarDayLength);
             int hours = (int)Math.Floor(t / (60 * 60));
             t -= hours * 60d * 60d;
             int minutes = (int)Math.Floor(t / 60);
@@ -1050,6 +1065,21 @@ namespace LunarTransferPlanner
             }
         }
 
+        private void ShowSettings()
+        {
+            bool showSettings_pressed;
+            if (gearBlack != null && gearGreen != null)
+            {
+                showSettings_pressed = GUILayout.Button(new GUIContent(useAltSkin ? gearBlack : gearGreen, "Show Settings"), new GUIStyle(GUI.skin.button) { padding = new RectOffset(0, 0, 0, 0) }, GUILayout.Width(20), GUILayout.Height(20));
+                // remove padding in style to prevent image getting scaled down with unity skin
+            }
+            else
+            {
+                showSettings_pressed = GUILayout.Button(new GUIContent("S", "Show Settings (Error: A settings icon is missing!)"), GUILayout.Width(20), GUILayout.Height(20));
+            }
+            ButtonPressed(showSettings_pressed, ref showSettings, false);
+        }
+
         private void BeginCenter(bool isVertical = true)
         { // must be followed by EndCenter()
             if (isVertical) GUILayout.BeginVertical();
@@ -1062,6 +1092,30 @@ namespace LunarTransferPlanner
             GUILayout.FlexibleSpace();
             if (isVertical) GUILayout.EndVertical();
             else GUILayout.EndHorizontal();
+        }
+
+        private string TextOverspill(string text, int width, GUIStyle style)
+        {
+            Vector2 size = style.CalcSize(new GUIContent(text));
+            if (size.x > width)
+            {
+                int maxChars = text.Length - 1;
+
+                while (maxChars > 0)
+                {
+                    string truncatedText = text.Substring(0, maxChars) + "...";
+                    size = style.CalcSize(new GUIContent(truncatedText));
+
+                    if (size.x <= width)
+                    {
+                        return truncatedText;
+                    }
+
+                    maxChars--;
+                }
+                return "...";
+            }
+            else return text;
         }
 
         private void ExpandCollapse(ref bool button, string tooltip = "")
@@ -1083,44 +1137,93 @@ namespace LunarTransferPlanner
             GUILayout.BeginVertical();
 
             //CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
-            satellites = FlightGlobals.currentMainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList(); // use currentMainBody here, target.referenceBody elsewhere
+            moons = FlightGlobals.currentMainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
+            vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && FlightGlobals.currentMainBody != null && vessel.mainBody == FlightGlobals.currentMainBody && vessel.situation == Vessel.Situations.ORBITING).ToList();
+            // use currentMainBody up here, target.referenceBody elsewhere
 
             GUILayout.Space(5);
 
-            if (satellites == null || satellites.Count == 0)
+            moonsInvalid = moons == null || moons.Count == 0;
+            vesselsInvalid = vessels == null || vessels.Count == 0;
+
+            if (moonsInvalid && vesselsInvalid)
             {
-                GUILayout.Box("ERROR: There are no satellites of this planet!", GUILayout.MinWidth(80));
+                GUILayout.Box("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.MinWidth(160));
+                ResetWindow(ref windowRect); // TODO, implement a buffer to prevent this from running every frame
+                ShowSettings();
+            }
+            else if (targetVessel && vesselsInvalid)
+            {
+                GUILayout.Box("ERROR: There are no vessels orbiting this planet!", GUILayout.MinWidth(160));
+                ResetWindow(ref windowRect); // TODO, implement a buffer to prevent this from running every frame
+                ShowSettings();
+                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"Target an orbiting Vessel instead of an orbiting Moon\" button.");
+                // do not switch automatically, this would change the user's settings silently, and they may not want to switch
+            }
+            else if (!targetVessel && moonsInvalid)
+            {
+                GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.MinWidth(160));
+                ResetWindow(ref windowRect); // TODO, implement a buffer to prevent this from running every frame
+                ShowSettings();
+                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"Target an orbiting Vessel instead of an orbiting Moon\" button.");
+                // do not switch automatically, this would change the user's settings silently, and they may not want to switch
             }
             else
             {
+                int count;
+                if (targetVessel)
+                {
+                    if (target == null || !vessels.Contains(target)) target = vessels[0] as Vessel;
+                    count = vessels.Count;
+                }
+                else
+                {
+                    if (target == null || !moons.Contains(target)) target = moons[0] as CelestialBody;
+                    count = moons.Count;
+                }
+
+                if (target is Vessel vessel)
+                {
+                    targetOrbit = vessel?.orbit;
+                    targetName = vessel?.vesselName;
+                    mainBody = vessel?.mainBody;
+                }
+                else if (target is CelestialBody body)
+                {
+                    targetOrbit = body?.orbit;
+                    targetName = body?.bodyName;
+                    mainBody = body?.referenceBody;
+                }
+                else Debug.LogError("Unknown target type: " + target.GetType().Name);
 
                 currentUT = Planetarium.GetUniversalTime();
-                if (target == null || !satellites.Contains(target)) target = satellites[0];
-                inclination = GetTargetInclination(target.orbit);
+                //if (target == null || !moons.Contains(target)) target = moons[0];
+                inclination = GetTargetInclination(targetOrbit);
                 isLowLatitude = Math.Abs(latitude) <= inclination;
-                CelestialBody mainBody = target.referenceBody;
-                double dV = EstimateDV(target);
+                //CelestialBody mainBody = target.referenceBody;
+                double dV = EstimateDV();
 
                 inSurfaceVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed); // this needs to be here, as settings window isnt always open
 
-                if (satellites.Count > 1) // only display target selector screen if needed
+                if (count > 1) // only display target selector screen if needed
                 {
                     GUILayout.BeginHorizontal();
+                    GUILayout.Box(new GUIContent(TextOverspill(targetName, 80, GUI.skin.box), targetName), GUILayout.MinWidth(80));
+
                     if (GUILayout.Button("<", GUILayout.MinWidth(20)))
                     {
                         currentBody--;
-                        if (currentBody < 0) currentBody = satellites.Count - 1;
+                        if (currentBody < 0) currentBody = count - 1;
                     }
-
-                    GUILayout.Box(target.bodyName, GUILayout.MinWidth(80));
 
                     if (GUILayout.Button(">", GUILayout.MinWidth(20)))
                     {
                         currentBody++;
-                        if (currentBody > satellites.Count - 1) currentBody = 0;
+                        if (currentBody > count - 1) currentBody = 0;
                     }
                     GUILayout.EndHorizontal();
-                    target = satellites[currentBody];
+                    if (targetVessel) target = vessels[currentBody];
+                    else target = moons[currentBody]; // cant do ternary
                     GUILayout.Space(5);
                 }
 
@@ -1142,20 +1245,20 @@ namespace LunarTransferPlanner
                 //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
                 GUILayout.Space(5);
-                GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {target.bodyName} after the maneuver (in {mainBody.bodyName} solar days)"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {mainBody.bodyName} solar days)"), GUILayout.ExpandWidth(true));
                 MakeNumberEditField("flightTime", ref flightTime, 0.1d, 0.1d, double.MaxValue);
                 double l = Math.Round(flightTime * mainBody.solarDayLength);
                 GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
 
-                OrbitData launchOrbit = CalcOrbitForTime(target, launchPos, referenceTime);
+                OrbitData launchOrbit = CalcOrbitForTime(launchPos, referenceTime);
                 //Debug.Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
                 //var stopwatch = Stopwatch.StartNew();
-                double nextLaunchETA = GetCachedLaunchTime(target, launchPos, inclination, useAltBehavior, 1) - currentUT;
+                double nextLaunchETA = GetCachedLaunchTime(launchPos, inclination, useAltBehavior, 1) - currentUT;
                 //stopwatch.Stop();
                 //Debug.Log($"Window 1 Launch Time: {firstLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
                 //Debug.Log("CLAYELADDEDDLOGS SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW");
                 //stopwatch = Stopwatch.StartNew();
-                double extraLaunchETA = GetCachedLaunchTime(target, launchPos, inclination, useAltBehavior, extraWindowNumber) - currentUT;
+                double extraLaunchETA = GetCachedLaunchTime(launchPos, inclination, useAltBehavior, extraWindowNumber) - currentUT;
                 //stopwatch.Stop();
                 //Debug.Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
@@ -1179,7 +1282,7 @@ namespace LunarTransferPlanner
                 if (expandAltitude)
                 {
                     GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
-                    MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : 0d, target.orbit.PeA / 1000d - 5d); // PeA updates every frame so we don't need to ask Principia
+                    MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : 0d, targetOrbit.PeA / 1000d - 5d); // PeA updates every frame so we don't need to ask Principia
                 }
 
                 GUILayout.Space(5);
@@ -1195,6 +1298,28 @@ namespace LunarTransferPlanner
                 ExpandCollapse(ref expandParking0);
                 GUILayout.EndHorizontal();
 
+                switch (referenceTimeButton)
+                {
+                    case 0:
+                        referenceTimeLabel = "Launch Now";
+                        referenceTimeTooltip = "Change to Next Launch Window";
+                        label = "Launch Now ";
+                        referenceTime = 0d;
+                        break;
+                    case 1:
+                        referenceTimeLabel = "Next Window";
+                        referenceTimeTooltip = $"Change to Launch Window {extraWindowNumber}";
+                        label = "Next Window ";
+                        referenceTime = nextLaunchETA;
+                        break;
+                    case 2:
+                        referenceTimeLabel = $"Window {extraWindowNumber}";
+                        referenceTimeTooltip = "Change to Current Launch Window";
+                        label = $"Window {extraWindowNumber} ";
+                        referenceTime = extraLaunchETA;
+                        break;
+                }
+
                 GUILayout.Space(5);
                 if (showAzimuth)
                 {
@@ -1206,31 +1331,9 @@ namespace LunarTransferPlanner
                     GUILayout.Box(new GUIContent($"{launchInclination:F2}\u00B0", $"{launchInclination * degToRad:F5} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
 
-                    switch (referenceTimeButton)
-                    {
-                        case 0:
-                            referenceTimeLabel = "Launch Now";
-                            referenceTimeTooltip = "Change to Next Launch Window";
-                            label = "Launch Now ";
-                            referenceTime = 0d;
-                            break;
-                        case 1:
-                            referenceTimeLabel = "Next Window";
-                            referenceTimeTooltip = $"Change to Launch Window {extraWindowNumber}";
-                            label = "Next Window ";
-                            referenceTime = nextLaunchETA;
-                            break;
-                        case 2:
-                            referenceTimeLabel = $"Window {extraWindowNumber}";
-                            referenceTimeTooltip = "Change to Current Launch Window";
-                            label = $"Window {extraWindowNumber} ";
-                            referenceTime = extraLaunchETA;
-                            break;
-                    }
-
                 if (expandParking0)
                 {
-                    (double timeInOrbit0, double phaseAngle0) = EstimateFlightTimeBeforeTLI(target, launchPos, referenceTime);
+                    (double timeInOrbit0, double phaseAngle0) = EstimateFlightTimeBeforeTLI(launchPos, referenceTime);
                     ShowOrbitInfo(ref showPhasing, timeInOrbit0, phaseAngle0);
                 }
 
@@ -1249,7 +1352,7 @@ namespace LunarTransferPlanner
 
                 if (expandParking1)
                 {
-                    (double timeInOrbit1, double phaseAngle1) = EstimateFlightTimeBeforeTLI(target, launchPos, nextLaunchETA);
+                    (double timeInOrbit1, double phaseAngle1) = EstimateFlightTimeBeforeTLI(launchPos, nextLaunchETA);
                     ShowOrbitInfo(ref showPhasing, timeInOrbit1, phaseAngle1);
                 }
 
@@ -1264,7 +1367,7 @@ namespace LunarTransferPlanner
 
                 if (expandParking2)
                 {
-                    (double timeInOrbit2, double phaseAngle2) = EstimateFlightTimeBeforeTLI(target, launchPos, extraLaunchETA); // itll flash every second if we just do {extraLaunchETA}, we need absolute time
+                    (double timeInOrbit2, double phaseAngle2) = EstimateFlightTimeBeforeTLI(launchPos, extraLaunchETA); // itll flash every second if we just do {extraLaunchETA}, we need absolute time
                     ShowOrbitInfo(ref showPhasing, timeInOrbit2, phaseAngle2);
                 }
 
@@ -1298,26 +1401,15 @@ namespace LunarTransferPlanner
                 }
 
                 GUILayout.BeginHorizontal();
-                bool targetPressed = GUILayout.Button(targetSet ? "Unset Target" : $"Target {target.bodyName}", GUILayout.MinWidth(140));
-
-                bool showSettings_pressed;
-                if (gearBlack != null && gearGreen != null)
-                {
-                    showSettings_pressed = GUILayout.Button(new GUIContent(useAltSkin ? gearBlack : gearGreen, "Show Settings"), new GUIStyle(GUI.skin.button) { padding = new RectOffset(0, 0, 0, 0) }, GUILayout.Width(20), GUILayout.Height(20));
-                    // remove padding in style to prevent image getting scaled down with unity skin
-                }
-                else
-                {
-                    showSettings_pressed = GUILayout.Button(new GUIContent("S", "Show Settings (Error: A settings icon is missing!)"), GUILayout.Width(20), GUILayout.Height(20));
-                }
-                ButtonPressed(showSettings_pressed, ref showSettings, false);
+                bool targetPressed = GUILayout.Button(new GUIContent(targetSet ? "Unset Target" : TextOverspill($"Target {targetName}", 140, GUI.skin.button), $"Target {targetName}"), GUILayout.MinWidth(140));
+                ShowSettings();
                 GUILayout.EndHorizontal();
 
                 if (addAlarm && KACInstalled)
                 {
                     if (!useAltAlarm && !double.IsNaN(nextLaunchETA))
                     {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{target.bodyName} Launch Window", currentUT + nextLaunchETA - warpMargin); // remove warpMargin?
+                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window", currentUT + nextLaunchETA - warpMargin); // remove warpMargin? might need to check for overspill?
                         if (!string.IsNullOrEmpty(alarmId))
                         {
                             //if the alarm was made get the object so we can update it
@@ -1329,7 +1421,7 @@ namespace LunarTransferPlanner
                     }
                     else if (useAltAlarm && !double.IsNaN(extraLaunchETA))
                     {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{target.bodyName} Launch Window {extraWindowNumber}", currentUT + extraLaunchETA - warpMargin); // remove warpMargin?
+                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window {extraWindowNumber}", currentUT + extraLaunchETA - warpMargin); // remove warpMargin? might need to check for overspill?
                         if (!string.IsNullOrEmpty(alarmId))
                         {
                             //if the alarm was made get the object so we can update it
@@ -1399,7 +1491,11 @@ namespace LunarTransferPlanner
                     if (!targetSet)
                     {
                         targetSet = true;
-                        FlightGlobals.fetch.SetVesselTarget(target);
+                        if (target is Vessel vesselTarget)
+                            FlightGlobals.fetch.SetVesselTarget(vesselTarget);
+                        else if (target is CelestialBody bodyTarget)
+                            FlightGlobals.fetch.SetVesselTarget(bodyTarget);
+                        else Debug.LogError("Unknown target type: " + target.GetType().Name);
                     }
                     else
                     {
@@ -1419,7 +1515,7 @@ namespace LunarTransferPlanner
         {
             GUILayout.BeginVertical();
 
-            GUILayout.Label("Hover over text to see additional information", GUILayout.Width(350)); // use this to set the width of the window
+            GUILayout.Label("Hover over text to see additional information", GUILayout.Width(500)); // use this to set the width of the window
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("Use Unity Skin");
@@ -1436,14 +1532,32 @@ namespace LunarTransferPlanner
             }
 
             DrawLine();
-            ;
+
+            if ((targetVessel && vesselsInvalid) || (!targetVessel && moonsInvalid)) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
             GUILayout.BeginHorizontal();
-            GUILayout.Label(new GUIContent("Find Global Minimum inclination instead of Local Minimum", $"Ignored if latitude is higher than {target.bodyName} inclination"));
-            GUI.enabled = isLowLatitude;
+            GUILayout.Label(new GUIContent("Target an orbiting Vessel instead of an orbiting Moon", $"Ignored if toggling this would result in an error due to the absence of any {(targetVessel ? "moons" : "vessels")}"));
             BeginCenter();
-            bool useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
-            EndCenter();
+            GUI.enabled = (targetVessel && vesselsInvalid) || (!targetVessel && moonsInvalid) || (!moonsInvalid && !vesselsInvalid); // let users get out of an error, but not get into one
+            bool targetVessel_toggled = GUILayout.Toggle(targetVessel, "");
             GUI.enabled = true;
+            EndCenter();
+            GUILayout.EndHorizontal();
+
+            if (targetVessel_toggled != targetVessel)
+            {
+                targetVessel = !targetVessel;
+                ResetWindow(ref windowRect);
+            }
+
+            DrawLine();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(new GUIContent("Find Global Minimum inclination instead of Local Minimum", $"Ignored if latitude is higher than {targetName} inclination"));
+            BeginCenter();
+            GUI.enabled = isLowLatitude;
+            bool useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
+            GUI.enabled = true;
+            EndCenter();
             GUILayout.EndHorizontal();
 
             //if (!isLowLatitude) useAltBehavior_toggled = false; // if we change useAltBehavior to false instead, the next code will just set it to true again // not needed, we check for isLowLatitude anyway
@@ -1460,11 +1574,11 @@ namespace LunarTransferPlanner
 
             GUILayout.BeginHorizontal();
             GUILayout.Label(new GUIContent("Use surface vessel position for latitude/longitude instead of launch site position", "Ignored if not in a vessel on the surface")); // can enable when not on surface?
-            GUI.enabled = inSurfaceVessel;
             BeginCenter();
+            GUI.enabled = inSurfaceVessel;
             useVesselPosition = GUILayout.Toggle(useVesselPosition, "");
-            EndCenter();
             GUI.enabled = true;
+            EndCenter();
             GUILayout.EndHorizontal();
 
             if (KACInstalled)
@@ -1533,16 +1647,25 @@ namespace LunarTransferPlanner
                 ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
                 : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // continuously update value
 
+                GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("Change Target Launch Azimuth", "90\u00B0 is the default, which is directly east. Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively. Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
+                if (GUILayout.Button(new GUIContent(" R", "Reset to Default"), GUILayout.Width(20))) targetAzimuth = 90d;
+                GUILayout.EndHorizontal();
                 MakeNumberEditField("targetAzimuth", ref targetAzimuth, 1d, 0d, 360d, true);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("Target Launch Inclination", $"Your latitude of {latitude:F2}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively."));
+                GUILayout.BeginVertical();
+                GUILayout.Space(5);
                 GUILayout.Box($"{targetInclination:F2}\u00B0", GUILayout.MaxWidth(100)); // F2 is overkill but just in case
+                GUILayout.EndVertical();
                 GUILayout.EndHorizontal();
             }
             else
             {
+                GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("Change Target Launch Inclination", $"Your latitude of {latitude:F2}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively. Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
+                if (GUILayout.Button(new GUIContent(" R", "Reset to Default"), GUILayout.Width(20))) targetInclination = latitude;
+                GUILayout.EndHorizontal();
 
                 GUILayout.BeginHorizontal();
                 MakeNumberEditField("targetInclination", ref targetInclination, 1d, -180d, 180d, true);
@@ -1551,7 +1674,7 @@ namespace LunarTransferPlanner
                 double cosLat = Math.Cos(latRad);
                 double sinAz = cosInc / cosLat;
 
-                if (Math.Abs(sinAz) > 1d)
+                if (Math.Abs(sinAz) >= 1d)
                 {
                     GUILayout.FlexibleSpace();
                     GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {targetInclination:F2}° is unreachable from your latitude of {latitude:F2}°, so it has been automatically converted to the nearest reachable inclination."));
@@ -1566,11 +1689,14 @@ namespace LunarTransferPlanner
                     ? (targetInclination <= 90d ? azInter : 360d - azInter) // NE (prograde) or NW (retrograde)
                     : (Math.Abs(targetInclination) <= 90d ? 180d - azInter : 180d + azInter); // SE (prograde) or SW (retrograde)
 
-                targetAzimuth = (targetAzimuth + 360d) % 360d; // normalize just in case
+                targetAzimuth = ((targetAzimuth % 360d) + 360d) % 360d; // normalize just in case
 
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("Target Launch Azimuth", "90\u00B0 is the default, which is directly east. Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively."));
+                GUILayout.BeginVertical();
+                GUILayout.Space(5);
                 GUILayout.Box($"{targetAzimuth:F2}\u00B0", GUILayout.MaxWidth(100));
+                GUILayout.EndVertical();
                 GUILayout.EndHorizontal();
             }
             // its not possible to have both textfields on screen at once, bugs out

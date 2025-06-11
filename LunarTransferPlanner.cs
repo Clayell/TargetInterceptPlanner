@@ -81,7 +81,7 @@ namespace LunarTransferPlanner
         }
     }
 
-    [KSPAddon(KSPAddon.Startup.MainMenu, true)]
+    [KSPAddon(KSPAddon.Startup.MainMenu, true)] // startup on menu according to https://github.com/linuxgurugamer/ToolbarControl/wiki/Registration
     public class RegisterToolbar : MonoBehaviour
     {
         void Start()
@@ -90,7 +90,7 @@ namespace LunarTransferPlanner
         }
     }
 
-    [KSPAddon(KSPAddon.Startup.FlightAndKSC, false)]
+    [KSPAddon(KSPAddon.Startup.AllGameScenes, false)]
     public class LunarTransferPlanner : MonoBehaviour
     {
         const double EarthSiderealDay = 86164.098903691;
@@ -181,10 +181,7 @@ namespace LunarTransferPlanner
             {
                 toolbarControl = gameObject.AddComponent<ToolbarControl>();
                 toolbarControl.AddToAllToolbars(ToggleWindow, ToggleWindow,
-                    ApplicationLauncher.AppScenes.SPACECENTER |
-                    ApplicationLauncher.AppScenes.FLIGHT |
-                    ApplicationLauncher.AppScenes.MAPVIEW |
-                    ApplicationLauncher.AppScenes.TRACKSTATION,
+                    ApplicationLauncher.AppScenes.ALWAYS & ~ApplicationLauncher.AppScenes.MAINMENU, // all but main menu
                     "LTP",
                     "LTP_Button",
                     "LunarTransferPlanner/PluginData/Icons/button-64",
@@ -233,7 +230,6 @@ namespace LunarTransferPlanner
         void OnDestroy()
         {
             SaveSettings();
-            //TearDownToolbars();
             if (toolbarControl != null)
             {
                 toolbarControl.OnDestroy();
@@ -1169,10 +1165,16 @@ namespace LunarTransferPlanner
 
         private void MakeMainWindow(int id)
         {
+            if (FlightGlobals.currentMainBody != null)
+                mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
+            else if (MapView.MapCamera.target.celestialBody != null && HighLogic.LoadedSceneHasPlanetarium) // if we dont check that its in map view, then the vab/sph body will get overwritten
+                mainBody = MapView.MapCamera.target.celestialBody; // tracking station, could work for flight map view too
+            else if (Planetarium.fetch.Home != null)
+                mainBody = Planetarium.fetch.Home; // vab/sph, this always gives the home body
+
             //CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
-            moons = FlightGlobals.currentMainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
-            vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && FlightGlobals.currentMainBody != null && vessel.mainBody == FlightGlobals.currentMainBody && vessel.situation == Vessel.Situations.ORBITING).ToList();
-            // use currentMainBody up here, target.referenceBody elsewhere
+            moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
+            vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).ToList();
 
             GUILayout.Space(5);
 
@@ -1219,13 +1221,11 @@ namespace LunarTransferPlanner
                 {
                     targetOrbit = vessel?.orbit;
                     targetName = vessel?.vesselName;
-                    mainBody = vessel?.mainBody;
                 }
                 else if (target is CelestialBody body)
                 {
                     targetOrbit = body?.orbit;
-                    targetName = body?.bodyName;
-                    mainBody = body?.referenceBody;
+                    targetName = body?.bodyName;;
                 }
                 else Debug.LogError("Unknown target type: " + target.GetType().Name);
 

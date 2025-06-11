@@ -1031,7 +1031,7 @@ namespace LunarTransferPlanner
         private string FormatTime(double t)
         {
             t = Math.Round(t);
-            int days = (int)Math.Floor(t / Math.Round(mainBody.solarDayLength)); // avoid stuff like 3d 24h 0m 0s
+            int days = (int)Math.Floor(t / Math.Round(mainBody.solarDayLength)); // round to avoid stuff like 3d 24h 0m 0s
             t -= days * Math.Round(mainBody.solarDayLength);
             int hours = (int)Math.Floor(t / (60d * 60d));
             t -= hours * 60d * 60d;
@@ -1082,7 +1082,7 @@ namespace LunarTransferPlanner
                 bool showPhasing_pressed = GUILayout.Button("T", GUILayout.Width(20));
                 ButtonPressed(showPhasing_pressed, ref showPhasing);
                 GUILayout.EndHorizontal();
-                GUILayout.Box(new GUIContent($"{phaseAngle:F2}\u00B0", $"{phaseAngle * degToRad:F5} rads"), GUILayout.MinWidth(60)); // for some reason the tooltip doesn't work for the immediate launch window, idk why
+                GUILayout.Box(new GUIContent($"{phaseAngle:F2}\u00B0", $"{phaseAngle * degToRad:F5} rads"), GUILayout.MinWidth(60)); // TODO, for some reason the tooltip doesn't work for the next launch window
             }
             else
             {
@@ -1174,7 +1174,7 @@ namespace LunarTransferPlanner
 
             //CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
             moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
-            vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).ToList();
+            vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).OrderBy(vessel => vessel.vesselName).ToList();
 
             GUILayout.Space(5);
 

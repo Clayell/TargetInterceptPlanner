@@ -157,7 +157,7 @@ namespace LunarTransferPlanner
         bool targetSet = false;
         double warpMargin = 60d; // Time difference from the launch window that the warp will stop at
 
-        bool specialWarp = true;
+        bool specialWarpSelected = true;
         int warpState = 0;
         bool specialWarpBuffer = false;
         bool specialWarpWait = false;
@@ -272,7 +272,7 @@ namespace LunarTransferPlanner
                 { "showPhasing", showPhasing },
                 { "maxWindows", maxWindows },
                 { "warpMargin", warpMargin },
-                { "specialWarp", specialWarp },
+                { "specialWarpSelected", specialWarpSelected },
                 { "targetAzimuth", targetAzimuth },
             };
 
@@ -332,7 +332,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref showPhasing, settings, "showPhasing");
                     Util.TryReadValue(ref maxWindows, settings, "maxWindows");
                     Util.TryReadValue(ref warpMargin, settings, "warpMargin");
-                    Util.TryReadValue(ref specialWarp, settings, "specialWarp");
+                    Util.TryReadValue(ref specialWarpSelected, settings, "specialWarpSelected");
                     Util.TryReadValue(ref targetAzimuth, settings, "targetAzimuth");
                     mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
@@ -1315,7 +1315,7 @@ namespace LunarTransferPlanner
                 //Debug.Log($"Initial warpState: {warpState}");
                 bool inSpecialWarp = warpState == 2 || warpState == 3;
                 bool specialWarpActive = warpState == 1 || inSpecialWarp;
-                if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarp && !inSpecialWarp) warpState = 1;
+                if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarpSelected && !inSpecialWarp) warpState = 1;
                 else if (!inSpecialWarp && !specialWarpWait) warpState = 0;
                 //else if (nextLaunchETA < mainBody.rotationPeriod || PrincipiaInstalled) warpState = 0;
                 //Debug.Log($"Final warpState: {warpState}, inSpecialWarp: {inSpecialWarp}");
@@ -1646,7 +1646,7 @@ namespace LunarTransferPlanner
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("<b>Special Warp</b>: Change the \"Warp\" button to use 3 warps to avoid overshooting/undershooting the launch window due to perturbations of the target's orbit. It CANNOT be halted once started.", "Only visible when Principia is installed, and only activates when the next window is more than 1 sidereal day away"));
                 BeginCenter();
-                specialWarp = GUILayout.Toggle(specialWarp, "");
+                specialWarpSelected = GUILayout.Toggle(specialWarpSelected, "");
                 EndCenter();
                 GUILayout.EndHorizontal();
             }

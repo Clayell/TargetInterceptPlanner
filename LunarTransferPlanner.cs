@@ -227,9 +227,6 @@ namespace LunarTransferPlanner
             PrincipiaInstalled = PrincipiaWrapper.APIReady;
 
             Tooltip.RecreateInstance(); // Need to make sure that a new Tooltip instance is created after every scene change
-
-            //mainRectSize = mainRect.size;
-            //settingsRectSize = settingsRect.size;
         }
 
         void OnDestroy()

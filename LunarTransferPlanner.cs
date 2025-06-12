@@ -158,8 +158,7 @@ namespace LunarTransferPlanner
         double warpMargin = 60d; // Time difference from the launch window that the warp will stop at
 
         bool specialWarp = true;
-        enum SpecialWarp { None, Warp1, Warp2, Warp3 }
-        SpecialWarp warpState = SpecialWarp.None;
+        int warpState = 0;
         bool specialWarpBuffer = false;
         bool specialWarpWait = false;
         double waitingTime;
@@ -1314,11 +1313,11 @@ namespace LunarTransferPlanner
                 //Debug.Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
                 //Debug.Log($"Initial warpState: {warpState}");
-                bool inSpecialWarp = warpState == SpecialWarp.Warp2 || warpState == SpecialWarp.Warp3;
-                bool specialWarpActive = warpState == SpecialWarp.Warp1 || inSpecialWarp;
-                if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarp && !inSpecialWarp) warpState = SpecialWarp.Warp1;
-                else if (!inSpecialWarp && !specialWarpWait) warpState = SpecialWarp.None;
-                //else if (nextLaunchETA < mainBody.rotationPeriod || PrincipiaInstalled) warpState = SpecialWarp.None;
+                bool inSpecialWarp = warpState == 2 || warpState == 3;
+                bool specialWarpActive = warpState == 1 || inSpecialWarp;
+                if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarp && !inSpecialWarp) warpState = 1;
+                else if (!inSpecialWarp && !specialWarpWait) warpState = 0;
+                //else if (nextLaunchETA < mainBody.rotationPeriod || PrincipiaInstalled) warpState = 0;
                 //Debug.Log($"Final warpState: {warpState}, inSpecialWarp: {inSpecialWarp}");
 
                 GUILayout.Space(5);
@@ -1495,12 +1494,12 @@ namespace LunarTransferPlanner
                     }
                     else
                     {
-                        if (warpState == SpecialWarp.Warp1)
+                        if (warpState == 1)
                         {
                             Debug.Log("Special warp 1 in progress"); // keep this log
                             TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
                             TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
-                            warpState = SpecialWarp.Warp2;
+                            warpState = 2;
                             specialWarpWait = true;
                         }
                         else
@@ -1518,22 +1517,22 @@ namespace LunarTransferPlanner
                     specialWarpWait = false;
                 }
 
-                if (warpState == SpecialWarp.Warp2 && !inWarp() && currentUT > waitingTime + 0.5d)
+                if (warpState == 2 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
                     Debug.Log("Special warp 2 in progress"); // keep this log
                     TimeWarp.fetch.CancelAutoWarp();
                     TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
                     TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + 3600d * mainBody.rotationPeriod / EarthSiderealDay)); // warp to within an hour
-                    warpState = SpecialWarp.Warp3;
+                    warpState = 3;
                     specialWarpWait = true;
                 }
 
-                if (warpState == SpecialWarp.Warp3 && !inWarp() && currentUT > waitingTime + 0.5d)
+                if (warpState == 3 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
                     Debug.Log("Special warp 3 in progress"); // keep this log
                     TimeWarp.fetch.CancelAutoWarp();
                     TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - warpMargin); // now warp to final
-                    warpState = SpecialWarp.None;
+                    warpState = 0;
                     specialWarpWait = false;
                 }
 
@@ -1681,6 +1680,8 @@ namespace LunarTransferPlanner
             // sin(azimuth) = cos(inclination) / cos(latitude)
             // cos(inclination) = cos(latitude) * sin(azimuth)
 
+            string azimuthTooltip = "90° is the default, which is directly east. Range is 0° to 360°, where 0° and 180° are North and South respectively.";
+            string inclinationTooltip = $"Your latitude of {latitude:F2}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively.";
             double originalAzimuth = targetAzimuth;
             double azRad = targetAzimuth * degToRad;
             double latRad = latitude * degToRad;
@@ -1695,12 +1696,12 @@ namespace LunarTransferPlanner
                 : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // continuously update value
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Change Target Launch Azimuth", "90\u00B0 is the default, which is directly east. Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively. Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
+                GUILayout.Label(new GUIContent("Change Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
                 if (GUILayout.Button(new GUIContent(" R", "Reset to Default"), GUILayout.Width(20))) targetAzimuth = 90d;
                 GUILayout.EndHorizontal();
                 MakeNumberEditField("targetAzimuth", ref targetAzimuth, 1d, 0d, 360d, true);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Target Launch Inclination", $"Your latitude of {latitude:F2}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively."));
+                GUILayout.Label(new GUIContent("Target Launch Inclination", inclinationTooltip));
                 GUILayout.BeginVertical();
                 GUILayout.Space(5);
                 GUILayout.Box($"{targetInclination:F2}\u00B0", GUILayout.MaxWidth(100)); // F2 is overkill but just in case
@@ -1710,7 +1711,7 @@ namespace LunarTransferPlanner
             else
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Change Target Launch Inclination", $"Your latitude of {latitude:F2}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively. Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
+                GUILayout.Label(new GUIContent("Change Target Launch Inclination", inclinationTooltip + " Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
                 if (GUILayout.Button(new GUIContent(" R", "Reset to Default"), GUILayout.Width(20))) targetInclination = latitude;
                 GUILayout.EndHorizontal();
 
@@ -1739,7 +1740,7 @@ namespace LunarTransferPlanner
                 targetAzimuth = ((targetAzimuth % 360d) + 360d) % 360d; // normalize just in case
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Target Launch Azimuth", "90\u00B0 is the default, which is directly east. Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively."));
+                GUILayout.Label(new GUIContent("Target Launch Azimuth", azimuthTooltip));
                 GUILayout.BeginVertical();
                 GUILayout.Space(5);
                 GUILayout.Box($"{targetAzimuth:F2}\u00B0", GUILayout.MaxWidth(100));

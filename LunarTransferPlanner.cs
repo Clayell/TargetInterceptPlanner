@@ -126,6 +126,7 @@ namespace LunarTransferPlanner
 
         double inclination; // inclination of target's orbit
         double currentUT;
+        double dayScale;
         int errorState = 0;
         bool showSettings = false; // Show settings UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
@@ -602,7 +603,7 @@ namespace LunarTransferPlanner
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
             const double tolerance = 0.01;
-            double coarseStep = 1200d * mainBody.rotationPeriod / EarthSiderealDay; // scale based on EarthSiderealDay
+            double coarseStep = 1200d * dayScale;
             double maxTimeLimit = useAltBehavior ? mainBody.rotationPeriod * altBehaviorTimeLimit : mainBody.rotationPeriod; // expand to 30 days to search for global min
             const double epsilon = 1e-9;
             const double buffer = 1.0;
@@ -671,7 +672,7 @@ namespace LunarTransferPlanner
                     }
                     else // global min not found yet
                     {
-                        candidateTime = refinedTime + 3600d * mainBody.rotationPeriod / EarthSiderealDay;
+                        candidateTime = refinedTime + 3600d * dayScale;
 
                         if (refinedError < smallestError)
                         {
@@ -776,7 +777,7 @@ namespace LunarTransferPlanner
         {
             const double tolerance = 0.01;
 
-            double offset = 3600d * mainBody.rotationPeriod / EarthSiderealDay; // 1 hour offset between windows, scale based on EarthSiderealDay
+            double offset = 3600d * dayScale; // 1 hour offset between windows, scale based on EarthSiderealDay
 
             // remove expired or mismatched entries
             for (int i = cache.Count - 1; i >= 0; i--)
@@ -826,7 +827,7 @@ namespace LunarTransferPlanner
             {
                 newLaunchTime = EstimateLaunchTime(launchPos, startTime, useAltBehavior);
 
-                if (newLaunchTime < 60d && PrincipiaInstalled)
+                if (newLaunchTime < 60d * dayScale && PrincipiaInstalled)
                 { // perturbations make a new window that is way too close, so just skip to the next one
                     Debug.Log("New window is too close, skipping to the next one.");
                     windowNumber++;
@@ -1285,6 +1286,7 @@ namespace LunarTransferPlanner
                 isLowLatitude = Math.Abs(latitude) <= inclination;
                 //CelestialBody mainBody = target.referenceBody;
                 double dV = EstimateDV();
+                dayScale = mainBody.rotationPeriod / EarthSiderealDay;
 
                 inSurfaceVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed); // this needs to be here, as settings window isnt always open
 
@@ -1423,7 +1425,7 @@ namespace LunarTransferPlanner
                     ShowOrbitInfo(ref showPhasing, timeInOrbit0, phaseAngle0);
                 }
 
-                string windowTooltip = !isLowLatitude && targetAzimuth == 90d ?
+                string windowTooltip = !isLowLatitude && Math.Abs(targetAzimuth - 90d) < 0.01 ?
                     "Launch Easterly at this time to get into the target parking orbit" :
                     "Launch at this time at this inclination to get into the target parking orbit";
 
@@ -1534,7 +1536,7 @@ namespace LunarTransferPlanner
                     {
                         if (warpState == 1)
                         {
-                            Debug.Log("Special warp 1 in progress"); // keep this log
+                            Debug.Log("Special warp 1 in progress");
                             TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
                             TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
                             warpState = 2;
@@ -1557,17 +1559,17 @@ namespace LunarTransferPlanner
 
                 if (warpState == 2 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
-                    Debug.Log("Special warp 2 in progress"); // keep this log
+                    Debug.Log("Special warp 2 in progress");
                     TimeWarp.fetch.CancelAutoWarp();
                     TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
-                    TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + 3600d * mainBody.rotationPeriod / EarthSiderealDay)); // warp to within an hour
+                    TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + 3600d * dayScale)); // warp to within an hour
                     warpState = 3;
                     specialWarpWait = true;
                 }
 
                 if (warpState == 3 && !inWarp() && currentUT > waitingTime + 0.5d)
                 {
-                    Debug.Log("Special warp 3 in progress"); // keep this log
+                    Debug.Log("Special warp 3 in progress");
                     TimeWarp.fetch.CancelAutoWarp();
                     TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - warpMargin); // now warp to final
                     warpState = 0;

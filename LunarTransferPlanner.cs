@@ -784,7 +784,6 @@ namespace LunarTransferPlanner
                 var entry = cache[i];
                 bool expired = currentUT > entry.absoluteLaunchTime;
                 bool targetMismatch = entry.target != target;
-                //bool posMismatch = Vector3d.Distance(entry.launchPos, launchPos) >= tolerance;
                 bool posMismatch = Math.Abs(entry.launchPos.x - launchPos.x) >= tolerance || Math.Abs(entry.launchPos.y - launchPos.y) >= tolerance; // altitude doesn't change our calculations for now so we can ignore it
                 // also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
                 bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
@@ -1044,7 +1043,6 @@ namespace LunarTransferPlanner
 
         private string FormatTime(double t)
         {
-            //t = Math.Round(t);
             int days = (int)Math.Floor(t / Math.Round(mainBody.solarDayLength)); // round to avoid stuff like 3d 24h 0m 0s
             t -= days * Math.Round(mainBody.solarDayLength);
             int hours = (int)Math.Floor(t / (60d * 60d));
@@ -1377,11 +1375,11 @@ namespace LunarTransferPlanner
                 GUILayout.BeginHorizontal();
                 if (showAzimuth)
                 {
-                    GUILayout.Label(new GUIContent(launchLabel + (showAzimuth ? "Az." : "Incl."), "Launch to this azimuth to get into the right parking orbit"), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(new GUIContent(launchLabel + (showAzimuth ? "Az." : "Incl."), "Launch to this azimuth to get into the target parking orbit"), GUILayout.ExpandWidth(true));
                 }
                 else
                 {
-                    GUILayout.Label(new GUIContent(launchLabel + (showAzimuth ? "Az." : "Incl."), "Launch to this inclination to get into the right parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(new GUIContent(launchLabel + (showAzimuth ? "Az." : "Incl."), "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.ExpandWidth(true));
                 }
                 ExpandCollapse(ref expandParking0);
                 GUILayout.EndHorizontal();
@@ -1425,13 +1423,13 @@ namespace LunarTransferPlanner
                     ShowOrbitInfo(ref showPhasing, timeInOrbit0, phaseAngle0);
                 }
 
-                string tooltip = isLowLatitude ?
-                    "Launch Easterly at this time to get into the right parking orbit" :
-                    "Launch at this time at this inclination to get into the right parking orbit";
+                string windowTooltip = !isLowLatitude && targetAzimuth == 90d ?
+                    "Launch Easterly at this time to get into the target parking orbit" :
+                    "Launch at this time at this inclination to get into the target parking orbit";
 
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Next Window", tooltip), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Next Window", windowTooltip), GUILayout.ExpandWidth(true));
                 ExpandCollapse(ref expandParking1);
                 GUILayout.EndHorizontal();
 
@@ -1448,7 +1446,7 @@ namespace LunarTransferPlanner
                 {
                     GUILayout.Space(5);
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + tooltip), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip), GUILayout.ExpandWidth(true));
                     ExpandCollapse(ref expandParking2);
                     GUILayout.EndHorizontal();
 

@@ -101,9 +101,9 @@ namespace LunarTransferPlanner
         const double radToDeg = 180d / Math.PI; // unity only has floats
         const double degToRad = Math.PI / 180d; // unity only has floats
 
-        Rect windowRect = new Rect(100, 100, -1, -1);
+        Rect mainRect = new Rect(100, 100, -1, -1);
         Rect settingsRect = new Rect(100, 100, -1, -1);
-        readonly string windowTitle = "Lunar Transfer";
+        readonly string mainTitle = "Lunar Transfer";
         readonly string settingsTitle = "Additional Settings";
         GUISkin skin;
         Texture2D gearBlack;
@@ -112,7 +112,6 @@ namespace LunarTransferPlanner
         bool isKSPGUIActive = true; // for some reason, this only turns to true when you turn off and on the KSP GUI
 
         int currentBody = 0;
-        //CelestialBody target = null;
         object target = null; // will later become CelestialBody or Vessel
         CelestialBody mainBody = null;
         Orbit targetOrbit = null;
@@ -126,6 +125,7 @@ namespace LunarTransferPlanner
 
         double inclination; // inclination of target's orbit
         double currentUT;
+        int errorState = 0;
         bool showSettings = false; // Show settings UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
         double flightTime = 4.0d; // Desired flight time after maneuver, in solar days of mainBody
@@ -210,6 +210,8 @@ namespace LunarTransferPlanner
             GameEvents.onHideUI.Add(KSPHideGUI);
         }
 
+        // for some reason the button icons only load if they're in PluginData, but the setting icons only load if they're NOT in PluginData /shrug
+
         void KSPShowGUI() => isKSPGUIActive = true;
 
         void KSPHideGUI() => isKSPGUIActive = false;
@@ -225,6 +227,9 @@ namespace LunarTransferPlanner
             PrincipiaInstalled = PrincipiaWrapper.APIReady;
 
             Tooltip.RecreateInstance(); // Need to make sure that a new Tooltip instance is created after every scene change
+
+            //mainRectSize = mainRect.size;
+            //settingsRectSize = settingsRect.size;
         }
 
         void OnDestroy()
@@ -248,8 +253,8 @@ namespace LunarTransferPlanner
 
             Dictionary<string, object> settingValues = new Dictionary<string, object>
             {
-                { "windowRect.xMin", windowRect.xMin },
-                { "windowRect.yMin", windowRect.yMin },
+                { "mainRect.xMin", mainRect.xMin },
+                { "mainRect.yMin", mainRect.yMin },
                 { "settingsRect.xMin", settingsRect.xMin },
                 { "settingsRect.yMin", settingsRect.yMin },
                 { "isWindowOpen", isWindowOpen },
@@ -306,10 +311,10 @@ namespace LunarTransferPlanner
                 ConfigNode settings = root.GetNode("SETTINGS");
                 if (settings != null)
                 {
-                    float x1 = windowRect.xMin, y1 = windowRect.yMin;
+                    float x1 = mainRect.xMin, y1 = mainRect.yMin;
                     float x2 = settingsRect.xMin, y2 = settingsRect.yMin;
-                    Util.TryReadValue(ref x1, settings, "windowRect.xMin");
-                    Util.TryReadValue(ref y1, settings, "windowRect.yMin");
+                    Util.TryReadValue(ref x1, settings, "mainRect.xMin");
+                    Util.TryReadValue(ref y1, settings, "mainRect.yMin");
                     Util.TryReadValue(ref x2, settings, "settingsRect.xMin");
                     Util.TryReadValue(ref y2, settings, "settingsRect.yMin");
                     Util.TryReadValue(ref isWindowOpen, settings, "isWindowOpen");
@@ -333,7 +338,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref warpMargin, settings, "warpMargin");
                     Util.TryReadValue(ref specialWarp, settings, "specialWarp");
                     Util.TryReadValue(ref targetAzimuth, settings, "targetAzimuth");
-                    windowRect = new Rect(x1, y1, windowRect.width, windowRect.height);
+                    mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
                 }
             }
@@ -345,8 +350,8 @@ namespace LunarTransferPlanner
             if (isWindowOpen && isKSPGUIActive)
             {
                 GUI.skin = !useAltSkin ? this.skin : null;
-                windowRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode(), windowRect, MakeMainWindow, windowTitle);
-                ClampToScreen(ref windowRect);
+                mainRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode(), mainRect, MakeMainWindow, mainTitle);
+                ClampToScreen(ref mainRect);
                 Tooltip.Instance?.ShowTooltip(this.GetHashCode());
 
                 if (showSettings)
@@ -1051,13 +1056,13 @@ namespace LunarTransferPlanner
             if (pressed)
             {
                 button = !button;
-                if (reset) ResetWindow(ref windowRect); // if needed in settings window, change this to be parameter
+                if (reset) ResetWindow(ref mainRect); // if needed in settings window, change this to be parameter
             }
         }
 
         private void ResetWindow(ref Rect rect)
         { // Doing this forces the window to be resized. Without it, the window will become bigger when controls expand, but never become smaller again
-            rect = new Rect(rect.xMin, rect.yMin, -1, -1);
+            rect = new Rect(rect.xMin, rect.yMin, -1f, -1f);
         }
 
         private void DrawLine()
@@ -1184,27 +1189,40 @@ namespace LunarTransferPlanner
             if (moonsInvalid && vesselsInvalid)
             {
                 GUILayout.Box("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.MinWidth(160));
-                ResetWindow(ref windowRect); // TODO, implement a buffer to prevent this from running every frame
+                if (errorState != 1)
+                {
+                    errorState = 1;
+                    ResetWindow(ref mainRect);
+                }
                 ShowSettings();
             }
             else if (targetVessel && vesselsInvalid)
             {
                 GUILayout.Box("ERROR: There are no vessels orbiting this planet!", GUILayout.MinWidth(160));
-                ResetWindow(ref windowRect); // TODO, implement a buffer to prevent this from running every frame
+                if (errorState != 2)
+                {
+                    errorState = 2;
+                    ResetWindow(ref mainRect);
+                }
                 ShowSettings();
-                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"Target an orbiting Vessel instead of an orbiting Moon\" button.");
+                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
                 // do not switch automatically, this would change the user's settings silently, and they may not want to switch
             }
             else if (!targetVessel && moonsInvalid)
             {
                 GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.MinWidth(160));
-                ResetWindow(ref windowRect); // TODO, implement a buffer to prevent this from running every frame
+                if (errorState != 3)
+                {
+                    errorState = 3;
+                    ResetWindow(ref mainRect);
+                }
                 ShowSettings();
-                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"Target an orbiting Vessel instead of an orbiting Moon\" button.");
+                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
                 // do not switch automatically, this would change the user's settings silently, and they may not want to switch
             }
             else
             {
+                errorState = 0;
                 int count;
                 if (targetVessel)
                 {
@@ -1433,7 +1451,7 @@ namespace LunarTransferPlanner
                 if (specialWarpBuffer != specialWarpActive) // only reset if changed
                 {
                     specialWarpBuffer = !specialWarpBuffer;
-                    ResetWindow(ref windowRect);
+                    ResetWindow(ref mainRect);
                 }
 
                 GUILayout.BeginHorizontal();
@@ -1559,17 +1577,17 @@ namespace LunarTransferPlanner
             if (useAltSkin_toggled != useAltSkin)
             {
                 useAltSkin = !useAltSkin;
-                ResetWindow(ref windowRect);
+                ResetWindow(ref mainRect);
                 ResetWindow(ref settingsRect);
             }
 
             DrawLine();
 
-            if ((targetVessel && vesselsInvalid) || (!targetVessel && moonsInvalid)) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
+            if (errorState == 2 || errorState == 3) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
             GUILayout.BeginHorizontal();
-            GUILayout.Label(new GUIContent("Target an orbiting Vessel instead of an orbiting Moon", $"Ignored if toggling this would result in an error due to the absence of any {(targetVessel ? "moons" : "vessels")}"));
+            GUILayout.Label(new GUIContent("Target an orbiting Vessel instead of an orbiting Moon", $"Ignored if toggling this would result in an error due to the absence of any {(targetVessel ? "moons" : "vessels")} in orbit"));
             BeginCenter();
-            GUI.enabled = (targetVessel && vesselsInvalid) || (!targetVessel && moonsInvalid) || (!moonsInvalid && !vesselsInvalid); // let users get out of an error, but not get into one
+            GUI.enabled = errorState == 2 || errorState == 3; // let users get out of an error, but not get into one
             bool targetVessel_toggled = GUILayout.Toggle(targetVessel, "");
             GUI.enabled = true;
             EndCenter();
@@ -1578,7 +1596,7 @@ namespace LunarTransferPlanner
             if (targetVessel_toggled != targetVessel)
             {
                 targetVessel = !targetVessel;
-                ResetWindow(ref windowRect);
+                ResetWindow(ref mainRect);
             }
 
             DrawLine();

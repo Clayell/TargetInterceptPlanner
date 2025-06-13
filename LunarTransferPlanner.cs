@@ -535,8 +535,6 @@ namespace LunarTransferPlanner
             {
                 if (SpaceCenter.Instance != null)
                 {
-                    //if (cachedKSC != null && HighLogic.LoadedSceneHasPlanetarium && !HighLogic.LoadedSceneIsFlight)
-
                     PQSCity ksc = FindKSC(FlightGlobals.GetHomeBody());
                     if (ksc)
                     {
@@ -799,9 +797,6 @@ namespace LunarTransferPlanner
 
         private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double inclination, bool useAltBehavior, int windowNumber)
         {
-            //Vector3d relativeLaunchPos = launchPos - mainBody.position; // use launchPos - mainBody.position to avoid issues with mainBody position changing
-            //Log($"current relativeLaunchPos: {relativeLaunchPos}");
-
             const double tolerance = 0.01;
 
             double offset = 3600d * dayScale; // 1 hour offset between windows, scale based on EarthSiderealDay
@@ -813,7 +808,6 @@ namespace LunarTransferPlanner
                 bool expired = currentUT > entry.absoluteLaunchTime;
                 bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody
                 bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
-                //bool posMismatch = Vector3d.Distance(entry.relativeLaunchPos, relativeLaunchPos) >= tolerance * 100d;
                 bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch)
@@ -1403,13 +1397,10 @@ namespace LunarTransferPlanner
                 //stopwatch.Stop();
                 //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
-                //Log($"Initial warpState: {warpState}");
                 bool inSpecialWarp = warpState == 2 || warpState == 3;
                 bool specialWarpActive = warpState == 1 || inSpecialWarp;
                 if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarpSelected && !inSpecialWarp) warpState = 1;
                 else if (!inSpecialWarp && !specialWarpWait) warpState = 0;
-                //else if (nextLaunchETA < mainBody.rotationPeriod || PrincipiaInstalled) warpState = 0;
-                //Log($"Final warpState: {warpState}, inSpecialWarp: {inSpecialWarp}");
 
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
@@ -1680,13 +1671,10 @@ namespace LunarTransferPlanner
 
                 if (errorState == 2 || errorState == 3) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
                 GUILayout.BeginHorizontal();
-                //GUILayout.Label(new GUIContent("Target an orbiting Vessel instead of an orbiting Moon", $"Ignored if toggling this would result in an error due to the absence of any {(targetVessel ? "moons" : "vessels")} in orbit"));
                 GUILayout.Label("Target an orbiting Vessel instead of an orbiting Moon");
                 GUILayout.FlexibleSpace();
                 BeginCenter();
-                //GUI.enabled = errorState == 0 || errorState == 2 || errorState == 3; // let users get out of an error, but not get into one
                 bool targetVessel_toggled = GUILayout.Toggle(targetVessel, "");
-                //GUI.enabled = true;
                 EndCenter();
                 GUILayout.EndHorizontal();
 
@@ -1716,7 +1704,7 @@ namespace LunarTransferPlanner
                 {
                     //Log("windowCache Cleared due to useAltBehavior change");
                     windowCache.Clear(); // remove local mins so that we can replace them with global mins
-                                         // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
+                    // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
                 }
 
                 DrawLine();
@@ -1967,7 +1955,6 @@ namespace LunarTransferPlanner
                     }
 
                     GUILayout.BeginHorizontal();
-                    //const double tolerance = 0.005d; // finds the first one within 0.5%
                     if (GUILayout.Button("Search for Best Window", GUILayout.Width(200)))
                     {
                         ranSearch = true;
@@ -1976,7 +1963,6 @@ namespace LunarTransferPlanner
                         for (int candidateWindow = 0; candidateWindow <= maxWindows - 1; candidateWindow++)
                         {
                             double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, candidateWindow) - currentUT;
-                            //Log($"Candidate Window {candidateWindow} Launch Time: {candidateLaunchTime}");
 
                             if (double.IsNaN(candidateLaunchTime))
                             {
@@ -1988,17 +1974,10 @@ namespace LunarTransferPlanner
                             {
                                 (_, double candidatePhaseAngle) = EstimateTimeBeforeManeuver(launchPos, candidateLaunchTime);
                                 double errorRatio = Math.Abs(candidatePhaseAngle - targetPhasingAngle) / targetPhasingAngle;
-                                //if (errorRatio <= tolerance)
-                                //{
-                                //    bestWindow = candidateWindow;
-                                //    foundOptimizedWindow = true;
-                                //    break;
-                                //}
                                 if (errorRatio < bestError)
                                 {
                                     bestError = errorRatio;
                                     bestWindow = candidateWindow;
-                                    //foundOptimizedWindow = false;
                                 }
 
                             }
@@ -2006,17 +1985,10 @@ namespace LunarTransferPlanner
                             {
                                 (double candidatePhaseTime, _) = EstimateTimeBeforeManeuver(launchPos, candidateLaunchTime);
                                 double errorRatio = Math.Abs(candidatePhaseTime - targetPhasingTime) / targetPhasingTime;
-                                //if (errorRatio <= tolerance)
-                                //{
-                                //    bestWindow = candidateWindow;
-                                //    foundOptimizedWindow = true;
-                                //    break;
-                                //}
                                 if (errorRatio < bestError)
                                 {
                                     bestError = errorRatio;
                                     bestWindow = candidateWindow;
-                                    //foundOptimizedWindow = false;
                                 }
                             }
                         }
@@ -2026,14 +1998,6 @@ namespace LunarTransferPlanner
                     {
                         GUILayout.Label(new GUIContent($"Found window {extraWindowNumber}!", $"Window {extraWindowNumber} is the closest window to your target phasing {(showPhasing ? "angle" : "time")} within the max of {maxWindows} windows"));
                     }
-                    //if (foundOptimizedWindow == false)
-                    //{
-                    //    GUILayout.Label(new GUIContent("Partially succeeded", $"Failed to find a window within 0.5% of the target phasing {(showPhasing ? "angle" : "time")}, window {extraWindowNumber} is the closest one"));
-                    //}
-                    //else if (foundOptimizedWindow == true)
-                    //{
-                    //    GUILayout.Label(new GUIContent("Succeeded!", $"Window {extraWindowNumber} is within 0.5% of the target phasing {(showPhasing ? "angle" : "time")}"));
-                    //}
                     GUILayout.EndHorizontal();
                 }
                 else ranSearch = false; // this is to remove the label

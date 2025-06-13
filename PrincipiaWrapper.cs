@@ -53,7 +53,7 @@ public static class PrincipiaWrapper
     }
 
     private static void Log(string message) =>
-        Debug.Log($"[PrincipiaWrapper] {message}");
+        Debug.Log($"[LTP-PrincipiaWrapper]: {message}");
 
     public static class Reflection
     {

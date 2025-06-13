@@ -2,6 +2,8 @@
 
 ### Provides a GUI for planning a transfer to a satellite (natural or artificial) from the surface of the planet on which you are currently on.
 
+Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive, and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
+
 #### Usecases include:
 * Launching to the Moon from any position on Earth
 * Launching to the Mun or Minmus from any position on Kerbin
@@ -21,7 +23,7 @@
 * The time spent in your parking orbit while waiting for the maneuver
     * Can also show the phasing angle from the current position
 
-Keep in mind that this mod assumes you can instantly get into the target orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit.
+Keep in mind that this mod assumes you can instantly get into the parking orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit.
 
 Forum Thread: N/A
 

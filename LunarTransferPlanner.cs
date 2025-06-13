@@ -181,7 +181,7 @@ namespace LunarTransferPlanner
 
         ToolbarControl toolbarControl = null;
 
-        #region boring stuff
+        #region GUI Setup
 
         private void InitToolbar()
         {
@@ -276,6 +276,9 @@ namespace LunarTransferPlanner
             float top = Mathf.Clamp(rect.y, 0, Screen.height - rect.height);
             rect = new Rect(left, top, rect.width, rect.height);
         }
+
+        #endregion
+        #region Settings
 
         private void SaveSettings()
         {
@@ -384,6 +387,7 @@ namespace LunarTransferPlanner
             }
         }
         #endregion
+        #region Helper Methods
 
         private void Log(string message)
         {
@@ -393,97 +397,6 @@ namespace LunarTransferPlanner
         private void LogError(string message)
         {
             Debug.LogError($"[LunarTransferPlanner]: {message}");
-        }
-
-        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false, string minusTooltip = "", string plusTooltip = "") where T : struct, IConvertible
-        {
-            const double epsilon = 1e-9;
-
-            // allow ints, doubles, floats, etc.
-            double valueDouble = Convert.ToDouble(value);
-            double stepDouble = Convert.ToDouble(step);
-            double minValueDouble = Convert.ToDouble(minValue);
-            double maxValueDouble = Convert.ToDouble(maxValue);
-
-            // retrieve tick time buffer
-            if (!nextTickMap.TryGetValue(controlId, out double nextTick))
-                nextTick = 0;
-
-            // retrieve text buffer
-            if (!textBuffer.TryGetValue(controlId, out string textValue))
-                textValue = valueDouble.ToString("G17");
-
-            if (double.TryParse(textValue, out double parsedBufferValue))
-            {
-                if (Math.Abs(parsedBufferValue - valueDouble) > epsilon)
-                {
-                    // external change detected, update buffer
-                    textValue = valueDouble.ToString("G17");
-                    textBuffer[controlId] = textValue;
-                }
-            }
-            else
-            {
-                // invalid buffer, resync
-                textValue = valueDouble.ToString("G17");
-                textBuffer[controlId] = textValue;
-            }
-
-            GUILayout.BeginHorizontal();
-
-            string newLabel = GUILayout.TextField(textValue, GUILayout.Width(Mathf.Clamp(GUI.skin.textField.CalcSize(new GUIContent(textValue)).x + 10, 60, windowWidth - (40*2)))); // change width based on text length
-
-            // if text changed, update buffer and try to parse value
-            if (newLabel != textValue)
-            {
-                textBuffer[controlId] = newLabel;
-
-                if (double.TryParse(newLabel, out double newValue))
-                {
-                    valueDouble = Util.Clamp(newValue, minValueDouble, maxValueDouble);
-                }
-            }
-
-            bool hitMinusButton = GUILayout.RepeatButton(new GUIContent("\u2013", minusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
-            bool hitPlusButton = GUILayout.RepeatButton(new GUIContent("+", plusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60));
-
-            if (hitPlusButton || hitMinusButton)
-            {
-                double tick = Time.realtimeSinceStartup;
-                if (tick > nextTick)
-                {
-                    if (hitMinusButton)
-                    {
-
-                        double snappedValue = Math.Floor(valueDouble / stepDouble) * stepDouble;
-                        if (Math.Abs(valueDouble - snappedValue) > epsilon)
-                            valueDouble = Math.Max(minValueDouble, snappedValue); // snap to next number
-                        else
-                            if (valueDouble - stepDouble < minValueDouble && wrapAround)
-                            valueDouble = maxValueDouble;
-                        else valueDouble = Math.Max(minValueDouble, valueDouble - stepDouble); // then decrement
-                    }
-                    else
-                    {
-                        double snappedValue = Math.Ceiling(valueDouble / stepDouble) * stepDouble;
-                        if (Math.Abs(valueDouble - snappedValue) > epsilon)
-                            valueDouble = Math.Min(maxValueDouble, snappedValue); // snap to next number
-                        else
-                            if (valueDouble + stepDouble > maxValueDouble && wrapAround)
-                            valueDouble = minValueDouble;
-                        else valueDouble = Math.Min(maxValueDouble, valueDouble + stepDouble); // then increment
-                    }
-
-                    int decimals = Math.Max(0, (int)Math.Ceiling(-Math.Log10(stepDouble))); // avoid annoying floating point issues when rounding
-                    valueDouble = Math.Round(valueDouble, decimals);
-                    nextTickMap[controlId] = tick + 0.2d; // wait 0.2s before changing again
-                    textBuffer[controlId] = valueDouble.ToString($"F{decimals}");
-                }
-            }
-
-            GUILayout.EndHorizontal();
-
-            value = (T)Convert.ChangeType(valueDouble, typeof(T)); // convert back to original type
         }
 
 
@@ -584,6 +497,8 @@ namespace LunarTransferPlanner
             public readonly double azimuth;
             // add LAN to OrbitData? TODO
         }
+        #endregion
+        #region Main Methods
 
         OrbitData CalcOrbitForTime(Vector3d launchPos, double startTime)
         {
@@ -1067,6 +982,99 @@ namespace LunarTransferPlanner
 
             return dV;
         }
+        #endregion
+        #region GUI Methods
+
+        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false, string minusTooltip = "", string plusTooltip = "") where T : struct, IConvertible
+        {
+            const double epsilon = 1e-9;
+
+            // allow ints, doubles, floats, etc.
+            double valueDouble = Convert.ToDouble(value);
+            double stepDouble = Convert.ToDouble(step);
+            double minValueDouble = Convert.ToDouble(minValue);
+            double maxValueDouble = Convert.ToDouble(maxValue);
+
+            // retrieve tick time buffer
+            if (!nextTickMap.TryGetValue(controlId, out double nextTick))
+                nextTick = 0;
+
+            // retrieve text buffer
+            if (!textBuffer.TryGetValue(controlId, out string textValue))
+                textValue = valueDouble.ToString("G17");
+
+            if (double.TryParse(textValue, out double parsedBufferValue))
+            {
+                if (Math.Abs(parsedBufferValue - valueDouble) > epsilon)
+                {
+                    // external change detected, update buffer
+                    textValue = valueDouble.ToString("G17");
+                    textBuffer[controlId] = textValue;
+                }
+            }
+            else
+            {
+                // invalid buffer, resync
+                textValue = valueDouble.ToString("G17");
+                textBuffer[controlId] = textValue;
+            }
+
+            GUILayout.BeginHorizontal();
+
+            string newLabel = GUILayout.TextField(textValue, GUILayout.Width(Mathf.Clamp(GUI.skin.textField.CalcSize(new GUIContent(textValue)).x + 10, 60, windowWidth - (40 * 2)))); // change width based on text length
+
+            // if text changed, update buffer and try to parse value
+            if (newLabel != textValue)
+            {
+                textBuffer[controlId] = newLabel;
+
+                if (double.TryParse(newLabel, out double newValue))
+                {
+                    valueDouble = Util.Clamp(newValue, minValueDouble, maxValueDouble);
+                }
+            }
+
+            bool hitMinusButton = GUILayout.RepeatButton(new GUIContent("\u2013", minusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
+            bool hitPlusButton = GUILayout.RepeatButton(new GUIContent("+", plusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60));
+
+            if (hitPlusButton || hitMinusButton)
+            {
+                double tick = Time.realtimeSinceStartup;
+                if (tick > nextTick)
+                {
+                    if (hitMinusButton)
+                    {
+
+                        double snappedValue = Math.Floor(valueDouble / stepDouble) * stepDouble;
+                        if (Math.Abs(valueDouble - snappedValue) > epsilon)
+                            valueDouble = Math.Max(minValueDouble, snappedValue); // snap to next number
+                        else
+                            if (valueDouble - stepDouble < minValueDouble && wrapAround)
+                            valueDouble = maxValueDouble;
+                        else valueDouble = Math.Max(minValueDouble, valueDouble - stepDouble); // then decrement
+                    }
+                    else
+                    {
+                        double snappedValue = Math.Ceiling(valueDouble / stepDouble) * stepDouble;
+                        if (Math.Abs(valueDouble - snappedValue) > epsilon)
+                            valueDouble = Math.Min(maxValueDouble, snappedValue); // snap to next number
+                        else
+                            if (valueDouble + stepDouble > maxValueDouble && wrapAround)
+                            valueDouble = minValueDouble;
+                        else valueDouble = Math.Min(maxValueDouble, valueDouble + stepDouble); // then increment
+                    }
+
+                    int decimals = Math.Max(0, (int)Math.Ceiling(-Math.Log10(stepDouble))); // avoid annoying floating point issues when rounding
+                    valueDouble = Math.Round(valueDouble, decimals);
+                    nextTickMap[controlId] = tick + 0.2d; // wait 0.2s before changing again
+                    textBuffer[controlId] = valueDouble.ToString($"F{decimals}");
+                }
+            }
+
+            GUILayout.EndHorizontal();
+
+            value = (T)Convert.ChangeType(valueDouble, typeof(T)); // convert back to original type
+        }
 
         private string FormatTime(double t)
         {
@@ -1249,6 +1257,8 @@ namespace LunarTransferPlanner
             GUILayout.EndVertical();
             ButtonPressed(ref button, button_pressed);
         }
+        #endregion
+        #region MakeMainWindow
 
         private void MakeMainWindow(int id)
         {
@@ -1660,6 +1670,8 @@ namespace LunarTransferPlanner
             Tooltip.Instance?.RecordTooltip(id);
             GUI.DragWindow();
         }
+        #endregion
+        #region MakeSettingsWindow
 
         private void MakeSettingsWindow(int id)
         {
@@ -2026,6 +2038,7 @@ namespace LunarTransferPlanner
 
             GUI.DragWindow();
         }
+        #endregion
 
         // html tags rendered by ksp: <b> and </b>, <i> and </i>, (add more)
     }

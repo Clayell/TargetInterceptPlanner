@@ -160,7 +160,6 @@ namespace LunarTransferPlanner
         bool useWindowOptimizer = false;
         bool ranSearch = false;
         int decimals = 2;
-        int decimalBuffer = 2;
         int maxWindows = 100; // Maximum amount of extra windows that can be calculated
         bool showPhasing = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
         bool isLowLatitude;
@@ -169,7 +168,6 @@ namespace LunarTransferPlanner
 
         bool specialWarpSelected = true;
         int warpState = 0;
-        bool specialWarpBuffer = false;
         bool specialWarpWait = false;
         double waitingTime;
 
@@ -178,6 +176,7 @@ namespace LunarTransferPlanner
         readonly List<(object target, double latitude, double longitude, double inclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double)>();
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
+        readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
         readonly string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LunarTransferPlanner/PluginData/settings.cfg");
 
         ToolbarControl toolbarControl = null;
@@ -813,7 +812,7 @@ namespace LunarTransferPlanner
                 if (expired || targetMismatch || posMismatch || inclinationMismatch)
                 {
                     //Log($"Reseting Cache due to change: Cached Launch Window {i + 1} with target={entry.target}, latitude = {entry.latitude}, longitude = {entry.longitude}, inclination={entry.inclination:F3}, time={entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");'
-                    if (targetMismatch) Log($"Now targetting {target}"); // this will only ytrigger if the mainBody actually has vessel(s)
+                    if (targetMismatch) Log($"Now targetting {target}"); // this will only trigger if the mainBody actually has vessel(s)
                     windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
                     break;
                 }
@@ -1088,7 +1087,7 @@ namespace LunarTransferPlanner
 
         private string FormatDecimals(double value, int extra = 0)
         {
-            if (StateChanged(decimals, ref decimalBuffer))
+            if (StateChanged("decimals", decimals))
             {
                 ResetWindow(ref mainRect);
                 ResetWindow(ref settingsRect);
@@ -1096,13 +1095,28 @@ namespace LunarTransferPlanner
             return $"{value.ToString($"F{Math.Max(0, decimals + extra)}")}";
         }
 
-        private bool StateChanged<T>(T state, ref T buffer)
+        private bool StateChanged<T>(string key, T state)
         {
-            if (!EqualityComparer<T>.Default.Equals(state, buffer))
+            if (stateBuffer.TryGetValue(key, out var existing))
             {
-                buffer = state;
-                return true;
+                if (!EqualityComparer<T>.Default.Equals((T)existing, state))
+                {
+                    stateBuffer[key] = state;
+                    return true;
+                }
+                return false;
             }
+            else
+            {
+                stateBuffer[key] = state;
+                return true; // first access
+            }
+        }
+
+        private bool StateChanged<T>(string key, ref T state, T newState)
+        {
+            state = newState;
+            if (StateChanged(key, state)) return true;
             else return false;
         }
 
@@ -1220,18 +1234,16 @@ namespace LunarTransferPlanner
             else return text;
         }
 
-        private void ExpandCollapse(ref bool button, string tooltip = "", bool? overrideButton = null)
+        private void ExpandCollapse(ref bool button, string tooltip = "", bool overrideButton = false)
         {
             GUILayout.BeginVertical();
             GUILayout.Space(5); // push down 5
 
             GUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace(); // push button to the right
-            GUI.enabled = !overrideButton.HasValue;
-            bool button_pressed = GUILayout.Button(new GUIContent(!button ? "+" : "\u2013", tooltip), GUILayout.Width(30)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
+            GUI.enabled = !overrideButton;
+            bool button_pressed = GUILayout.Button(new GUIContent(!button ? "+" : "\u2013", tooltip + (overrideButton ? "\nThis button is currently disabled" : "")), GUILayout.Width(30)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
             GUI.enabled = true;
-            if (overrideButton == true) button_pressed = true;
-            if (overrideButton == false) button_pressed = false;
             GUILayout.EndHorizontal();
 
             GUILayout.EndVertical();
@@ -1261,7 +1273,7 @@ namespace LunarTransferPlanner
             if (moonsInvalid && vesselsInvalid)
             {
                 GUILayout.Box("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged(1, ref errorState))
+                if (StateChanged("errorState", ref errorState, 1))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1271,7 +1283,7 @@ namespace LunarTransferPlanner
             else if (targetVessel && vesselsInvalid)
             {
                 GUILayout.Box("ERROR: There are no vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged(2, ref errorState))
+                if (StateChanged("errorState", ref errorState, 2))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1283,7 +1295,7 @@ namespace LunarTransferPlanner
             else if (!targetVessel && moonsInvalid)
             {
                 GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged(3, ref errorState))
+                if (StateChanged("errorState", ref errorState, 3))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1294,7 +1306,7 @@ namespace LunarTransferPlanner
             }
             else
             {
-                if (StateChanged(0, ref errorState))
+                if (StateChanged("errorState", ref errorState, 0))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1333,9 +1345,9 @@ namespace LunarTransferPlanner
                 double dV = EstimateDV();
                 dayScale = mainBody.rotationPeriod / EarthSiderealDay;
 
-                inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be here, as settings window isnt always open
+                inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
 
-                if (count > 1) // only display target selector screen if needed
+                if (count > 1) // only display target selector screen if theres multiple targets
                 {
                     GUILayout.BeginHorizontal();
                     GUILayout.Box(new GUIContent(TextOverspill(targetName, 80, GUI.skin.box), targetName), GUILayout.MinWidth(80));
@@ -1353,12 +1365,18 @@ namespace LunarTransferPlanner
                     }
                     GUILayout.EndHorizontal();
                     if (targetVessel) target = vessels[currentBody];
-                    else target = moons[currentBody]; // cant do ternary
+                    else target = moons[currentBody]; // cant do ternary for this
                     GUILayout.Space(5);
                 }
 
+                if (StateChanged("displayTargetSelector", count > 1))
+                {
+                    ResetWindow(ref mainRect);
+                }
+
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"Latitude of launch location, using Vessel Position: {(useVesselPosition && inVessel ? "True" : "False")}"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"Latitude of launch location\nUsing Vessel Position: {(useVesselPosition && inVessel ? "True" : "False")}"), GUILayout.ExpandWidth(true));
+                
                 ExpandCollapse(ref expandLatLong, "Set manual latitude and longitude");
                 GUILayout.EndHorizontal();
 
@@ -1367,7 +1385,7 @@ namespace LunarTransferPlanner
                     GUILayout.Space(6); // weird spacing
                     MakeNumberEditField("latitude", ref latitude, 1d, -90d, 90d, true);
                     GUILayout.Space(5);
-                    GUILayout.Label(new GUIContent($"Longitude: <b>{FormatDecimals(longitude)}\u00B0</b>", $"Longitude of launch location, using Vessel Position: {(useVesselPosition && inVessel ? "True" : "False")}"));
+                    GUILayout.Label(new GUIContent($"Longitude: <b>{FormatDecimals(longitude)}\u00B0</b>", $"Longitude of launch location,\nUsing Vessel Position: {(useVesselPosition && inVessel ? "True" : "False")}"));
                     MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d, true);
                     //GUILayout.Space(5);
                     //GUILayout.Label(new GUIContent($"Altitude: <b>{Decimals(altitude)}</b>", "Altitude of launch location (in meters)"));
@@ -1529,7 +1547,7 @@ namespace LunarTransferPlanner
                 // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of the above label for some reason (always with BeginCenter or EndCenter)
                 // its harmless as far as I can tell, but i couldnt figure out a way to actually catch it
 
-                if (StateChanged(specialWarpActive, ref specialWarpBuffer))
+                if (StateChanged("specialWarpActive", specialWarpActive))
                 {
                     ResetWindow(ref mainRect);
                 }
@@ -1655,11 +1673,11 @@ namespace LunarTransferPlanner
             GUILayout.Label("Use Unity Skin");
             GUILayout.FlexibleSpace();
             BeginCenter();
-            bool useAltSkin_toggled = GUILayout.Toggle(useAltSkin, "");
+            useAltSkin = GUILayout.Toggle(useAltSkin, "");
             EndCenter();
             GUILayout.EndHorizontal();
 
-            if (StateChanged(useAltSkin_toggled, ref useAltSkin))
+            if (StateChanged("useAltSkin", useAltSkin))
             {
                 ResetWindow(ref mainRect);
                 ResetWindow(ref settingsRect);
@@ -1674,11 +1692,11 @@ namespace LunarTransferPlanner
                 GUILayout.Label("Target an orbiting Vessel instead of an orbiting Moon");
                 GUILayout.FlexibleSpace();
                 BeginCenter();
-                bool targetVessel_toggled = GUILayout.Toggle(targetVessel, "");
+                targetVessel = GUILayout.Toggle(targetVessel, "");
                 EndCenter();
                 GUILayout.EndHorizontal();
 
-                if (StateChanged(targetVessel_toggled, ref targetVessel))
+                if (StateChanged("targetVessel", targetVessel))
                 {
                     ResetWindow(ref mainRect);
                 }
@@ -1693,14 +1711,14 @@ namespace LunarTransferPlanner
                 GUILayout.FlexibleSpace();
                 BeginCenter();
                 GUI.enabled = isLowLatitude;
-                bool useAltBehavior_toggled = GUILayout.Toggle(useAltBehavior, "");
+                useAltBehavior = GUILayout.Toggle(useAltBehavior, "");
                 GUI.enabled = true;
                 EndCenter();
                 GUILayout.EndHorizontal();
 
                 //if (!isLowLatitude) useAltBehavior_toggled = false; // if we change useAltBehavior to false instead, the next code will just set it to true again // not needed, we check for isLowLatitude anyway
 
-                if (StateChanged(useAltBehavior_toggled, ref useAltBehavior))
+                if (StateChanged("useAltBehavior", useAltBehavior))
                 {
                     //Log("windowCache Cleared due to useAltBehavior change");
                     windowCache.Clear(); // remove local mins so that we can replace them with global mins
@@ -1761,11 +1779,11 @@ namespace LunarTransferPlanner
                 GUILayout.Label("Show Extra Window");
                 GUILayout.FlexibleSpace();
                 BeginCenter();
-                bool expandExtraWindow_toggled = GUILayout.Toggle(expandExtraWindow, "");
+                expandExtraWindow = GUILayout.Toggle(expandExtraWindow, "");
                 EndCenter();
                 GUILayout.EndHorizontal();
 
-                if (StateChanged(expandExtraWindow_toggled, ref expandExtraWindow))
+                if (StateChanged("expandExtraWindow", expandExtraWindow))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1779,11 +1797,11 @@ namespace LunarTransferPlanner
                     GUILayout.Label($"Optimize for a certain {(showPhasing ? "phasing angle" : "phasing time")} in orbit instead of choosing a window number manually");
                     GUILayout.FlexibleSpace();
                     BeginCenter();
-                    bool useWindowOptimizer_toggled = GUILayout.Toggle(useWindowOptimizer, "");
+                    useWindowOptimizer = GUILayout.Toggle(useWindowOptimizer, "");
                     EndCenter();
                     GUILayout.EndHorizontal();
 
-                    if (StateChanged(useWindowOptimizer_toggled, ref useWindowOptimizer))
+                    if (StateChanged("useWindowOptimizer", useWindowOptimizer))
                     {
                         ResetWindow(ref settingsRect);
                     }

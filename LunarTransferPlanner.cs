@@ -1410,6 +1410,7 @@ namespace LunarTransferPlanner
                 GUILayout.Space(5);
                 GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {mainBody.bodyName} solar days)"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
                 MakeNumberEditField("flightTime", ref flightTime, 0.1d, 0.1d, double.MaxValue);
+                if (StateChanged("flightTime", flightTime)) windowCache.Clear();
                 double l = Math.Round(flightTime * mainBody.solarDayLength);
                 GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
 
@@ -1850,7 +1851,6 @@ namespace LunarTransferPlanner
 
                 string azimuthTooltip = "90° is the default, which is directly east. Range is 0° to 360°, where 0° and 180° are North and South respectively.";
                 string inclinationTooltip = $"Your latitude of {FormatDecimals(latitude)}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively.";
-                double originalAzimuth = targetLaunchAzimuth;
                 double azRad = targetLaunchAzimuth * degToRad;
                 double latRad = latitude * degToRad;
                 if (double.IsNaN(targetLaunchInclination)) targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
@@ -1919,7 +1919,7 @@ namespace LunarTransferPlanner
                 }
                 // its not possible to have both textfields on screen at once, bugs out
 
-                if (targetLaunchAzimuth != originalAzimuth)
+                if (StateChanged("targetLaunchAzimuth", targetLaunchAzimuth))
                 {
                     windowCache.Clear(); // only clear if changed, also this doesn't always result in new minimums
                 }

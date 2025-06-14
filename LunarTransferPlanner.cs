@@ -1744,7 +1744,7 @@ namespace LunarTransferPlanner
                 ResetWindow(ref settingsRect);
             }
 
-            if (errorState != 1)
+            if (errorState == 0 || errorState == 2 || errorState == 3)
             {
                 DrawLine();
 

@@ -134,6 +134,7 @@ namespace LunarTransferPlanner
         double parkingAltitude = 200d; // Parking orbit altitude (circular orbit)
         bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
+        bool altBehaviorNaN = false; // Return NaN when a global min can't be found, instead of returning the closest time
         bool useVesselPosition = true; // Use vessel position for latitude instead of launch site position, default is true as the KSC location isn't always the same as the actual launch site directly from the VAB
         bool inVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
@@ -302,6 +303,7 @@ namespace LunarTransferPlanner
                 { "parkingAltitude", parkingAltitude },
                 { "useAltBehavior", useAltBehavior },
                 { "altBehaviorTimeLimit", altBehaviorTimeLimit },
+                { "altBehaviorNaN", altBehaviorNaN },
                 { "useVesselPosition", useVesselPosition },
                 { "latitude", latitude },
                 { "longitude", longitude },
@@ -333,7 +335,8 @@ namespace LunarTransferPlanner
             Dictionary<string, string> comments = new Dictionary<string, string>
             {
                 { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser, default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
-                { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting NaNs when searching for the global minimum" },
+                { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
+                { "altBehaviorNaN", "Return a NaN when a global minimum cannot be found within the time limit, instead of returning the best local minimum" },
                 { "deltaVIterations", "Max amount of iteratons for the delta-V calculator, default of 16. Increase if you want more accuracy" },
                 { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 6000 (the Moon is about 3100). Increase if you're getting NaNs with very far-out moons/vessels" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
@@ -373,6 +376,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref parkingAltitude, settings, "parkingAltitude");
                     Util.TryReadValue(ref useAltBehavior, settings, "useAltBehavior");
                     Util.TryReadValue(ref altBehaviorTimeLimit, settings, "altBehaviorTimeLimit");
+                    Util.TryReadValue(ref altBehaviorNaN, settings, "altBehaviorNaN");
                     Util.TryReadValue(ref useVesselPosition, settings, "useVesselPosition");
                     Util.TryReadValue(ref latitude, settings, "latitude");
                     Util.TryReadValue(ref longitude, settings, "longitude");
@@ -629,9 +633,17 @@ namespace LunarTransferPlanner
                         }
 
                         if (candidateTime > startTime + maxTimeLimit) // no global min found within extended time limit
-                        { // return the time closest to 0, even if its not perfect
-                            Log($"No time found with error of 0 within time limit, returning time {bestTime} with error closest to 0.");
-                            return bestTime;
+                        {
+                            if (altBehaviorNaN)
+                            {
+                                Log($"No time found with error of 0 within time limit, returning NaN.");
+                                return double.NaN;
+                            }
+                            else
+                            {
+                                Log($"No time found with error of 0 within time limit, returning time {bestTime} with error closest to 0.");
+                                return bestTime;
+                            }
                         } 
                     }
                 }
@@ -856,7 +868,7 @@ namespace LunarTransferPlanner
             // Radius of the orbit, including the radius of the Earth
             double r0 = mainBody.Radius + parkingAltitude * 1000;
 
-            // Orbital velocity after the maneuveletsr
+            // Orbital velocity after the maneuver
             double v0 = Math.Sqrt(gravParameter / r0) + dV;
 
             // Eccentricity after the maneuver (not the full formula, this is correct only at the periapsis)

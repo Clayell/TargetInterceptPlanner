@@ -1444,6 +1444,7 @@ namespace LunarTransferPlanner
                 {
                     GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
                     MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : 0d, targetOrbit.PeA / 1000d - 5d); // PeA updates every frame so we don't need to ask Principia
+                    if (StateChanged("parkingAltitude", parkingAltitude)) windowCache.Clear();
                 }
 
                 GUILayout.Space(5);
@@ -1985,7 +1986,7 @@ namespace LunarTransferPlanner
                     }
 
                     GUILayout.BeginHorizontal();
-                    if (GUILayout.Button("Search for Best Window", GUILayout.Width(200)))
+                    if (GUILayout.Button("Search for Closest Window", GUILayout.Width(200)))
                     {
                         ranSearch = true;
                         int bestWindow = -1;

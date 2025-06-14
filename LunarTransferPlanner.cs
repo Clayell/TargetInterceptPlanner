@@ -1444,7 +1444,7 @@ namespace LunarTransferPlanner
                 {
                     GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
                     MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : 0d, targetOrbit.PeA / 1000d - 5d); // PeA updates every frame so we don't need to ask Principia
-                    if (StateChanged("parkingAltitude", parkingAltitude)) windowCache.Clear();
+                    if (StateChanged("parkingAltitude", parkingAltitude)) windowCache.Clear(); // not sure if this actually changes the calculations, but its good to be safe
                 }
 
                 GUILayout.Space(5);
@@ -1819,14 +1819,6 @@ namespace LunarTransferPlanner
                     {
                         ResetWindow(ref settingsRect);
                     }
-
-                    if (!useWindowOptimizer)
-                    {
-                        DrawLine();
-
-                        GUILayout.Label("Change Extra Window Number");
-                        MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 1, maxWindows);
-                    }
                 }
 
                 DrawLine();
@@ -1838,6 +1830,14 @@ namespace LunarTransferPlanner
                 if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(120))) referenceTimeButton = (referenceTimeButton + 1) % (expandExtraWindow ? 3 : 2);
                 EndCenter();
                 GUILayout.EndHorizontal();
+
+                if (expandExtraWindow && !useWindowOptimizer)
+                {
+                    DrawLine();
+
+                    GUILayout.Label("Change Extra Window Number");
+                    MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 1, maxWindows);
+                }
 
                 DrawLine();
 

@@ -738,7 +738,7 @@ namespace LunarTransferPlanner
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch)
                 {
-                    //Log($"Reseting Cache due to change: Cached Launch Window {i + 1} with target={entry.target}, latitude = {entry.latitude}, longitude = {entry.longitude}, inclination={entry.inclination:F3}, time={entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");'
+                    Log($"Reseting Cache due to change: Cached Launch Window {i + 1} with target={entry.target}, latitude = {entry.latitude}, longitude = {entry.longitude}, inclination={entry.inclination:F3}, time={entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");
                     if (targetMismatch) Log($"Now targetting {target}"); // this will only trigger if the mainBody actually has vessel(s)
                     windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
                     break;
@@ -856,7 +856,7 @@ namespace LunarTransferPlanner
             // Radius of the orbit, including the radius of the Earth
             double r0 = mainBody.Radius + parkingAltitude * 1000;
 
-            // Orbital velocity after the maneuver
+            // Orbital velocity after the maneuveletsr
             double v0 = Math.Sqrt(gravParameter / r0) + dV;
 
             // Eccentricity after the maneuver (not the full formula, this is correct only at the periapsis)
@@ -894,6 +894,18 @@ namespace LunarTransferPlanner
                 // Altitude of the Moon at the approximate time of the maneuver 
                 r1 = targetOrbit.GetRadiusAtUT(currentUT + approxFlightTime);
             }
+            //if (movingTarget)
+            //{
+            //    double approxFlightTime;
+            //    for (int i = 0; i < 10; i++)
+            //    {
+            //        // Estimate flight time using current guess
+            //        approxFlightTime = EstimateTimeAfterManeuver(dV, false);
+
+            //        // Update Moon's position based on the estimated time
+            //        r1 = targetOrbit.GetRadiusAtUT(currentUT + approxFlightTime);
+            //    }
+            //}
             else
             {
                 // This is the recursive call of EstimateTimeAfterManeuver
@@ -1275,13 +1287,14 @@ namespace LunarTransferPlanner
         private void MakeMainWindow(int id)
         {
             windowWidth = 160;
-            
+
             if (FlightGlobals.currentMainBody != null)
                 mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
-            else if (MapView.MapCamera.target.celestialBody != null && HighLogic.LoadedSceneHasPlanetarium) // if we dont check that its in map view, then the vab/sph body will get overwritten
+            else if (HighLogic.LoadedSceneHasPlanetarium && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
                 mainBody = MapView.MapCamera.target.celestialBody; // tracking station, could work for flight map view too
             else if (Planetarium.fetch.Home != null)
                 mainBody = Planetarium.fetch.Home; // vab/sph, this always gives the home body
+            else LogError("CRITICAL ERROR: No main body found!");
 
             //CelestialBody target = FlightGlobals.fetch.bodies.FirstOrDefault(body => body.name.Equals("Moon", StringComparison.OrdinalIgnoreCase));
             moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
@@ -1292,7 +1305,17 @@ namespace LunarTransferPlanner
             moonsInvalid = moons == null || moons.Count == 0;
             vesselsInvalid = vessels == null || vessels.Count == 0;
 
-            if (moonsInvalid && vesselsInvalid)
+            if (mainBody == null)
+            {
+                GUILayout.Box("CRITICAL ERROR: No main body found!", GUILayout.Width(windowWidth)); // this is really bad
+                if (StateChanged("errorState", ref errorState, 4))
+                {
+                    ResetWindow(ref mainRect);
+                    ResetWindow(ref settingsRect);
+                }
+                ShowSettings();
+            }
+            else if (moonsInvalid && vesselsInvalid)
             {
                 GUILayout.Box("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.Width(windowWidth));
                 if (StateChanged("errorState", ref errorState, 1))

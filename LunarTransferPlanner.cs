@@ -131,7 +131,7 @@ namespace LunarTransferPlanner
         bool showSettings = false; // Show settings UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
         double flightTime = 4.0d; // Desired flight time after maneuver, in solar days of mainBody
-        double parkingAltitude = 200d; // Parking orbit altitude (circular orbit assumed)
+        double parkingAltitude = 200d; // Parking orbit altitude (circular orbit)
         bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
         bool useVesselPosition = true; // Use vessel position for latitude instead of launch site position, default is true as the KSC location isn't always the same as the actual launch site directly from the VAB
@@ -140,28 +140,32 @@ namespace LunarTransferPlanner
         double latitude = 0d;
         double longitude = 0d;
         //double altitude = 0d; // height above sea level in meters // currently, this has no effect on the calculations, because the vectors are always normalized
+
         int referenceTimeButton = 0;
         string referenceTimeLabel;
         string referenceTimeTooltip;
         string launchLabel;
         double referenceTime = 0d;
+
         double targetLaunchAzimuth = 90d; // due east
         double targetLaunchInclination = double.NaN;
         double targetPhasingAngle = 180d;
         double targetPhasingTime = double.NaN;
         bool showAzimuth = false;
+        bool expandExtraWindow = true; // Show the extra window chooser
+        int extraWindowNumber = 2; // counting from 1
+        bool useWindowOptimizer = false; // Optimize for a certain phasing angle/time
         bool expandLatLong = false; // Expand/collapse custom Latitude/Longitude picker
         bool expandAltitude = false; // Expand/collapse parking orbit altitude changer
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
-        bool expandExtraWindow = true; // Show the extra window chooser
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
-        int extraWindowNumber = 2; // counting from 1
-        bool useWindowOptimizer = false;
+        int deltaVIterations = 16;
+        double maxDeltaVScaled = 6000d;
         bool ranSearch = false;
         int decimals = 2;
-        int maxWindows = 100; // Maximum amount of extra windows that can be calculated
         bool showPhasing = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
+        int maxWindows = 100; // Maximum amount of extra windows that can be calculated
         bool isLowLatitude;
         bool targetSet = false;
         double warpMargin = 60d; // Time difference from the launch window that the warp will stop at
@@ -303,12 +307,15 @@ namespace LunarTransferPlanner
                 { "longitude", longitude },
                 { "showAzimuth", showAzimuth },
                 { "expandExtraWindow", expandExtraWindow },
+                { "extraWindowNumber", extraWindowNumber },
                 { "useWindowOptimizer", useWindowOptimizer },
                 { "expandLatLong", expandLatLong },
                 { "expandAltitude", expandAltitude },
                 { "expandParking0", expandParking0 },
                 { "expandParking1", expandParking1 },
                 { "expandParking2", expandParking2 },
+                { "deltaVIterations", deltaVIterations },
+                { "maxDeltaVScaled", maxDeltaVScaled },
                 { "showPhasing", showPhasing },
                 { "maxWindows", maxWindows },
                 { "warpMargin", warpMargin },
@@ -327,6 +334,8 @@ namespace LunarTransferPlanner
             {
                 { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser, default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting NaNs when searching for the global minimum" },
+                { "deltaVIterations", "Max amount of iteratons for the delta-V calculator, default of 16. Increase if you want more accuracy" },
+                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 6000 (the Moon is about 3100). Increase if you're getting NaNs with very far-out moons/vessels" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
             };
@@ -369,12 +378,15 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref longitude, settings, "longitude");
                     Util.TryReadValue(ref showAzimuth, settings, "showAzimuth");
                     Util.TryReadValue(ref expandExtraWindow, settings, "expandExtraWindow");
+                    Util.TryReadValue(ref extraWindowNumber, settings, "extraWindowNumber");
                     Util.TryReadValue(ref useWindowOptimizer, settings, "useWindowOptimizer");
                     Util.TryReadValue(ref expandLatLong, settings, "expandLatLong");
                     Util.TryReadValue(ref expandAltitude, settings, "expandAltitude");
                     Util.TryReadValue(ref expandParking0, settings, "expandParking0");
                     Util.TryReadValue(ref expandParking1, settings, "expandParking1");
                     Util.TryReadValue(ref expandParking2, settings, "expandParking2");
+                    Util.TryReadValue(ref deltaVIterations, settings, "deltaVIterations");
+                    Util.TryReadValue(ref maxDeltaVScaled, settings, "maxDeltaVScaled");
                     Util.TryReadValue(ref showPhasing, settings, "showPhasing");
                     Util.TryReadValue(ref maxWindows, settings, "maxWindows");
                     Util.TryReadValue(ref warpMargin, settings, "warpMargin");
@@ -928,15 +940,15 @@ namespace LunarTransferPlanner
             // Search in this range
             //double minPossibleDV = 2500 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 766 for Kerbin
             const double minPossibleDV = 1d; // no need to have an actual min for dV, especially for vessels
-            double maxPossibleDV = 6000d * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 1840 for Kerbin
+            double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 1840 for Kerbin
             const double tolerance = 0.001;
 
             // Current search range, will be gradually narrowed
             double lowerBound = minPossibleDV;
             double upperBound = maxPossibleDV;
 
-            // Max. 16 attempts, then return whatever value was found
-            for (int i = 0; i < 16; i++)
+            // Max. 16 (default) attempts, then return whatever value was found
+            for (int i = 0; i < deltaVIterations; i++)
             {
                 // guess dV
                 dV = (lowerBound + upperBound) / 2;

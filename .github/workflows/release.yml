@@ -1,0 +1,56 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v1.3.1
+
+    - name: Build solution
+      run: msbuild LunarTransferPlanner.sln /p:Configuration=Release
+
+    - name: Update version file
+      shell: powershell
+      run: |
+        $version = "${{ github.ref_name }}" -replace '^v',''
+        $parts = $version.Split('.')
+        $versionFile = "LunarTransferPlanner/GameData/LunarTransferPlanner/LunarTransferPlanner.version"
+        (Get-Content $versionFile) | ForEach-Object {
+            $_ -replace '"MAJOR":\d+', '"MAJOR":' + $parts[0] `
+               -replace '"MINOR":\d+', '"MINOR":' + $parts[1] `
+               -replace '"PATCH":\d+', '"PATCH":' + $parts[2]
+        } | Set-Content $versionFile
+
+    - name: Zip GameData folder
+      run: Compress-Archive -Path LunarTransferPlanner/GameData -DestinationPath LunarTransferPlanner.zip
+
+    - name: Package source
+      run: |
+        git archive --format=zip --output source.zip HEAD
+        git archive --format=tar.gz --output source.tar.gz HEAD
+
+    - name: Move artifacts to root
+      run: |
+        move LunarTransferPlanner.zip .
+        move source.zip .
+        move source.tar.gz .
+
+    - name: Create GitHub release
+      uses: softprops/action-gh-release@v2
+      with:
+        token: ${{ secrets.GH_PAT }}
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ github.ref_name }}
+        prerelease: ${{ contains(github.ref_name, '-rc') }}
+        files: |
+          LunarTransferPlanner.zip
+          source.zip
+          source.tar.gz

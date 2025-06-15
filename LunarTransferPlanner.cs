@@ -344,7 +344,7 @@ namespace LunarTransferPlanner
                 { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 6000 (the Moon is about 3100). Increase if you're getting NaNs with very far-out moons/vessels" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
-                { "requireSurfaceVessel", "For useVesselPosition, require that the vessel be on the surface for the position to actually be considered" },
+                { "requireSurfaceVessel", "For useVesselPosition, require that the vessel be on the surface (landed or splashed) for the position to actually be considered" },
             };
 
             List<string> lines = File.ReadAllLines(SettingsPath).ToList();
@@ -1479,7 +1479,6 @@ namespace LunarTransferPlanner
                 }
                 else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
 
-                //Log($"launchPos: {launchPos}, latitude: {latitude}, longitude: {longitude}, mainBody: {mainBody}, mainBody position: {mainBody.position}");
                 //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
                 GUILayout.Space(5);
@@ -1496,12 +1495,14 @@ namespace LunarTransferPlanner
                 OrbitData launchOrbit = CalcOrbitForTime(launchPos, referenceTime);
                 //Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
                 //var stopwatch = Stopwatch.StartNew();
-                double nextLaunchETA = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, 0) - currentUT;
+                double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, 0);
+                double nextLaunchETA = nextLaunchUT - currentUT;
                 //stopwatch.Stop();
                 //Log($"Window 1 Launch Time: {firstLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
                 //Log("CLAYELADDEDDLOGS SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW");
                 //stopwatch = Stopwatch.StartNew();
-                double extraLaunchETA = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, extraWindowNumber - 1) - currentUT;
+                double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, extraWindowNumber - 1);
+                double extraLaunchETA = extraLaunchUT - currentUT;
                 //stopwatch.Stop();
                 //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
@@ -1589,7 +1590,7 @@ namespace LunarTransferPlanner
                 GUILayout.EndHorizontal();
 
                 GUILayout.Space(5);
-                GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {currentUT + nextLaunchETA:0}s"), GUILayout.MinWidth(100)); // itll flash every second if we just do {nextLaunchETA}, we need absolute time
+                GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // itll flash every second if we just do {nextLaunchETA}, we need absolute time
 
                 if (expandParking1)
                 {
@@ -1606,7 +1607,7 @@ namespace LunarTransferPlanner
                     GUILayout.EndHorizontal();
 
                     GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {currentUT + extraLaunchETA:0}s"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100));
 
                     if (expandParking2)
                     {
@@ -1652,7 +1653,7 @@ namespace LunarTransferPlanner
                 {
                     if (!useAltAlarm && !double.IsNaN(nextLaunchETA))
                     {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window", currentUT + nextLaunchETA - warpMargin); // remove warpMargin? might need to check for overspill?
+                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window", nextLaunchUT - warpMargin); // remove warpMargin? might need to check for overspill?
                         if (!string.IsNullOrEmpty(alarmId))
                         {
                             //if the alarm was made get the object so we can update it
@@ -1664,7 +1665,7 @@ namespace LunarTransferPlanner
                     }
                     else if (useAltAlarm && !double.IsNaN(extraLaunchETA))
                     {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window {extraWindowNumber}", currentUT + extraLaunchETA - warpMargin); // remove warpMargin? might need to check for overspill?
+                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window {extraWindowNumber}", extraLaunchUT - warpMargin); // remove warpMargin? might need to check for overspill?
                         if (!string.IsNullOrEmpty(alarmId))
                         {
                             //if the alarm was made get the object so we can update it
@@ -1691,13 +1692,13 @@ namespace LunarTransferPlanner
                         {
                             Log("Special warp 1 in progress");
                             TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
-                            TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
+                            TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
                             warpState = 2;
                             specialWarpWait = true;
                         }
                         else
                         {
-                            TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - warpMargin);
+                            TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin);
                         }
                     }
                 }
@@ -1715,7 +1716,7 @@ namespace LunarTransferPlanner
                     Log("Special warp 2 in progress");
                     TimeWarp.fetch.CancelAutoWarp();
                     TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
-                    TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - (warpMargin + 3600d * dayScale)); // warp to within an hour
+                    TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + 3600d * dayScale)); // warp to within an hour
                     warpState = 3;
                     specialWarpWait = true;
                 }
@@ -1724,7 +1725,7 @@ namespace LunarTransferPlanner
                 {
                     Log("Special warp 3 in progress");
                     TimeWarp.fetch.CancelAutoWarp();
-                    TimeWarp.fetch.WarpTo(currentUT + nextLaunchETA - warpMargin); // now warp to final
+                    TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin); // now warp to final
                     warpState = 0;
                     specialWarpWait = false;
                 }

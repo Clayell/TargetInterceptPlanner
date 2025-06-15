@@ -136,7 +136,7 @@ namespace LunarTransferPlanner
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
         bool altBehaviorNaN = false; // Return NaN when a global min can't be found, instead of returning the closest time
         bool useVesselPosition = true; // Use vessel position for latitude instead of launch site position, default is true as the KSC location isn't always the same as the actual launch site directly from the VAB
-        bool requireSurfaceVessel = false;
+        bool requireSurfaceVessel = true; // Do not consider useVesselPosition if the vessel is not on the surface
         bool inVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
         double latitude = 0d;
@@ -1574,7 +1574,11 @@ namespace LunarTransferPlanner
                 {
                     GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
                     MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : 0d, targetOrbit.PeA / 1000d - 5d); // PeA updates every frame so we don't need to ask Principia
-                    if (StateChanged("parkingAltitude", parkingAltitude)) deltaVCache = null;
+                    if (StateChanged("parkingAltitude", parkingAltitude))
+                    {
+                        phasingCache.Clear();
+                        deltaVCache = null;
+                    }
                 }
 
                 GUILayout.Space(5);
@@ -1673,14 +1677,31 @@ namespace LunarTransferPlanner
                 GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true));
                 MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
 
+                bool addAlarm;
+                bool toggleWarp;
                 GUILayout.Space(10);
-                GUILayout.BeginHorizontal();
-                GUI.enabled = KACInstalled;
-                bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", "Add Alarm to Kerbal Alarm Clock"), GUILayout.MinWidth(80));
-                GUI.enabled = true;
+                if (KACInstalled)
+                {
+                    GUILayout.BeginHorizontal();
+                    addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", "Add Alarm to Kerbal Alarm Clock"), GUILayout.MinWidth(80));
 
-                bool toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
-                GUILayout.EndHorizontal();
+                    toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
+                    GUILayout.EndHorizontal();
+                }
+                else
+                {
+                    addAlarm = false;
+                    toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(160));
+                }
+
+                //GUILayout.Space(10);
+                //GUILayout.BeginHorizontal();
+                //GUI.enabled = KACInstalled;
+                //bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", "Add Alarm to Kerbal Alarm Clock"), GUILayout.MinWidth(80));
+                //GUI.enabled = true;
+
+                //bool toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
+                //GUILayout.EndHorizontal();
 
                 if (specialWarpActive)
                 {
@@ -1702,7 +1723,9 @@ namespace LunarTransferPlanner
                 ShowSettings();
                 GUILayout.EndHorizontal();
 
-                if (addAlarm && KACInstalled)
+                // TODO, add compatibility with normal alarm clock if KAC not installed
+
+                if (addAlarm)
                 {
                     if (!useAltAlarm && !double.IsNaN(nextLaunchETA))
                     {

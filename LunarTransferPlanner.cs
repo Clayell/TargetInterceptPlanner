@@ -179,6 +179,7 @@ namespace LunarTransferPlanner
         List<CelestialBody> moons;
         List<Vessel> vessels;
         readonly List<(object target, double latitude, double longitude, double inclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double)>();
+        (object target,double deltaV)? deltaVCache = null;
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
@@ -402,6 +403,7 @@ namespace LunarTransferPlanner
                 }
             }
         }
+
         #endregion
         #region Helper Methods
 
@@ -513,6 +515,7 @@ namespace LunarTransferPlanner
             public readonly double azimuth;
             // add LAN to OrbitData? TODO
         }
+
         #endregion
         #region Main Methods
 
@@ -733,90 +736,6 @@ namespace LunarTransferPlanner
             return finalResult;
         }
 
-        private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double inclination, bool useAltBehavior, int windowNumber)
-        {
-            const double tolerance = 0.01;
-
-            double offset = 3600d * dayScale; // 1 hour offset between windows, scale based on EarthSiderealDay
-
-            // remove expired or mismatched entries
-            for (int i = 0; i <= windowCache.Count - 1; i++)
-            {
-                var entry = windowCache[i];
-                bool expired = currentUT > entry.absoluteLaunchTime;
-                bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody
-                bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
-                bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
-
-                if (expired || targetMismatch || posMismatch || inclinationMismatch)
-                {
-                    Log($"Reseting Cache due to change: Cached Launch Window {i + 1} with target={entry.target}, latitude = {entry.latitude}, longitude = {entry.longitude}, inclination={entry.inclination:F3}, time={entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");
-                    if (targetMismatch) Log($"Now targetting {target}"); // this will only trigger if the mainBody actually has vessel(s)
-                    windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
-                    break;
-                }
-            }
-
-            // sort windowCache in ascending order of launch time after removing bad entries
-            windowCache.Sort((a, b) => a.absoluteLaunchTime.CompareTo(b.absoluteLaunchTime));
-
-            // if window exists, return it
-            if (windowNumber <= windowCache.Count - 1 && windowNumber >= 0)
-            {
-                return windowCache[windowNumber].absoluteLaunchTime;
-            }
-
-            double startTime;
-
-            if (windowCache.Count == 0)
-            {
-                startTime = 0;
-            }
-            else
-            {
-                // start after the last cached window + offset
-                startTime = windowCache.Last().absoluteLaunchTime - currentUT + offset;
-            }
-
-            // compute windows from windowCache.Count up to windowNumber
-            double newLaunchTime = 0d;
-            double absoluteLaunchTime = 0d;
-
-            for (int w = windowCache.Count; w <= windowNumber; w++)
-            {
-                newLaunchTime = EstimateLaunchTime(launchPos, startTime, useAltBehavior);
-
-                if (double.IsNaN(newLaunchTime))
-                {
-                    Log("LaunchTime is NaN, exiting");
-                    return double.NaN;
-                }
-
-                if (newLaunchTime < 60d * dayScale && PrincipiaInstalled)
-                { // perturbations make a new window that is way too close, so just skip to the next one
-                    Log("New window is too close, skipping to the next one.");
-                    windowNumber++;
-                }
-                else
-                {
-                    absoluteLaunchTime = currentUT + newLaunchTime;
-                    windowCache.Add((target, latitude, longitude, inclination, absoluteLaunchTime));
-                }
-
-                startTime = newLaunchTime + offset;
-
-                if (windowCache.Count > maxWindows)
-                {
-                    Log("windowCache.Count has grown greater than maxWindows!");
-                    return double.NaN;
-                }
-            }
-
-            //Log($"windowCache count: {windowCache.Count}");
-
-            return absoluteLaunchTime;
-        }
-
         (double phasingTime, double phasingAngle) EstimateTimeBeforeManeuver(Vector3d launchPos, double startTime)
         {
             //CelestialBody mainBody = target.referenceBody;
@@ -906,18 +825,6 @@ namespace LunarTransferPlanner
                 // Altitude of the Moon at the approximate time of the maneuver 
                 r1 = targetOrbit.GetRadiusAtUT(currentUT + approxFlightTime);
             }
-            //if (movingTarget)
-            //{
-            //    double approxFlightTime;
-            //    for (int i = 0; i < 10; i++)
-            //    {
-            //        // Estimate flight time using current guess
-            //        approxFlightTime = EstimateTimeAfterManeuver(dV, false);
-
-            //        // Update Moon's position based on the estimated time
-            //        r1 = targetOrbit.GetRadiusAtUT(currentUT + approxFlightTime);
-            //    }
-            //}
             else
             {
                 // This is the recursive call of EstimateTimeAfterManeuver
@@ -1018,6 +925,119 @@ namespace LunarTransferPlanner
 
             return dV;
         }
+
+        #endregion
+        #region Caching Methods
+
+        // if the factor that should trigger a cache reset can only be changed by the user in one location, then its fine to use StateChanged and then clear the cache
+        // StateChanged checks if something is exactly equal to the previous value, which is fine for a value that only the user can change (especially as the user will want the value to update regardless of how small their changes are, which would make a tolerance not make sense)
+        // if the factor can be changed by the game itself, or can be changed by the user in multiple ways (in the case of the target), then put the value in the cache and check in the method if its crossed the tolerance
+        // (the reset in special warp is a unique case and should be kept as such)
+
+        private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double inclination, bool useAltBehavior, int windowNumber)
+        {
+            const double tolerance = 0.01;
+
+            double offset = 3600d * dayScale; // 1 hour offset between windows, scale based on EarthSiderealDay
+
+            // remove expired or mismatched entries
+            for (int i = 0; i <= windowCache.Count - 1; i++)
+            {
+                var entry = windowCache[i];
+                bool expired = currentUT > entry.absoluteLaunchTime;
+                bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody
+                bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
+                bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
+
+                if (expired || targetMismatch || posMismatch || inclinationMismatch)
+                {
+                    Log($"Reseting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");
+                    if (targetMismatch) Log($"Now targetting {target}"); // this will only trigger if the mainBody actually has targets(s)
+                    windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
+                    break;
+                }
+            }
+
+            // sort windowCache in ascending order of launch time after removing bad entries
+            windowCache.Sort((a, b) => a.absoluteLaunchTime.CompareTo(b.absoluteLaunchTime));
+
+            // if window exists, return it
+            if (windowNumber <= windowCache.Count - 1 && windowNumber >= 0)
+            {
+                return windowCache[windowNumber].absoluteLaunchTime;
+            }
+
+            double startTime;
+
+            if (windowCache.Count == 0)
+            {
+                startTime = 0;
+            }
+            else
+            {
+                // start after the last cached window + offset
+                startTime = windowCache.Last().absoluteLaunchTime - currentUT + offset;
+            }
+
+            // compute windows from windowCache.Count up to windowNumber
+            double newLaunchTime = 0d;
+            double absoluteLaunchTime = 0d;
+
+            for (int w = windowCache.Count; w <= windowNumber; w++)
+            {
+                newLaunchTime = EstimateLaunchTime(launchPos, startTime, useAltBehavior);
+
+                if (double.IsNaN(newLaunchTime))
+                {
+                    Log("LaunchTime is NaN, exiting");
+                    return double.NaN;
+                }
+
+                if (newLaunchTime < 60d * dayScale && PrincipiaInstalled)
+                { // perturbations make a new window that is way too close, so just skip to the next one
+                    Log("New window is too close, skipping to the next one.");
+                    windowNumber++;
+                }
+                else
+                {
+                    absoluteLaunchTime = currentUT + newLaunchTime;
+                    windowCache.Add((target, latitude, longitude, inclination, absoluteLaunchTime));
+                }
+
+                startTime = newLaunchTime + offset;
+
+                if (windowCache.Count > maxWindows)
+                {
+                    Log("windowCache.Count has grown greater than maxWindows!");
+                    return double.NaN;
+                }
+            }
+
+            //Log($"windowCache count: {windowCache.Count}");
+
+            return absoluteLaunchTime;
+        }
+
+        private double GetCachedDeltaV()
+        {
+            if (!deltaVCache.HasValue)
+            {
+                double dV = EstimateDV();
+                deltaVCache = (target, dV);
+            }
+            else
+            {
+                if (deltaVCache.Value.target != target)
+                {
+                    Log($"Reseting DeltaV Cache due to change of target. Old values: target: {deltaVCache.Value.target}, delta: {deltaVCache.Value.deltaV}");
+                    double dV = EstimateDV();
+                    deltaVCache = (target, dV);
+                }
+            }
+
+            return deltaVCache.Value.deltaV;
+        }
+
         #endregion
         #region GUI Methods
 
@@ -1293,6 +1313,7 @@ namespace LunarTransferPlanner
             GUILayout.EndVertical();
             ButtonPressed(ref button, button_pressed);
         }
+
         #endregion
         #region MakeMainWindow
 
@@ -1399,7 +1420,7 @@ namespace LunarTransferPlanner
                 inclination = GetTargetInclination(targetOrbit);
                 isLowLatitude = Math.Abs(latitude) <= inclination;
                 //CelestialBody mainBody = target.referenceBody;
-                double dV = EstimateDV();
+                double dV = GetCachedDeltaV();
                 dayScale = mainBody.rotationPeriod / EarthSiderealDay;
 
                 inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
@@ -1457,7 +1478,11 @@ namespace LunarTransferPlanner
                 GUILayout.Space(5);
                 GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {mainBody.bodyName} solar days)"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
                 MakeNumberEditField("flightTime", ref flightTime, 0.1d, 0.1d, double.MaxValue);
-                if (StateChanged("flightTime", flightTime)) windowCache.Clear();
+                if (StateChanged("flightTime", flightTime))
+                {
+                    deltaVCache = null;
+                    windowCache.Clear();
+                }
                 double l = Math.Round(flightTime * mainBody.solarDayLength);
                 GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
 
@@ -1491,7 +1516,7 @@ namespace LunarTransferPlanner
                 {
                     GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
                     MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : 0d, targetOrbit.PeA / 1000d - 5d); // PeA updates every frame so we don't need to ask Principia
-                    if (StateChanged("parkingAltitude", parkingAltitude)) windowCache.Clear(); // not sure if this actually changes the calculations, but its good to be safe
+                    if (StateChanged("parkingAltitude", parkingAltitude)) deltaVCache = null;
                 }
 
                 GUILayout.Space(5);
@@ -1719,6 +1744,7 @@ namespace LunarTransferPlanner
             Tooltip.Instance?.RecordTooltip(id);
             GUI.DragWindow();
         }
+
         #endregion
         #region MakeSettingsWindow
 
@@ -2086,6 +2112,7 @@ namespace LunarTransferPlanner
 
             GUI.DragWindow();
         }
+
         #endregion
 
         // html tags rendered by ksp: <b> and </b>, <i> and </i>, (add more)

@@ -136,6 +136,7 @@ namespace LunarTransferPlanner
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
         bool altBehaviorNaN = false; // Return NaN when a global min can't be found, instead of returning the closest time
         bool useVesselPosition = true; // Use vessel position for latitude instead of launch site position, default is true as the KSC location isn't always the same as the actual launch site directly from the VAB
+        bool requireSurfaceVessel = false;
         bool inVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
         double latitude = 0d;
@@ -306,6 +307,7 @@ namespace LunarTransferPlanner
                 { "altBehaviorTimeLimit", altBehaviorTimeLimit },
                 { "altBehaviorNaN", altBehaviorNaN },
                 { "useVesselPosition", useVesselPosition },
+                { "requireSurfaceVessel", requireSurfaceVessel },
                 { "latitude", latitude },
                 { "longitude", longitude },
                 { "showAzimuth", showAzimuth },
@@ -335,13 +337,14 @@ namespace LunarTransferPlanner
 
             Dictionary<string, string> comments = new Dictionary<string, string>
             {
-                { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser, default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
+                { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser (and used in the phasing angle/time optimizer), default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
                 { "altBehaviorNaN", "Return a NaN when a global minimum cannot be found within the time limit, instead of returning the best local minimum" },
                 { "deltaVIterations", "Max amount of iteratons for the delta-V calculator, default of 16. Increase if you want more accuracy" },
                 { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 6000 (the Moon is about 3100). Increase if you're getting NaNs with very far-out moons/vessels" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
+                { "requireSurfaceVessel", "For useVesselPosition, require that the vessel be on the surface for the position to actually be considered" },
             };
 
             List<string> lines = File.ReadAllLines(SettingsPath).ToList();
@@ -379,6 +382,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref altBehaviorTimeLimit, settings, "altBehaviorTimeLimit");
                     Util.TryReadValue(ref altBehaviorNaN, settings, "altBehaviorNaN");
                     Util.TryReadValue(ref useVesselPosition, settings, "useVesselPosition");
+                    Util.TryReadValue(ref requireSurfaceVessel, settings, "requireSurfaceVessel");
                     Util.TryReadValue(ref latitude, settings, "latitude");
                     Util.TryReadValue(ref longitude, settings, "longitude");
                     Util.TryReadValue(ref showAzimuth, settings, "showAzimuth");
@@ -736,6 +740,8 @@ namespace LunarTransferPlanner
             return finalResult;
         }
 
+        // a cache for this would be strange, because the phasingAngle/Time for the launch now window is always changing
+        // although, it might make sense to implement the cache for the other two (non-changing) windows, and for the phasingAngle/Time optimizer
         (double phasingTime, double phasingAngle) EstimateTimeBeforeManeuver(Vector3d launchPos, double startTime)
         {
             //CelestialBody mainBody = target.referenceBody;
@@ -1423,7 +1429,8 @@ namespace LunarTransferPlanner
                 double dV = GetCachedDeltaV();
                 dayScale = mainBody.rotationPeriod / EarthSiderealDay;
 
-                inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
+                if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
+                else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
 
                 if (count > 1) // only display target selector screen if theres multiple targets
                 {
@@ -1815,7 +1822,7 @@ namespace LunarTransferPlanner
                 DrawLine();
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Use surface vessel position for latitude/longitude instead of launch site position", "Ignored if not in a vessel"));
+                GUILayout.Label(new GUIContent("Use surface vessel position for latitude/longitude instead of launch site position", $"Ignored if not in a {(requireSurfaceVessel ? "surface " : "")}vessel"));
                 GUILayout.FlexibleSpace();
                 BeginCenter();
                 GUI.enabled = inVessel;
@@ -2083,7 +2090,6 @@ namespace LunarTransferPlanner
                                     bestError = errorRatio;
                                     bestWindow = candidateWindow;
                                 }
-
                             }
                             else
                             {

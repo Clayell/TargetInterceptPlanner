@@ -3,11 +3,12 @@
 ### Provides a GUI for planning a transfer to a satellite (natural or artificial) from the surface of the planet on which you are currently on.
 
 Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive, and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
+Why use this over simply launching into the same LAN and Inclination as your target? This mod allows you to launch from any position on the planet, instead of being limited to a certain area on the planet. This also means that the trajectories this mod gives may not be in the same inclination of your target (because this might be possible to achieve from your launch location), so a plane change maneuver may be needed at the intersection point when rendezvousing with a vessel.
 
 #### Usecases include:
 * Launching to the Moon from any position on Earth
 * Launching to the Mun or Minmus from any position on Kerbin
-* Rendezvousing with a vessel in orbit
+* Rendezvousing with a vessel in any orbit (a plane change may be needed at the intersection point)
 
 #### Parameters that you can change:
 * The expected flight time to the satellite (the time from leaving your circular parking orbit to reaching the closest approach to your target)

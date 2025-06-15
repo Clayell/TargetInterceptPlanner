@@ -1643,7 +1643,7 @@ namespace LunarTransferPlanner
                 GUILayout.EndHorizontal();
 
                 GUILayout.Space(5);
-                GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // itll flash every second if we just do {nextLaunchETA}, we need absolute time
+                GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
 
                 if (expandParking1)
                 {
@@ -1660,7 +1660,7 @@ namespace LunarTransferPlanner
                     GUILayout.EndHorizontal();
 
                     GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100)); // itll flash every second if we just do {extraLaunchETA}, we need absolute time
+                    GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
 
                     if (expandParking2)
                     {

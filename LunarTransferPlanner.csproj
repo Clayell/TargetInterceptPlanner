@@ -84,6 +84,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AssemblyVersion.cs" />
     <Compile Include="KACWrapper.cs" />
     <Compile Include="LunarTransferPlanner.cs" />
     <Compile Include="PrincipiaWrapper.cs" />

@@ -1660,11 +1660,11 @@ namespace LunarTransferPlanner
                     GUILayout.EndHorizontal();
 
                     GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100)); // itll flash every second if we just do {extraLaunchETA}, we need absolute time
 
                     if (expandParking2)
                     {
-                        (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchETA, extraWindowNumber - 1); // itll flash every second if we just do {extraLaunchETA}, we need absolute time
+                        (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchETA, extraWindowNumber - 1);
                         ShowOrbitInfo(ref showPhasing, phaseTime2, phaseAngle2);
                     }
                 }

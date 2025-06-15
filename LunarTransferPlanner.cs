@@ -968,27 +968,9 @@ namespace LunarTransferPlanner
 
         private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double inclination, bool useAltBehavior, int windowNumber)
         {
-            //const double tolerance = 0.01;
+            // bad caches already removed by CheckWindowCache
 
             double offset = 3600d * dayScale; // 1 hour offset between windows, scale based on EarthSiderealDay
-
-            //// remove expired or mismatched entries
-            //for (int i = 0; i <= windowCache.Count - 1; i++)
-            //{
-            //    var entry = windowCache[i];
-            //    bool expired = currentUT > entry.absoluteLaunchTime;
-            //    bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody
-            //    bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
-            //    bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
-
-            //    if (expired || targetMismatch || posMismatch || inclinationMismatch)
-            //    {
-            //        Log($"Reseting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");
-            //        if (targetMismatch) Log($"Now targetting {target}"); // this will only trigger if the mainBody actually has targets(s)
-            //        windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
-            //        break;
-            //    }
-            //}
 
             // sort windowCache in ascending order of launch time
             windowCache.Sort((a, b) => a.absoluteLaunchTime.CompareTo(b.absoluteLaunchTime));
@@ -1665,7 +1647,7 @@ namespace LunarTransferPlanner
 
                 if (expandParking1)
                 {
-                    (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchUT, 0);
+                    (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchETA, 0);
                     ShowOrbitInfo(ref showPhasing, phaseTime1, phaseAngle1);
                 }
 
@@ -1682,7 +1664,7 @@ namespace LunarTransferPlanner
 
                     if (expandParking2)
                     {
-                        (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchUT, extraWindowNumber - 1); // itll flash every second if we just do {extraLaunchETA}, we need absolute time
+                        (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchETA, extraWindowNumber - 1); // itll flash every second if we just do {extraLaunchETA}, we need absolute time
                         ShowOrbitInfo(ref showPhasing, phaseTime2, phaseAngle2);
                     }
                 }

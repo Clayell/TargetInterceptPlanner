@@ -100,6 +100,7 @@ namespace LunarTransferPlanner
         const double tau = 2 * Math.PI;
         const double radToDeg = 180d / Math.PI; // unity only has floats
         const double degToRad = Math.PI / 180d; // unity only has floats
+        readonly double invphi = (Math.Sqrt(5) - 1) / 2; // positive conjugate of golden ratio
 
         Rect mainRect = new Rect(100, 100, -1, -1);
         Rect settingsRect = new Rect(100, 100, -1, -1);
@@ -163,10 +164,10 @@ namespace LunarTransferPlanner
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
-        int deltaVIterations = 16;
-        double maxDeltaVScaled = 6000d;
-        bool ranSearch = false;
-        int decimals = 2;
+        double deltaVTolerance = 0.1d; // Tolerance (in seconds) of how close the estimated flight time given by the delta-V should be to the expected flight time
+        double maxDeltaVScaled = 10000d; // Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body
+        bool ranSearch = false; // If we've ran the targetPhasingAngle/Time search
+        int decimals = 2; // Amount of decimal precision to display
         bool showPhasing = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
         int maxWindows = 100; // Maximum amount of extra windows that can be calculated
         bool isLowLatitude;
@@ -322,7 +323,7 @@ namespace LunarTransferPlanner
                 { "expandParking0", expandParking0 },
                 { "expandParking1", expandParking1 },
                 { "expandParking2", expandParking2 },
-                { "deltaVIterations", deltaVIterations },
+                { "deltaVTolerance", deltaVTolerance },
                 { "maxDeltaVScaled", maxDeltaVScaled },
                 { "showPhasing", showPhasing },
                 { "maxWindows", maxWindows },
@@ -343,8 +344,8 @@ namespace LunarTransferPlanner
                 { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser (and used in the phasing angle/time optimizer), default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
                 { "altBehaviorNaN", "Return a NaN when a global minimum cannot be found within the time limit, instead of returning the best local minimum" },
-                { "deltaVIterations", "Max amount of iteratons for the delta-V calculator, default of 16. Increase if you want more accuracy" },
-                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 6000 (the Moon is about 3100). Increase if you're getting NaNs with very far-out moons/vessels" },
+                { "deltaVTolerance", "Tolerance (in seconds) of how close the estimated flight time given by the delta-V should be to the expected flight time, default of 0.1 seconds. Decrease if you want more accuracy" },
+                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 10000 (the Moon is about 3100). Increase if you're getting NaNs with very far-out moons/vessels" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
                 { "requireSurfaceVessel", "For useVesselPosition, require that the vessel be on the surface (landed or splashed) for the position to actually be considered" },
@@ -397,7 +398,7 @@ namespace LunarTransferPlanner
                     Util.TryReadValue(ref expandParking0, settings, "expandParking0");
                     Util.TryReadValue(ref expandParking1, settings, "expandParking1");
                     Util.TryReadValue(ref expandParking2, settings, "expandParking2");
-                    Util.TryReadValue(ref deltaVIterations, settings, "deltaVIterations");
+                    Util.TryReadValue(ref deltaVTolerance, settings, "deltaVTolerance");
                     Util.TryReadValue(ref maxDeltaVScaled, settings, "maxDeltaVScaled");
                     Util.TryReadValue(ref showPhasing, settings, "showPhasing");
                     Util.TryReadValue(ref maxWindows, settings, "maxWindows");
@@ -570,7 +571,6 @@ namespace LunarTransferPlanner
             double maxTimeLimit = useAltBehavior ? mainBody.rotationPeriod * altBehaviorTimeLimit : mainBody.rotationPeriod; // expand to 30 days to search for global min
             const double epsilon = 1e-9;
             const double buffer = 1d;
-            double invphi = (Math.Sqrt(5) - 1) / 2; // positive conjugate of golden ratio
 
             double AzimuthError(double t)
             {
@@ -781,163 +781,198 @@ namespace LunarTransferPlanner
             return (phasingTime, phasingAngle);
         }
 
-        private (double time, double eccentricity) EstimateTimeAfterManeuver(double dV, bool movingTarget = true)
+        private (double time, double eccentricity) EstimateTimeAfterManeuver(double dV)
         {
-            double gravParameter = mainBody.gravParameter;
-
             // The formulas are from http://www.braeunig.us/space/orbmech.htm
 
-            // Assuming that the maneuver is performed from a circular orbit with altitude = parkingAltitude
-            // Radius of the orbit, including the radius of the mainBody
-            double r0 = mainBody.Radius + parkingAltitude * 1000;
+            double gravParameter = mainBody.gravParameter;
 
-            // Orbital velocity after the maneuver
-            double v0 = Math.Sqrt(gravParameter / r0) + dV;
+            // Radius of the circular orbit, including the radius of the mainBody
+            double r0 = mainBody.Radius + parkingAltitude * 1000d;
 
-            // Eccentricity after the maneuver (not the full formula, this is correct only at the periapsis)
-            double e = r0 * v0 * v0 / gravParameter - 1;
+            // Initial guess for the altitude of the target
+            double r1 = targetOrbit.getPositionAtUT(currentUT).magnitude;
+            //getRadiusAtUT doesnt seem to work at all, it just returns the same radius regardless of the UT given (probably the one at periapsis? idk)
 
-            // e == 1 would mean that the orbit is parabolic. No idea which formulas are applicable in this case.
-            // But it's so unlikely that I will just cheat and make such orbits slightly hyperbolic.
-            if (e == 1)
+            //Log($"initial r1: {r1}");
+
+            double previousT1 = 0d;
+            double t1 = double.MaxValue;
+            double e = 0d;
+
+            // The target is moving, so we need to know its altitude when the vessel arrives
+            // For that we need to know the flight time, so we can iterate the flight time until the error is small enough
+
+            while (Math.Abs(t1 - previousT1) >= deltaVTolerance)
             {
-                // Increase velocity after the maneuver by 0.1 m/s
-                v0 += 0.1;
-                // Recalculate eccentricity
+                previousT1 = t1;
+                double v0 = Math.Sqrt(gravParameter / r0) + dV;
                 e = r0 * v0 * v0 / gravParameter - 1;
+
+                // e == 1 would mean that the orbit is parabolic. No idea which formulas are applicable in this case.
+                // But it's so unlikely that I will just cheat and make such orbits slightly hyperbolic.
+                if (e == 1d)
+                {
+                    v0 += 0.1;
+                    e = r0 * v0 * v0 / gravParameter - 1;
+                }
+
+                // Semi-major axis after the maneuver
+                double a = 1d / (2d / r0 - v0 * v0 / gravParameter);
+
+                // True anomaly when the vessel reaches the altitude of the target (r1)
+                double trueAnomaly1 = Math.Acos((a * (1d - e * e) - r1) / (e * r1));
+
+                // Elliptic orbit after the maneuver
+                if (e < 1d)
+                {
+                    // Eccentric Anomaly when the vessel reaches the altitude of the target
+                    double eccAnomaly1 = Math.Acos((e + Math.Cos(trueAnomaly1)) / (1d + e * Math.Cos(trueAnomaly1)));
+                    double meanAnomaly1 = eccAnomaly1 - e * Math.Sin(eccAnomaly1);
+                    t1 = meanAnomaly1 / Math.Sqrt(gravParameter / Math.Pow(a, 3));
+                }
+                else // Hyperbolic orbit, Parabolic orbit (e == 1) should have been prevented earlier
+                {
+                    // Hyperbolic Eccentric Anomaly when the vessel reaches the altitude of the target
+                    // Can't use Math.Acosh, it does not seem to work in .NET 4
+                    double hEccAnomaly1 = Util.Acosh((e + Math.Cos(trueAnomaly1)) / (1d + e * Math.Cos(trueAnomaly1)));
+
+                    t1 = Math.Sqrt(Math.Pow(-a, 3) / gravParameter) * (e * Math.Sinh(hEccAnomaly1) - hEccAnomaly1);
+                }
+
+                // Update r1 using new estimate of flight time
+                r1 = targetOrbit.getPositionAtUT(currentUT + t1).magnitude;
+                if (double.IsNaN(r1)) return (double.NaN, double.NaN); // Target is unreachable from this deltaV
+
+                //Log($"looped r1: {r1}, t1: {t1}");
             }
 
-            // Semi-major axis after the maneuver
-            double a = 1 / (2 / r0 - v0 * v0 / gravParameter);
-
-
-            // Altitude of the target at the time of the maneuver 
-            double r1;
-
-            // The target is moving, so we need to know its altitude when the probe arrives
-            // For that we need to know the flight time, which is being calculated here in the first place
-            // It can be done in two steps: 
-            // 1) make a recursive call of EstimateTimeAfterManeuver to find out the approximate flight time,
-            //    based on the target's current altitude
-            // 2) use the target's altitude at this approximate time for further calculations
-            if (movingTarget)
-            {
-                // This is the "normal" call of EstimateTimeAfterManeuver from outside
-
-                // Making the recursive call of EstimateTimeAfterManeuver with movingTarget = false
-                (double approxFlightTime, _) = EstimateTimeAfterManeuver(dV, false);
-
-                // Altitude of the target at the approximate time of the maneuver 
-                r1 = targetOrbit.GetRadiusAtUT(currentUT + approxFlightTime);
-                // TODO, replace GetRadiusAtUT with something Principia-compatible if possible
-            }
-            else
-            {
-                // This is the recursive call of EstimateTimeAfterManeuver
-
-                // Altitude of the target now
-                r1 = targetOrbit.GetRadiusAtUT(currentUT);
-            }
-
-            // True anomaly when the vessel reaches the altitude of the target (r1)
-            double trueAnomaly1 = Math.Acos((a * (1 - e * e) - r1) / (e * r1));
-
-            // Time until the vessel reaches the altitude of the target (r1)
-            double t1 = 0;
-
-            // Elliptic orbit after the maneuver
-            if (e < 1)
-            {
-                // Eccentric Anomaly when the vessel reaches the altitude of the target
-                double eccAnomaly1 = Math.Acos((e + Math.Cos(trueAnomaly1)) / (1 + e * Math.Cos(trueAnomaly1)));
-                double meanAnomaly1 = eccAnomaly1 - e * Math.Sin(eccAnomaly1);
-                t1 = meanAnomaly1 / Math.Sqrt(gravParameter / Math.Pow(a, 3));
-            }
-            else if (e > 1) // Hyperbolic orbit, Parabolic orbit (e == 1) has been prevented earlier
-            {
-                // Hyperbolic Eccentric Anomaly when the vessel reaches the altitude of the target
-                // Can't use Math.Acosh, it does not seem to work in .NET 4
-                double hEccAnomaly1 = Util.Acosh((e + Math.Cos(trueAnomaly1)) / (1 + e * Math.Cos(trueAnomaly1)));
-
-                t1 = Math.Sqrt(Math.Pow(-a, 3) / gravParameter) * (e * Math.Sinh(hEccAnomaly1) - hEccAnomaly1);
-            }
+            //Log($"r1: {r1}");
 
             return (t1, e);
         }
 
         (double dV, double eccentricity) EstimateDV()
         {
-            double dV = double.NaN;
             //CelestialBody mainBody = target.referenceBody;
 
             // Search in this range
             //double minPossibleDV = 2500 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 766 for Kerbin
             const double minPossibleDV = 1d; // no need to have an actual min for dV, especially for vessels
             double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 1840 for Kerbin
-            const double tolerance = 0.001;
+            double expectedFlightTime = flightTime * mainBody.solarDayLength;
+            const double epsilon = 1e-9;
 
             // Current search range, will be gradually narrowed
             double lowerBound = minPossibleDV;
             double upperBound = maxPossibleDV;
 
-            double eccentricity = double.NaN;
-
-            // Max. 16 (default) attempts, then return whatever value was found
-            for (int i = 0; i < deltaVIterations; i++)
+            double FlightTimeError(double candidateDV)
             {
-                // guess dV
-                dV = (lowerBound + upperBound) / 2;
+                double estimatedFlightTime;
+                (estimatedFlightTime, _) = EstimateTimeAfterManeuver(candidateDV);
 
-                // calculate flight time for this dV
-                double flightTimeAfterTLI;
-                (flightTimeAfterTLI, eccentricity) = EstimateTimeAfterManeuver(dV);
-                //(double flightTimeBeforeTLI, _) = EstimateTimeBeforeManeuver(target, launchPos, 0d);
-                //double estimatedFlightTime = flightTimeBeforeTLI + flightTimeAfterTLI; // the inputted flight time is for after the maneuver
-                double expectedFlightTime = flightTime * mainBody.solarDayLength;
+                if (double.IsNaN(estimatedFlightTime))
+                    return double.MaxValue; // invalidate bad guess
 
-                // Log(i + " " + dV + " " + flightTime + " " + flightTimeBeforeTLI + " " + flightTimeAfterTLI + " " + estimatedFlightTime);
+                return Math.Abs(estimatedFlightTime - expectedFlightTime);
+            }
 
-                if (Double.IsNaN(flightTimeAfterTLI))
+            //Log($"starting run");
+
+            double left = upperBound - invphi * (upperBound - lowerBound);
+            double right = lowerBound + invphi * (upperBound - lowerBound);
+
+            double eLeft = FlightTimeError(left);
+            double eRight = FlightTimeError(right);
+
+            while (Math.Abs(upperBound - lowerBound) > deltaVTolerance)
+            {
+                if (eLeft < eRight)
                 {
-                    // dV is so low that target is unreachable, set lower bound to current guess and try again
-                    lowerBound = dV;
-                    continue;
-                }
-                else if (flightTimeAfterTLI > (expectedFlightTime + 5d))
-                {
-                    // dV is too low, set lower bound to current guess and try again
-                    lowerBound = dV;
-                    continue;
-                }
-                else if (flightTimeAfterTLI < (expectedFlightTime - 5d))
-                {
-                    // dV is too high, set upper bound to current guess and try again
-                    upperBound = dV;
-                    continue;
+                    upperBound = right;
+                    right = left;
+                    eRight = eLeft;
+                    left = upperBound - invphi * (upperBound - lowerBound);
+                    eLeft = FlightTimeError(left);
                 }
                 else
                 {
-                    // correct flight time with this dV
-                    break;
+                    lowerBound = left;
+                    left = right;
+                    eLeft = eRight;
+                    right = lowerBound + invphi * (upperBound - lowerBound);
+                    eRight = FlightTimeError(right);
                 }
             }
 
-            if (Math.Abs(dV - minPossibleDV) <= tolerance * Math.Abs(minPossibleDV) || Math.Abs(dV - maxPossibleDV) <= tolerance * Math.Abs(maxPossibleDV))
+            double dV = (lowerBound + upperBound) / 2;
+            (_, double eccentricity) = EstimateTimeAfterManeuver(dV);
+
+
+            //int iterations = 0;
+
+            //while (iterations++ < 100)
+            //{
+            //    // guess dV
+            //    dV = (lowerBound + upperBound) / 2;
+
+            //    // calculate flight time for this dV
+            //    double estimatedFlightTime;
+            //    //(estimatedFlightTime, eccentricity) = EstimateTimeAfterManeuver(dV);
+            //    //(double estimatedFlightTimeTest, _) = EstimateTimeAfterManeuverTest(dV);
+            //    (estimatedFlightTime, eccentricity) = EstimateTimeAfterManeuver(dV);
+            //    double expectedFlightTime = flightTime * mainBody.solarDayLength;
+
+            //    Log($"dV: {dV}, estimatedFlightTime: {estimatedFlightTime}, expectedFlightTime: {expectedFlightTime}");
+
+            //    if (Double.IsNaN(estimatedFlightTime))
+            //    {
+            //        // dV is so low that target is unreachable, set lower bound to current guess and try again
+            //        lowerBound = dV;
+            //        continue;
+            //    }
+            //    else if (estimatedFlightTime > (expectedFlightTime + deltaVTolerance))
+            //    {
+            //        // dV is too low, set lower bound to current guess and try again
+            //        lowerBound = dV;
+            //        continue;
+            //    }
+            //    else if (estimatedFlightTime < (expectedFlightTime - deltaVTolerance))
+            //    {
+            //        // dV is too high, set upper bound to current guess and try again
+            //        upperBound = dV;
+            //        continue;
+            //    }
+            //    else
+            //    {
+            //        // correct flight time with this dV
+            //        break;
+            //    }
+            //}
+
+
+
+
+            if (Math.Abs(dV - minPossibleDV) <= epsilon * Math.Abs(minPossibleDV) || Math.Abs(dV - maxPossibleDV) <= epsilon * Math.Abs(maxPossibleDV))
             {
                 // dV is incorrect, the correct value is outside the initial search range
                 dV = double.NaN;
+                eccentricity = double.NaN;
             }
+
+            //Log($"Final dV: {dV}, eccentricity: {eccentricity}");
 
             return (dV, eccentricity);
         }
 
         #endregion
-        #region Caching Methods
+            #region Caching Methods
 
-        // if the factor that should trigger a cache reset can only be changed by the user in one location, then its fine to use StateChanged and then clear the cache
-        // StateChanged checks if something is exactly equal to the previous value, which is fine for a value that only the user can change (especially as the user will want the value to update regardless of how small their changes are, which would make a tolerance not make sense)
-        // if the factor can be changed by the game itself, or can be changed by the user in multiple ways (in the case of the target), then put the value in the cache and check in the method if its crossed the tolerance
-        // (the reset in special warp is a unique case and should be kept as such)
+            // if the factor that should trigger a cache reset can only be changed by the user in one location, then its fine to use StateChanged and then clear the cache
+            // StateChanged checks if something is exactly equal to the previous value, which is fine for a value that only the user can change (especially as the user will want the value to update regardless of how small their changes are, which would make a tolerance not make sense)
+            // if the factor can be changed by the game itself, or can be changed by the user in multiple ways (in the case of the target), then put the value in the cache and check in the method if its crossed the tolerance
+            // (the reset in special warp is a unique case and should be kept as such)
 
         private void CheckWindowCache(double latitude, double longitude, double inclination)
         {
@@ -949,12 +984,13 @@ namespace LunarTransferPlanner
                 var entry = windowCache[i];
                 bool expired = currentUT > entry.absoluteLaunchTime;
                 bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody
+                //Log($"oldTarget: {entry.target}, newTarget: {target}");
                 bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
                 bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch)
                 {
-                    Log($"Reseting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");
+                    //Log($"Reseting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");
                     if (targetMismatch) Log($"Now targetting {target}"); // this will only trigger if the mainBody actually has targets(s)
                     windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
                     launchOrbitCache.Clear();
@@ -1080,7 +1116,7 @@ namespace LunarTransferPlanner
             {
                 if (deltaVCache.Value.target != target)
                 {
-                    Log($"Reseting DeltaV Cache due to change of target. Old values: target: {deltaVCache.Value.target}, delta: {deltaVCache.Value.deltaV}");
+                    //Log($"Reseting DeltaV Cache due to change of target. Old values: target: {deltaVCache.Value.target}, deltaV: {deltaVCache.Value.deltaV}");
                     (double dV, double eccentricity) = EstimateDV();
                     deltaVCache = (target, dV, eccentricity);
                 }

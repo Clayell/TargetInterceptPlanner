@@ -183,7 +183,7 @@ namespace LunarTransferPlanner
         readonly List<(object target, double latitude, double longitude, double inclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
         readonly List<(double phasingTime, double phasingAngle, int windowNumber)> phasingCache = new List<(double, double, int)>();
-        (object target, double deltaV)? deltaVCache = null;
+        (object target, double deltaV, double eccentricity)? deltaVCache = null;
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
@@ -528,7 +528,7 @@ namespace LunarTransferPlanner
 
         OrbitData CalcOrbitForTime(Vector3d launchPos, double startTime)
         {
-            // Form a plane with the launch site, moon and earth centre in, use this as the orbital plane for launch
+            // Form a plane with the launch site, target and mainBody centre, use this as the orbital plane for launch
             //CelestialBody mainBody = target.referenceBody;
             Vector3d MainPos = mainBody.position;
             Vector3d MainAxis = mainBody.angularVelocity.normalized;
@@ -759,7 +759,7 @@ namespace LunarTransferPlanner
 
             Vector3d upVector = QuaternionD.AngleAxis(startTime * 360d / mainBody.rotationPeriod, MainAxis) * ((launchPos - MainPos).normalized * orbitRadius).normalized; // use rotationPeriod for sidereal time
 
-            // Maneuver takes place at the point of the orbit that is opposite to the future position of the Moon
+            // Maneuver takes place at the point of the orbit that is opposite to the future position of the target
             Vector3d maneuverUpVector = (MainPos - targetPos).normalized;
 
             // KSP lies about having QuaternionD.FromToRotation, EulerAngles, and Euler (https://github.com/KSPModdingLibs/KSPCommunityFixes/issues/316)
@@ -768,7 +768,7 @@ namespace LunarTransferPlanner
             double phasingAngle = Math.Acos(Util.Clamp(dot, -1d, 1d)) * radToDeg;
 
             if (Vector3d.Dot(rotationAxis, MainAxis) < 0)
-            { // rotationAxis is pointing roughly opposite to Earth rotation axis, therefore rotation is retrograde
+            { // rotationAxis is pointing roughly opposite to mainBody rotation axis, therefore rotation is retrograde
                 phasingAngle = 360d - phasingAngle;
             }
 
@@ -781,15 +781,14 @@ namespace LunarTransferPlanner
             return (phasingTime, phasingAngle);
         }
 
-        private double EstimateTimeAfterManeuver(double dV, bool movingTarget = true)
+        private (double time, double eccentricity) EstimateTimeAfterManeuver(double dV, bool movingTarget = true)
         {
-            //CelestialBody mainBody = target.referenceBody;
             double gravParameter = mainBody.gravParameter;
 
             // The formulas are from http://www.braeunig.us/space/orbmech.htm
 
             // Assuming that the maneuver is performed from a circular orbit with altitude = parkingAltitude
-            // Radius of the orbit, including the radius of the Earth
+            // Radius of the orbit, including the radius of the mainBody
             double r0 = mainBody.Radius + parkingAltitude * 1000;
 
             // Orbital velocity after the maneuver
@@ -811,23 +810,24 @@ namespace LunarTransferPlanner
             // Semi-major axis after the maneuver
             double a = 1 / (2 / r0 - v0 * v0 / gravParameter);
 
-            // Altitude of the Moon at the time of the maneuver 
+
+            // Altitude of the target at the time of the maneuver 
             double r1;
 
-            // The Moon is moving, so we need to know its altitude when the probe arrives
+            // The target is moving, so we need to know its altitude when the probe arrives
             // For that we need to know the flight time, which is being calculated here in the first place
             // It can be done in two steps: 
             // 1) make a recursive call of EstimateTimeAfterManeuver to find out the approximate flight time,
-            //    based on the Moon's current altitude
-            // 2) use the Moon's altitude at this approximate time for further calculations
+            //    based on the target's current altitude
+            // 2) use the target's altitude at this approximate time for further calculations
             if (movingTarget)
             {
                 // This is the "normal" call of EstimateTimeAfterManeuver from outside
 
                 // Making the recursive call of EstimateTimeAfterManeuver with movingTarget = false
-                double approxFlightTime = EstimateTimeAfterManeuver(dV, false);
+                (double approxFlightTime, _) = EstimateTimeAfterManeuver(dV, false);
 
-                // Altitude of the Moon at the approximate time of the maneuver 
+                // Altitude of the target at the approximate time of the maneuver 
                 r1 = targetOrbit.GetRadiusAtUT(currentUT + approxFlightTime);
                 // TODO, replace GetRadiusAtUT with something Principia-compatible if possible
             }
@@ -835,41 +835,37 @@ namespace LunarTransferPlanner
             {
                 // This is the recursive call of EstimateTimeAfterManeuver
 
-                // Altitude of the Moon now
+                // Altitude of the target now
                 r1 = targetOrbit.GetRadiusAtUT(currentUT);
             }
 
-            // True anomaly when the vessel reaches the altitude of the Moon (r1)
+            // True anomaly when the vessel reaches the altitude of the target (r1)
             double trueAnomaly1 = Math.Acos((a * (1 - e * e) - r1) / (e * r1));
 
-            // Time until the vessel reaches the altitude of the Moon (r1)
+            // Time until the vessel reaches the position of the target
             double t1 = 0;
 
             // Elliptic orbit after the maneuver
             if (e < 1)
             {
-                // Eccentric Anomaly when the vessel reaches the altitude of the Moon
+                // Eccentric Anomaly when the vessel reaches the position of the target
                 double eccAnomaly1 = Math.Acos((e + Math.Cos(trueAnomaly1)) / (1 + e * Math.Cos(trueAnomaly1)));
                 double meanAnomaly1 = eccAnomaly1 - e * Math.Sin(eccAnomaly1);
                 t1 = meanAnomaly1 / Math.Sqrt(gravParameter / Math.Pow(a, 3));
             }
-
-            // Parabolic orbit (e == 1) has been prevented earlier
-
-            // Hyperbolic orbit
-            if (e > 1)
+            else if (e > 1) // Hyperbolic orbit, Parabolic orbit (e == 1) has been prevented earlier
             {
-                // Hyperbolic Eccentric Anomaly when the vessel reaches the altitude of the Moon
+                // Hyperbolic Eccentric Anomaly when the vessel reaches the position of the target
                 // Can't use Math.Acosh, it does not seem to work in .NET 4
                 double hEccAnomaly1 = Util.Acosh((e + Math.Cos(trueAnomaly1)) / (1 + e * Math.Cos(trueAnomaly1)));
 
                 t1 = Math.Sqrt(Math.Pow(-a, 3) / gravParameter) * (e * Math.Sinh(hEccAnomaly1) - hEccAnomaly1);
             }
 
-            return t1;
+            return (t1, e);
         }
 
-        double EstimateDV()
+        (double dV, double eccentricity) EstimateDV()
         {
             double dV = double.NaN;
             //CelestialBody mainBody = target.referenceBody;
@@ -884,6 +880,8 @@ namespace LunarTransferPlanner
             double lowerBound = minPossibleDV;
             double upperBound = maxPossibleDV;
 
+            double eccentricity = double.NaN;
+
             // Max. 16 (default) attempts, then return whatever value was found
             for (int i = 0; i < deltaVIterations; i++)
             {
@@ -891,7 +889,8 @@ namespace LunarTransferPlanner
                 dV = (lowerBound + upperBound) / 2;
 
                 // calculate flight time for this dV
-                double flightTimeAfterTLI = EstimateTimeAfterManeuver(dV);
+                double flightTimeAfterTLI;
+                (flightTimeAfterTLI, eccentricity) = EstimateTimeAfterManeuver(dV);
                 //(double flightTimeBeforeTLI, _) = EstimateTimeBeforeManeuver(target, launchPos, 0d);
                 //double estimatedFlightTime = flightTimeBeforeTLI + flightTimeAfterTLI; // the inputted flight time is for after the maneuver
                 double expectedFlightTime = flightTime * mainBody.solarDayLength;
@@ -929,7 +928,7 @@ namespace LunarTransferPlanner
                 dV = double.NaN;
             }
 
-            return dV;
+            return (dV, eccentricity);
         }
 
         #endregion
@@ -1070,24 +1069,24 @@ namespace LunarTransferPlanner
             }
         }
 
-        private double GetCachedDeltaV()
+        private (double dV, double eccentricity) GetCachedDeltaV()
         {
             if (!deltaVCache.HasValue)
             {
-                double dV = EstimateDV();
-                deltaVCache = (target, dV);
+                (double dV, double eccentricity) = EstimateDV();
+                deltaVCache = (target, dV, eccentricity);
             }
             else
             {
                 if (deltaVCache.Value.target != target)
                 {
                     Log($"Reseting DeltaV Cache due to change of target. Old values: target: {deltaVCache.Value.target}, delta: {deltaVCache.Value.deltaV}");
-                    double dV = EstimateDV();
-                    deltaVCache = (target, dV);
+                    (double dV, double eccentricity) = EstimateDV();
+                    deltaVCache = (target, dV, eccentricity);
                 }
             }
 
-            return deltaVCache.Value.deltaV;
+            return (deltaVCache.Value.deltaV, deltaVCache.Value.eccentricity);
         }
 
         #endregion
@@ -1472,7 +1471,7 @@ namespace LunarTransferPlanner
                 inclination = GetTargetInclination(targetOrbit);
                 isLowLatitude = Math.Abs(latitude) <= inclination;
                 //CelestialBody mainBody = target.referenceBody;
-                double dV = GetCachedDeltaV();
+                (double dV, double eccentricity) = GetCachedDeltaV();
                 dayScale = mainBody.rotationPeriod / EarthSiderealDay;
 
                 if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
@@ -1568,7 +1567,7 @@ namespace LunarTransferPlanner
                 GUILayout.EndHorizontal();
 
                 GUILayout.Space(5);
-                GUILayout.Box(new GUIContent($"{FormatDecimals(dV)} m/s", $"{FormatDecimals(dV / 1000d, 3)} km/s"), GUILayout.MinWidth(100));
+                GUILayout.Box(new GUIContent($"{FormatDecimals(dV)} m/s", $"Eccentricity of {(eccentricity > 1 ? "hyperbolic" : "elliptical")} trajectory: {FormatDecimals(eccentricity)}"), GUILayout.MinWidth(100));
 
                 if (expandAltitude)
                 {

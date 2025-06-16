@@ -842,20 +842,20 @@ namespace LunarTransferPlanner
             // True anomaly when the vessel reaches the altitude of the target (r1)
             double trueAnomaly1 = Math.Acos((a * (1 - e * e) - r1) / (e * r1));
 
-            // Time until the vessel reaches the position of the target
+            // Time until the vessel reaches the altitude of the target (r1)
             double t1 = 0;
 
             // Elliptic orbit after the maneuver
             if (e < 1)
             {
-                // Eccentric Anomaly when the vessel reaches the position of the target
+                // Eccentric Anomaly when the vessel reaches the altitude of the target
                 double eccAnomaly1 = Math.Acos((e + Math.Cos(trueAnomaly1)) / (1 + e * Math.Cos(trueAnomaly1)));
                 double meanAnomaly1 = eccAnomaly1 - e * Math.Sin(eccAnomaly1);
                 t1 = meanAnomaly1 / Math.Sqrt(gravParameter / Math.Pow(a, 3));
             }
             else if (e > 1) // Hyperbolic orbit, Parabolic orbit (e == 1) has been prevented earlier
             {
-                // Hyperbolic Eccentric Anomaly when the vessel reaches the position of the target
+                // Hyperbolic Eccentric Anomaly when the vessel reaches the altitude of the target
                 // Can't use Math.Acosh, it does not seem to work in .NET 4
                 double hEccAnomaly1 = Util.Acosh((e + Math.Cos(trueAnomaly1)) / (1 + e * Math.Cos(trueAnomaly1)));
 

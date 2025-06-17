@@ -572,8 +572,9 @@ namespace LunarTransferPlanner
         {
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
-            const double tolerance = 0.01;
             const double epsilon = 1e-9;
+            const double tolerance = 0.01;
+            const double buffer = 1d;
 
             if (Math.Abs(targetOrbit.period - mainBody.rotationPeriod) < epsilon)
             {
@@ -584,7 +585,6 @@ namespace LunarTransferPlanner
             double coarseStep = 1200d * dayScale;
             double alignmentMultiplier = targetOrbit.period / Math.Abs(targetOrbit.period - mainBody.rotationPeriod); // this is the number of rotations per alignment cycle, it approaches infinity as the orbital period and rotation period converge
             double maxTimeLimit = mainBody.rotationPeriod * (useAltBehavior ? altBehaviorTimeLimit : 1d) * alignmentMultiplier; // expand to 30 days (altBehaviorTimeLimit) to search for global min
-            const double buffer = 1d;
 
             //Log($"beginning, coarseStep: {coarseStep}, maxTimeLimit: {maxTimeLimit}, startTime: {startTime}");
 

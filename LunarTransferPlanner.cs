@@ -207,8 +207,8 @@ namespace LunarTransferPlanner
                     ApplicationLauncher.AppScenes.ALWAYS & ~ApplicationLauncher.AppScenes.MAINMENU, // all but main menu
                     "LTP",
                     "LTP_Button",
-                    "LunarTransferPlanner/PluginData/Icons/button-64",
-                    "LunarTransferPlanner/PluginData/Icons/button-24",
+                    "LunarTransferPlanner/PluginData/ToolbarIcons/button-64",
+                    "LunarTransferPlanner/PluginData/ToolbarIcons/button-24",
                     "Lunar Transfer Planner"
                 );
             }
@@ -226,8 +226,8 @@ namespace LunarTransferPlanner
             skin.textField.margin = new RectOffset(3, 1, 1, 1);
             skin.textField.padding = new RectOffset(4, 2, 1, 0);
 
-            gearBlack = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearBlack", false);
-            gearGreen = GameDatabase.Instance.GetTexture("LunarTransferPlanner/gearGreen", false);
+            gearBlack = GameDatabase.Instance.GetTexture("LunarTransferPlanner/Icons/gearBlack", false);
+            gearGreen = GameDatabase.Instance.GetTexture("LunarTransferPlanner/Icons/gearGreen", false);
 
             LoadSettings();
 

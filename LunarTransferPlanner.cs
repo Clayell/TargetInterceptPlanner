@@ -941,7 +941,7 @@ namespace LunarTransferPlanner
 
             if (Math.Abs(dV - minPossibleDV) <= epsilon * Math.Abs(minPossibleDV) || Math.Abs(dV - maxPossibleDV) <= epsilon * Math.Abs(maxPossibleDV))
             {
-                // dV is incorrect, the correct value is outside the initial search range
+                Log($"dV is incorrect, the correct value is outside the initial search range");
                 dV = double.NaN;
                 eccentricity = double.NaN;
             }
@@ -1024,7 +1024,7 @@ namespace LunarTransferPlanner
 
                 if (double.IsNaN(newLaunchTime))
                 {
-                    Log("LaunchTime is NaN, exiting");
+                    //Log("LaunchTime is NaN, exiting"); // keep this log inside EstimateLaunchTime
                     return double.NaN;
                 }
 

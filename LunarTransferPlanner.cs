@@ -1680,7 +1680,7 @@ namespace LunarTransferPlanner
                     ShowOrbitInfo(ref showPhasing, phaseTime0, phaseAngle0);
                 }
 
-                string windowTooltip = !isLowLatitude && Math.Abs(targetLaunchAzimuth - 90d) < 0.01 ?
+                string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(targetLaunchAzimuth - 90d) < 0.01 ?
                     "Launch Easterly at this time to get into the target parking orbit" :
                     "Launch at this time at this inclination to get into the target parking orbit";
 
@@ -1883,7 +1883,7 @@ namespace LunarTransferPlanner
             windowWidth = 500;
 
             BeginCenter(false);
-            GUILayout.Label($"Hover over select text for tooltips. Current UT: {FormatDecimals(currentUT)}s", GUILayout.Width(windowWidth)); // this sets the width of the window
+            GUILayout.Label($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}s</b>", GUILayout.Width(windowWidth)); // this sets the width of the window
             EndCenter(false);
 
             GUILayout.BeginHorizontal();

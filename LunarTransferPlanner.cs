@@ -572,15 +572,25 @@ namespace LunarTransferPlanner
         {
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
+            if (targetOrbit.period - mainBody.rotationPeriod == 0)
+            {
+                Log("Target orbital period exactly equals the sidereal day length, so a window cannot be found. Returning NaN.");
+                return double.NaN;
+            }
+
             const double tolerance = 0.01;
             double coarseStep = 1200d * dayScale;
-            double maxTimeLimit = useAltBehavior ? mainBody.rotationPeriod * altBehaviorTimeLimit : mainBody.rotationPeriod; // expand to 30 days to search for global min
+            double alignmentMultiplier = targetOrbit.period / Math.Abs(targetOrbit.period - mainBody.rotationPeriod); // this is the number of rotations per alignment cycle, it approaches infinity as the orbital period and rotation period converge
+            double maxTimeLimit = mainBody.rotationPeriod * (useAltBehavior ? altBehaviorTimeLimit : 1d) * alignmentMultiplier; // expand to 30 days (altBehaviorTimeLimit) to search for global min
             const double epsilon = 1e-9;
             const double buffer = 1d;
+
+            //Log($"beginning, coarseStep: {coarseStep}, maxTimeLimit: {maxTimeLimit}, startTime: {startTime}");
 
             double AzimuthError(double t)
             {
                 double az = GetCachedLaunchOrbit(launchPos, t).azimuth;
+                //Log($"az: {az}");
                 return Math.Abs(((az - targetLaunchAzimuth + 540d) % 360d) - 180d);
             }
             // dont turn this into InclinationError, CalcOrbitForTime is limited in which inclinations it can return, but it can return 0 to 360 of azimuth
@@ -593,6 +603,8 @@ namespace LunarTransferPlanner
 
                 double eLeft = AzimuthError(left);
                 double eRight = AzimuthError(right);
+
+                //Log($"lowerBound: {lowerBound}, upperBound: {upperBound}, left: {left}, right: {right}, eLeft: {eLeft}, eRight: {eRight}");
 
                 while (Math.Abs(left - right) > epsilon)
                 {
@@ -615,6 +627,8 @@ namespace LunarTransferPlanner
                     }
                 }
 
+                //Log($"(upperBound + lowerBound) / 2d: {(upperBound + lowerBound) / 2d}");
+
                 return (upperBound + lowerBound) / 2d;
             }
 
@@ -630,6 +644,7 @@ namespace LunarTransferPlanner
                     double refinedTime = EstimateLaunchTime(launchPos, candidateTime, false); // recursive call with useAltBehavior = false
                     if (double.IsNaN(refinedTime)) // no min found within normal time limit to analyze
                     {
+                        Log("No minimum found within normal time limit to analyze!");
                         return double.NaN;
                     }
 
@@ -641,7 +656,7 @@ namespace LunarTransferPlanner
                     }
                     else // global min not found yet
                     {
-                        candidateTime = refinedTime + 3600d * dayScale;
+                        candidateTime = refinedTime + 3600d * dayScale; // offset
 
                         if (refinedError < smallestError)
                         {
@@ -671,22 +686,17 @@ namespace LunarTransferPlanner
             double e0 = AzimuthError(t0);
             double e1 = AzimuthError(t1);
 
-            if (e0 < e1) // either increasing slope, or t0 and t1 are on opposite sides of a min
+            if (e0 < e1) // either increasing slope, or t0 and t1 are on opposite sides of a min (and t0 has a lower error)
             {
                 double refinedTime = GoldenSectionSearch(t0, t1);
 
-                if (refinedTime > startTime + tolerance) // t0 and t1 are on opposite sides of a min
+                if (refinedTime > t0 + tolerance) // t0 and t1 are on opposite sides of a min (and t0 has a lower error)
                 {
-                    //Log($"launchTime found at {refinedTime}");
+                    Log($"launchTime found at {refinedTime}");
                     return refinedTime;
-                }
+                } // else, t0 (startTime) is the 'local' min, so this is an increasing slope
 
                 //Log("Increasing Slope");
-
-                t0 = startTime;
-                t1 = t0 + coarseStep;
-                e0 = AzimuthError(t0);
-                e1 = AzimuthError(t1);
 
                 while (e0 <= e1) // increasing slope (we just passed a min)
                 {
@@ -696,6 +706,7 @@ namespace LunarTransferPlanner
                     e1 = AzimuthError(t1);
                     if (t0 >= startTime + maxTimeLimit) // no min found within time limit
                     {
+                        Log("No minimum found within time limit (increasing slope)");
                         return double.NaN;
                     }
                 }
@@ -726,8 +737,11 @@ namespace LunarTransferPlanner
                 t1 += coarseStep;
                 e1 = AzimuthError(t1);
 
+                //Log($"t0: {t0}, e0: {e0}, t1: {t1}, e1: {e1}");
+
                 if (t0 >= startTime + maxTimeLimit) // no min found within time limit
                 {
+                    Log("No minimum found within time limit! (decreasing slope)");
                     return double.NaN;
                 }
 
@@ -740,12 +754,12 @@ namespace LunarTransferPlanner
                 }
             }
 
-            double fineT0 = Math.Max(startTime, tBest - coarseStep);
+            double fineT0 = Math.Max(startTime, tBest - coarseStep); // we need to back a step, in case we skipped over the min
             double fineT1 = Math.Min(startTime + maxTimeLimit, tBest + coarseStep);
 
             double finalResult = GoldenSectionSearch(fineT0, fineT1);
 
-            //Log($"launchTime found at {finalResult}");
+            Log($"launchTime found at {finalResult}");
 
             return finalResult;
         }
@@ -948,7 +962,7 @@ namespace LunarTransferPlanner
             {
                 var entry = windowCache[i];
                 bool expired = currentUT > entry.absoluteLaunchTime;
-                bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody
+                bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody, assuming we dont get restarted due to a scene switch
                 //Log($"oldTarget: {entry.target}, newTarget: {target}");
                 bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
                 bool altitudeMismatch = Math.Abs(entry.targetAltitude - targetAltitude) >= tolerance * 100d * 1000d; // kilometer
@@ -1733,7 +1747,7 @@ namespace LunarTransferPlanner
                 }
 
                 GUILayout.BeginHorizontal();
-                GUI.enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING);
+                GUI.enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING); // targeting will become "disabled" when the game isnt in focus or paused, but its not actually disabled. not sure how i can fix this, its just visual tho
                 bool targetPressed = GUILayout.Button(new GUIContent(targetSet ? "Unset Target" : TextOverspill($"Target {targetName}", 140, GUI.skin.button), $"Target {targetName}{(InputLockManager.IsUnlocked(ControlTypes.TARGETING) ? "" : "\nTarget Switching is Locked")}"), GUILayout.MinWidth(140));
                 GUI.enabled = true;
                 ShowSettings();

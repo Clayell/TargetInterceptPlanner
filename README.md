@@ -1,6 +1,6 @@
 # Lunar Transfer Planner
 
-### Provides a GUI for planning a transfer to a satellite (natural or artificial) from the surface of the planet on which you are currently on.
+### Provides a GUI for planning a transfer to a satellite (natural or artificial) from the surface of the planet (or moon, gas giant, star, etc.) on which you are currently on.
 
 Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive, and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
 
@@ -26,6 +26,8 @@ Why use this over simply launching into the same LAN and Inclination as your tar
     * Can also show the phasing angle from the current position
 
 Keep in mind that this mod assumes you can instantly get into the parking orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit.
+
+Note: As the orbital period of the target approaches the sidereal day length of the planet, the time to the next window approaches infinity. It is impossible to find a launch window for a target in a synchronous orbit. Sorry!
 
 Forum Thread: N/A
 

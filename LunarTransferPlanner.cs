@@ -131,7 +131,7 @@ namespace LunarTransferPlanner
         double solarDayLength;
         double targetAltitude;
         bool useHomeSolarDay = true;
-        int errorState = 0;
+        int errorStateTargets = 0;
         bool showSettings = false; // Show settings UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
         double flightTime = 4.0d; // Desired flight time after maneuver, in solar days of homeBody or mainBody (depending on useHomeSolarDay)
@@ -168,7 +168,7 @@ namespace LunarTransferPlanner
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
         double deltaVTolerance = 0.01d; // Tolerance (in seconds) of how close the estimated flight time given by the delta-V should be to the expected flight time
-        double maxDeltaVScaled = 10000d; // Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body
+        double maxDeltaVScaled = 100000d; // Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body
         bool ranSearch = false; // If we've ran the targetPhasingAngle/Time search
         int decimals = 2; // Amount of decimal precision to display
         bool showPhasing = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
@@ -187,8 +187,7 @@ namespace LunarTransferPlanner
         readonly List<(object target, double targetAltitude, double latitude, double longitude, double inclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
         readonly List<(double phasingTime, double phasingAngle, int windowNumber)> phasingCache = new List<(double, double, int)>();
-        (object target, double targetAltitude, double deltaV, double eccentricity)? deltaVCache = null;
-        // TODO, when increasing flight time, eventually we'll hit a minimum deltaV that wont decrease any further (for a given target and parking altitude). this should be told to the user
+        (object target, double targetAltitude, double deltaV, double eccentricity, int errorStateDV)? deltaVCache = null;
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
@@ -350,7 +349,7 @@ namespace LunarTransferPlanner
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
                 { "altBehaviorNaN", "Return a NaN when a global minimum cannot be found within the time limit, instead of returning the best local minimum" },
                 { "deltaVTolerance", "Tolerance (in seconds) of how close the estimated flight time given by the delta-V should be to the expected flight time, default of 0.01 seconds. Decrease if you want more accuracy" },
-                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 10000 (the Moon is about 3100). Increase if you're getting NaNs with very far-out moons/vessels" },
+                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 100000 (the Moon is about 3100). Increase if you're getting NaN for delta-V and the error messages say you need to increase the delta-V" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
                 { "requireSurfaceVessel", "For useVesselPosition, require that the vessel be on the surface (landed or splashed) for the position to actually be considered" },
@@ -698,7 +697,7 @@ namespace LunarTransferPlanner
 
                 if (refinedTime > t0 + tolerance) // t0 and t1 are on opposite sides of a min (and t0 has a lower error)
                 {
-                    Log($"launchTime found at {refinedTime}");
+                    //Log($"launchTime found at {refinedTime}");
                     return refinedTime;
                 } // else, t0 (startTime) is the 'local' min, so this is an increasing slope
 
@@ -765,7 +764,7 @@ namespace LunarTransferPlanner
 
             double finalResult = GoldenSectionSearch(fineT0, fineT1);
 
-            Log($"launchTime found at {finalResult}");
+            //Log($"launchTime found at {finalResult}");
 
             return finalResult;
         }
@@ -876,21 +875,23 @@ namespace LunarTransferPlanner
             return (t1, e);
         }
 
-        (double dV, double eccentricity) EstimateDV()
+        (double dV, double eccentricity, int errorStateDV) EstimateDV()
         {
             //CelestialBody mainBody = target.referenceBody;
 
             // Search in this range
-            //double minPossibleDV = 2500 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 766 for Kerbin
-            const double minPossibleDV = 1d; // no need to have an actual min for dV, especially for vessels
-            double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius), gives 1840 for Kerbin
+            //double minPossibleDV = 2500 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
+            //const double minPossibleDV = double.Epsilon; // no need to have an actual min for dV
+            double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
             double expectedFlightTime = flightTime * solarDayLength;
             const double epsilon = 1e-9;
-            //Log($"Starting up, expectedFlightTime: {expectedFlightTime}");
+            int errorStateDV = 0; // no errors
 
-            // Current search range, will be gradually narrowed
-            double lowerBound = minPossibleDV;
+            // current search range, both of these values will change during the search
+            double lowerBound = epsilon; // no need to have an actual min for dV
             double upperBound = maxPossibleDV;
+
+            //Log($"Starting up, expectedFlightTime: {expectedFlightTime}, lowerBound: {lowerBound}, maxPossibleDV: {maxPossibleDV}");
 
             double FlightTimeError(double candidateDV)
             {
@@ -904,8 +905,6 @@ namespace LunarTransferPlanner
                 return Math.Abs(estimatedFlightTime - expectedFlightTime);
             }
 
-            //Log($"starting run");
-
             // golden section search, adapted from https://en.wikipedia.org/wiki/Golden-section_search
 
             double left = upperBound - invphi * (upperBound - lowerBound);
@@ -914,7 +913,7 @@ namespace LunarTransferPlanner
             double eLeft = FlightTimeError(left);
             double eRight = FlightTimeError(right);
 
-            while (Math.Abs(upperBound - lowerBound) > deltaVTolerance)
+            while (Math.Abs(upperBound - lowerBound) > epsilon) // this should not be deltaV tolerance
             {
                 if (eLeft < eRight)
                 {
@@ -934,21 +933,29 @@ namespace LunarTransferPlanner
                 }
             }
 
-            //Log($"Done with calculations");
-
             double dV = (lowerBound + upperBound) / 2;
-            (_, double eccentricity) = EstimateTimeAfterManeuver(dV);
+            (double finalTime, double eccentricity) = EstimateTimeAfterManeuver(dV);
 
-            if (Math.Abs(dV - minPossibleDV) <= epsilon * Math.Abs(minPossibleDV) || Math.Abs(dV - maxPossibleDV) <= epsilon * Math.Abs(maxPossibleDV))
-            {
-                Log($"dV is incorrect, the correct value is outside the initial search range");
+            //Log($"Final Time: {finalTime}, expectedFlightTime: {expectedFlightTime}, maxPossibleDV: {maxPossibleDV}");
+
+            if (Math.Abs(dV - maxPossibleDV) <= 1d)
+            { // dV seems to get only sorta close to the max, like within .03
+                Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN.");
                 dV = double.NaN;
                 eccentricity = double.NaN;
+                errorStateDV = 2;
+            }
+            else if (double.IsNaN(finalTime) || Math.Abs(finalTime - expectedFlightTime) >= deltaVTolerance)
+            {
+                Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
+                dV = double.NaN;
+                eccentricity = double.NaN;
+                errorStateDV = 1;
             }
 
-            //Log($"Final dV: {dV}, eccentricity: {eccentricity}");
+            //Log($"Final dV: {dV}, eccentricity: {eccentricity}, errorStateDV: {errorStateDV}");
 
-            return (dV, eccentricity);
+            return (dV, eccentricity, errorStateDV);
         }
 
         #endregion
@@ -1091,14 +1098,14 @@ namespace LunarTransferPlanner
             }
         }
 
-        private (double dV, double eccentricity) GetCachedDeltaV()
+        private (double dV, double eccentricity, int errorStateDV) GetCachedDeltaV()
         {
             const double tolerance = 0.01;
 
             if (!deltaVCache.HasValue)
             {
-                (double dV, double eccentricity) = EstimateDV();
-                deltaVCache = (target, targetAltitude, dV, eccentricity);
+                (double dV, double eccentricity, int errorStateDV) = EstimateDV();
+                deltaVCache = (target, targetAltitude, dV, eccentricity, errorStateDV);
             }
             else
             {
@@ -1108,12 +1115,14 @@ namespace LunarTransferPlanner
                 if (targetMismatch || altitudeMismatch)
                 {
                     //Log($"Resetting DeltaV Cache due to change of target. Old values: target: {deltaVCache.Value.target}, deltaV: {deltaVCache.Value.deltaV}");
-                    (double dV, double eccentricity) = EstimateDV();
-                    deltaVCache = (target, targetAltitude, dV, eccentricity);
+                    (double dV, double eccentricity, int errorStateDV) = EstimateDV();
+                    deltaVCache = (target, targetAltitude, dV, eccentricity, errorStateDV);
                 }
             }
 
-            return (deltaVCache.Value.deltaV, deltaVCache.Value.eccentricity);
+            // if nothing is wrong, then just return the cached values
+
+            return (deltaVCache.Value.deltaV, deltaVCache.Value.eccentricity, deltaVCache.Value.errorStateDV);
         }
 
         #endregion
@@ -1284,7 +1293,7 @@ namespace LunarTransferPlanner
             GUILayout.Space(5);
             if (GUILayout.Button(new GUIContent(" R", "Reset to Default"), GUILayout.Width(20))) value = defaultValue;
             GUILayout.EndVertical();
-            GUILayout.FlexibleSpace();
+            GUILayout.FlexibleSpace(); // push to left
             GUILayout.EndHorizontal();
         }
 
@@ -1421,7 +1430,7 @@ namespace LunarTransferPlanner
             if (mainBody == null)
             {
                 GUILayout.Label("CRITICAL ERROR: No main body found!", GUILayout.Width(windowWidth)); // this is really bad
-                if (StateChanged("errorState", ref errorState, 4))
+                if (StateChanged("errorStateTargets", ref errorStateTargets, 4))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1431,7 +1440,7 @@ namespace LunarTransferPlanner
             else if (moonsInvalid && vesselsInvalid)
             {
                 GUILayout.Label("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged("errorState", ref errorState, 1))
+                if (StateChanged("errorStateTargets", ref errorStateTargets, 1))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1441,7 +1450,7 @@ namespace LunarTransferPlanner
             else if (targetVessel && vesselsInvalid)
             {
                 GUILayout.Label("ERROR: There are no vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged("errorState", ref errorState, 2))
+                if (StateChanged("errorStateTargets", ref errorStateTargets, 2))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1453,7 +1462,7 @@ namespace LunarTransferPlanner
             else if (!targetVessel && moonsInvalid)
             {
                 GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged("errorState", ref errorState, 3))
+                if (StateChanged("errorStateTargets", ref errorStateTargets, 3))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1464,7 +1473,7 @@ namespace LunarTransferPlanner
             }
             else
             {
-                if (StateChanged("errorState", ref errorState, 0))
+                if (StateChanged("errorStateTargets", ref errorStateTargets, 0))
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
@@ -1499,7 +1508,7 @@ namespace LunarTransferPlanner
                 //if (target == null || !moons.Contains(target)) target = moons[0];
                 inclination = GetTargetInclination(targetOrbit);
                 isLowLatitude = Math.Abs(latitude) <= inclination;
-                (double dV, double eccentricity) = GetCachedDeltaV();
+                (double dV, double eccentricity, int errorStateDV) = GetCachedDeltaV();
                 dayScale = mainBody.rotationPeriod / EarthSiderealDay;
                 CelestialBody homeBody = FlightGlobals.GetHomeBody();
                 solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
@@ -1538,7 +1547,7 @@ namespace LunarTransferPlanner
                 }
 
                 GUILayout.BeginHorizontal();
-                if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>(!)</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
+                if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>!!!</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
 
                 GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"Latitude of launch location\nUsing Vessel Position: {(useVesselPosition && inVessel ? "True" : "False")}"), GUILayout.ExpandWidth(true));
                 
@@ -1563,7 +1572,7 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(5);
                 GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
-                MakeNumberEditField("flightTime", ref flightTime, 0.1d, 0.1d, double.MaxValue);
+                MakeNumberEditField("flightTime", ref flightTime, 0.1d, double.Epsilon, double.MaxValue);
                 if (StateChanged("flightTime", flightTime))
                 {
                     windowCache.Clear();
@@ -1597,6 +1606,7 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
+                if (errorStateDV != 0) GUILayout.Label(new GUIContent("<b>!!!</b>", errorStateDV == 1 ? "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude." : "The delta-V is above the maximum allowed by maxDeltaVScaled for this body. Try increasing maxDeltaVScaled in settings, or increasing your flight time."));
                 GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"), GUILayout.ExpandWidth(true));
                 ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
                 GUILayout.EndHorizontal();
@@ -1873,7 +1883,7 @@ namespace LunarTransferPlanner
             windowWidth = 500;
 
             BeginCenter(false);
-            GUILayout.Label("Hover over text to see additional information", GUILayout.Width(windowWidth)); // this sets the width of the window
+            GUILayout.Label($"Hover over select text for tooltips. Current UT: {FormatDecimals(currentUT)}s", GUILayout.Width(windowWidth)); // this sets the width of the window
             EndCenter(false);
 
             GUILayout.BeginHorizontal();
@@ -1890,11 +1900,11 @@ namespace LunarTransferPlanner
                 ResetWindow(ref settingsRect);
             }
 
-            if (errorState == 0 || errorState == 2 || errorState == 3)
+            if (errorStateTargets == 0 || errorStateTargets == 2 || errorStateTargets == 3)
             {
                 DrawLine();
 
-                if (errorState == 2 || errorState == 3) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
+                if (errorStateTargets == 2 || errorStateTargets == 3) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Target an orbiting Vessel instead of an orbiting Moon");
                 GUILayout.FlexibleSpace();
@@ -1909,7 +1919,7 @@ namespace LunarTransferPlanner
                 }
             }
 
-            if (errorState == 0)
+            if (errorStateTargets == 0)
             {
                 DrawLine();
 
@@ -2026,13 +2036,121 @@ namespace LunarTransferPlanner
                 EndCenter();
                 GUILayout.EndHorizontal();
 
-                if (expandExtraWindow && !useWindowOptimizer)
+                if (expandExtraWindow)
                 {
                     DrawLine();
 
-                    GUILayout.Label("Change Extra Window Number");
-                    MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 1, maxWindows);
-                }
+                    if (!useWindowOptimizer)
+                    {
+                        GUILayout.Label("Change Extra Window Number");
+                        MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 1, maxWindows);
+                        ranSearch = false; // this is to remove the label
+                    } 
+                    else
+                    {
+                        double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
+                        double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / mainBody.gravParameter);
+
+                        if (double.IsNaN(targetPhasingTime)) targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod; // initialize value
+
+                        if (showPhasing)
+                        {
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Label("Target Phasing Angle (degrees)");
+                            GUILayout.BeginVertical();
+                            GUILayout.Space(5);
+                            bool showPhasing_pressed = GUILayout.Button(new GUIContent("T", "Switch to phasing time"), GUILayout.Width(20));
+                            ButtonPressed(ref showPhasing, showPhasing_pressed);
+                            GUILayout.EndVertical();
+                            GUILayout.FlexibleSpace();
+                            GUILayout.EndHorizontal();
+                            MakeNumberEditField("targetPhasingAngle", ref targetPhasingAngle, 1d, 0.01, 360d, true); // min of 0.01 degrees to avoid division by zero
+
+                            targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod;
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds, the orbit period"));
+                            GUILayout.BeginVertical();
+                            GUILayout.Space(5);
+                            GUILayout.Box(FormatTime(targetPhasingTime), GUILayout.MaxWidth(100));
+                            GUILayout.EndVertical();
+                            GUILayout.FlexibleSpace();
+                            GUILayout.EndHorizontal();
+                        }
+                        else
+                        {
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds, the orbit period"));
+                            GUILayout.BeginVertical();
+                            GUILayout.Space(5);
+                            bool showPhasing_pressed = GUILayout.Button(new GUIContent(" P", "Switch to phasing angle"), GUILayout.Width(20));
+                            ButtonPressed(ref showPhasing, showPhasing_pressed);
+                            GUILayout.EndVertical();
+                            GUILayout.FlexibleSpace();
+                            GUILayout.EndHorizontal();
+                            GUILayout.BeginHorizontal();
+                            MakeNumberEditField("targetPhasingTime", ref targetPhasingTime, 60d, 1d, orbitPeriod); // min of 1 second to avoid division by zero
+                            GUILayout.Box(FormatTime(targetPhasingTime), GUILayout.Width(150));
+                            GUILayout.FlexibleSpace();
+                            GUILayout.EndHorizontal();
+
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Label("Target Phasing Angle (degrees)");
+                            GUILayout.BeginVertical();
+                            GUILayout.Space(5);
+                            GUILayout.Box($"{FormatDecimals(targetPhasingAngle)}\u00B0", GUILayout.MaxWidth(100));
+                            GUILayout.EndVertical();
+                            GUILayout.FlexibleSpace();
+                            GUILayout.EndHorizontal();
+
+                            targetPhasingAngle = targetPhasingTime / orbitPeriod * 360d;
+                        }
+
+                        GUILayout.BeginHorizontal();
+                        if (GUILayout.Button("Search for Closest Window", GUILayout.Width(200)))
+                        {
+                            ranSearch = true;
+                            int bestWindow = -1;
+                            double bestError = double.MaxValue;
+                            for (int candidateWindow = 0; candidateWindow <= maxWindows - 1; candidateWindow++)
+                            {
+                                double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, candidateWindow) - currentUT;
+
+                                if (double.IsNaN(candidateLaunchTime))
+                                {
+                                    Log("A Launchtime was NaN, skipping this window");
+                                    continue;
+                                }
+
+                                if (showPhasing)
+                                {
+                                    (_, double candidatePhaseAngle) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
+                                    double errorRatio = Math.Abs(candidatePhaseAngle - targetPhasingAngle) / targetPhasingAngle;
+                                    if (errorRatio < bestError)
+                                    {
+                                        bestError = errorRatio;
+                                        bestWindow = candidateWindow;
+                                    }
+                                }
+                                else
+                                {
+                                    (double candidatePhaseTime, _) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
+                                    double errorRatio = Math.Abs(candidatePhaseTime - targetPhasingTime) / targetPhasingTime;
+                                    if (errorRatio < bestError)
+                                    {
+                                        bestError = errorRatio;
+                                        bestWindow = candidateWindow;
+                                    }
+                                }
+                            }
+                            if (bestWindow >= 0) extraWindowNumber = bestWindow + 1;
+                        }
+                        if (ranSearch)
+                        {
+                            GUILayout.Label(new GUIContent($"Found window {extraWindowNumber}!", $"Window {extraWindowNumber} is the closest window to your target phasing {(showPhasing ? "angle" : "time")} within the max of {maxWindows} windows"));
+                        }
+                        GUILayout.EndHorizontal();
+                    }
+                } else ranSearch = false; // this is to remove the label
 
                 DrawLine();
 
@@ -2119,114 +2237,6 @@ namespace LunarTransferPlanner
                 {
                     windowCache.Clear(); // only clear if changed, also this doesn't always result in new minimums
                 }
-
-                if (expandExtraWindow && useWindowOptimizer)
-                {
-                    DrawLine();
-                    double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
-                    double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / mainBody.gravParameter);
-
-                    if (double.IsNaN(targetPhasingTime)) targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod; // initialize value
-
-                    if (showPhasing)
-                    {
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label("Target Phasing Angle (degrees)");
-                        GUILayout.BeginVertical();
-                        GUILayout.Space(5);
-                        bool showPhasing_pressed = GUILayout.Button(new GUIContent("T", "Switch to phasing time"), GUILayout.Width(20));
-                        ButtonPressed(ref showPhasing, showPhasing_pressed);
-                        GUILayout.EndVertical();
-                        GUILayout.FlexibleSpace();
-                        GUILayout.EndHorizontal();
-                        MakeNumberEditField("targetPhasingAngle", ref targetPhasingAngle, 1d, 0.01, 360d, true); // min of 0.01 degrees to avoid division by zero
-
-                        targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod;
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds, the orbit period"));
-                        GUILayout.BeginVertical();
-                        GUILayout.Space(5);
-                        GUILayout.Box(FormatTime(targetPhasingTime), GUILayout.MaxWidth(100));
-                        GUILayout.EndVertical();
-                        GUILayout.FlexibleSpace();
-                        GUILayout.EndHorizontal();
-                    }
-                    else
-                    {
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds, the orbit period"));
-                        GUILayout.BeginVertical();
-                        GUILayout.Space(5);
-                        bool showPhasing_pressed = GUILayout.Button(new GUIContent(" P", "Switch to phasing angle"), GUILayout.Width(20));
-                        ButtonPressed(ref showPhasing, showPhasing_pressed);
-                        GUILayout.EndVertical();
-                        GUILayout.FlexibleSpace();
-                        GUILayout.EndHorizontal();
-                        GUILayout.BeginHorizontal();
-                        MakeNumberEditField("targetPhasingTime", ref targetPhasingTime, 60d, 1d, orbitPeriod); // min of 1 second to avoid division by zero
-                        GUILayout.Box(FormatTime(targetPhasingTime), GUILayout.Width(150));
-                        GUILayout.FlexibleSpace();
-                        GUILayout.EndHorizontal();
-
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label("Target Phasing Angle (degrees)");
-                        GUILayout.BeginVertical();
-                        GUILayout.Space(5);
-                        GUILayout.Box($"{FormatDecimals(targetPhasingAngle)}\u00B0", GUILayout.MaxWidth(100));
-                        GUILayout.EndVertical();
-                        GUILayout.FlexibleSpace();
-                        GUILayout.EndHorizontal();
-
-                        targetPhasingAngle = targetPhasingTime / orbitPeriod * 360d;
-                    }
-
-                    GUILayout.BeginHorizontal();
-                    if (GUILayout.Button("Search for Closest Window", GUILayout.Width(200)))
-                    {
-                        ranSearch = true;
-                        int bestWindow = -1;
-                        double bestError = double.MaxValue;
-                        for (int candidateWindow = 0; candidateWindow <= maxWindows - 1; candidateWindow++)
-                        {
-                            double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, candidateWindow) - currentUT;
-
-                            if (double.IsNaN(candidateLaunchTime))
-                            {
-                                Log("A Launchtime was NaN, skipping this window");
-                                continue;
-                            }
-
-                            if (showPhasing)
-                            {
-                                (_, double candidatePhaseAngle) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
-                                double errorRatio = Math.Abs(candidatePhaseAngle - targetPhasingAngle) / targetPhasingAngle;
-                                if (errorRatio < bestError)
-                                {
-                                    bestError = errorRatio;
-                                    bestWindow = candidateWindow;
-                                }
-                            }
-                            else
-                            {
-                                (double candidatePhaseTime, _) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
-                                double errorRatio = Math.Abs(candidatePhaseTime - targetPhasingTime) / targetPhasingTime;
-                                if (errorRatio < bestError)
-                                {
-                                    bestError = errorRatio;
-                                    bestWindow = candidateWindow;
-                                }
-                            }
-                        }
-                        if (bestWindow >= 0) extraWindowNumber = bestWindow + 1;
-                    }
-                    if (ranSearch)
-                    {
-                        GUILayout.Label(new GUIContent($"Found window {extraWindowNumber}!", $"Window {extraWindowNumber} is the closest window to your target phasing {(showPhasing ? "angle" : "time")} within the max of {maxWindows} windows"));
-                    }
-                    GUILayout.EndHorizontal();
-                }
-                else ranSearch = false; // this is to remove the label
-
             }
 
             Tooltip.Instance?.RecordTooltip(id);

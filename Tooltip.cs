@@ -1,4 +1,7 @@
 // Adapted from RP-1's Tooltip (https://github.com/KSP-RO/RP-1/blob/master/Source/RP0/UI/Tooltip.cs)
+// to use this, add "new GUIContent" to the label/box/button/toggle/whatever
+// example: GUILayout.Label(new GUIContent("label", "tooltip"));
+// make sure it isnt GUILayout.Label(new GUIContent("label"), "tooltip"); KSP will think you're trying to declare a GUIStyle
 
 using System;
 using System.Collections.Generic;

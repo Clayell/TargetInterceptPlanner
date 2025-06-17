@@ -1883,7 +1883,7 @@ namespace LunarTransferPlanner
             windowWidth = 500;
 
             BeginCenter(false);
-            GUILayout.Label($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}s</b>", GUILayout.Width(windowWidth)); // this sets the width of the window
+            GUILayout.Label($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", GUILayout.Width(windowWidth)); // this sets the width of the window
             EndCenter(false);
 
             GUILayout.BeginHorizontal();

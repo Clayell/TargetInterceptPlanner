@@ -954,12 +954,12 @@ namespace LunarTransferPlanner
         }
 
         #endregion
-            #region Caching Methods
+        #region Caching Methods
 
-            // if the factor that should trigger a cache reset can only be changed by the user in one location, then its fine to use StateChanged and then clear the cache
-            // StateChanged checks if something is exactly equal to the previous value, which is fine for a value that only the user can change (especially as the user will want the value to update regardless of how small their changes are, which would make a tolerance not make sense)
-            // if the factor can be changed by the game itself, or can be changed by the user in multiple ways (in the case of the target), then put the value in the cache and check in the method if its crossed the tolerance
-            // (the reset in special warp is a unique case and should be kept as such)
+        // if the factor that should trigger a cache reset can only be changed by the user in one location, then its fine to use StateChanged and then clear the cache
+        // StateChanged checks if something is exactly equal to the previous value, which is fine for a value that only the user can change (especially as the user will want the value to update regardless of how small their changes are, which would make a tolerance not make sense)
+        // if the factor can be changed by the game itself, or can be changed by the user in multiple ways (in the case of the target), then put the value in the cache and check in the method if its crossed the tolerance
+        // (the reset in special warp is a unique case and should be kept as such)
 
         private void CheckWindowCache(double latitude, double longitude, double inclination, double targetAltitude)
         {
@@ -1599,7 +1599,7 @@ namespace LunarTransferPlanner
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"));
                 ResetDefault(ref flightTime, EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time / solarDayLength, "Reset to Minimum Delta-V");
-                // min delta-V from first half of hohmann transfer, + .01 to make it not NaN, use targetOrbit.ApR instead of targetAltitude to prevent the delta-V from being too low
+                // min delta-V from first half of hohmann transfer, + .01 to make it not NaN, use targetOrbit.ApR instead of targetAltitude to prevent the delta-V from being too low (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
                 GUILayout.EndHorizontal();
                 MakeNumberEditField("flightTime", ref flightTime, 0.1d, double.Epsilon, double.MaxValue);
                 if (StateChanged("flightTime", flightTime))

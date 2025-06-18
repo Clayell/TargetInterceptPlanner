@@ -977,7 +977,7 @@ namespace LunarTransferPlanner
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch || altitudeMismatch)
                 {
-                    Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, altitude: {entry.targetAltitude}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
+                    //Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, altitude: {entry.targetAltitude}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
                     if (targetMismatch) // this will only trigger if the mainBody actually has targets(s)
                     {
                         Log($"Now targeting {target}");

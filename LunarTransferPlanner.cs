@@ -1317,7 +1317,7 @@ namespace LunarTransferPlanner
             {
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Phasing angle", "Phasing angle between launch location and maneuver in orbit"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Phasing angle", "Phasing angle between launch location and maneuver in orbit, max of 360\u00B0"), GUILayout.ExpandWidth(true));
                 bool showPhasing_pressed = GUILayout.Button(new GUIContent("T", "Switch to phasing time"), GUILayout.Width(20));
                 ButtonPressed(ref showPhasing, showPhasing_pressed);
                 GUILayout.EndHorizontal();
@@ -1325,9 +1325,12 @@ namespace LunarTransferPlanner
             }
             else
             {
+                double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
+                double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / mainBody.gravParameter);
+
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Time in orbit", "Phasing time spent waiting in parking orbit before maneuver"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Time in orbit", $"Phasing time spent waiting in parking orbit before maneuver, max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"), GUILayout.ExpandWidth(true));
                 bool showPhasing_pressed = GUILayout.Button(new GUIContent(" P", "Switch to phasing angle"), GUILayout.Width(20));
                 ButtonPressed(ref showPhasing, showPhasing_pressed);
                 GUILayout.EndHorizontal();
@@ -2097,7 +2100,7 @@ namespace LunarTransferPlanner
 
                             targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod;
                             GUILayout.BeginHorizontal();
-                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds, the orbit period"));
+                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"));
                             GUILayout.BeginVertical();
                             GUILayout.Space(5);
                             GUILayout.Box(FormatTime(targetPhasingTime), GUILayout.MaxWidth(100));
@@ -2108,7 +2111,7 @@ namespace LunarTransferPlanner
                         else
                         {
                             GUILayout.BeginHorizontal();
-                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds, the orbit period"));
+                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"));
                             GUILayout.BeginVertical();
                             GUILayout.Space(5);
                             bool showPhasing_pressed = GUILayout.Button(new GUIContent(" P", "Switch to phasing angle"), GUILayout.Width(20));

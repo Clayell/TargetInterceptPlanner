@@ -113,7 +113,7 @@ namespace LunarTransferPlanner
         bool isWindowOpen = false;
         bool isKSPGUIActive = true; // for some reason, this initially only turns to true when you turn off and on the KSP GUI
 
-        int currentBody = 0;
+        int currentBody = -1;
         object target = null; // will later become CelestialBody or Vessel
         CelestialBody mainBody = null;
         Orbit targetOrbit = null;
@@ -126,10 +126,10 @@ namespace LunarTransferPlanner
         bool PrincipiaInstalled;
 
         double inclination; // inclination of target's orbit
+        double targetAltitude;
         double currentUT;
         double dayScale;
         double solarDayLength;
-        double targetAltitude;
         bool useHomeSolarDay = true;
         int errorStateTargets = 0;
         bool showSettings = false; // Show settings UI
@@ -167,7 +167,6 @@ namespace LunarTransferPlanner
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
-        double deltaVTolerance = 0.01d; // Tolerance (in seconds) of how close the estimated flight time given by the delta-V should be to the expected flight time
         double maxDeltaVScaled = 100000d; // Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body
         bool ranSearch = false; // If we've ran the targetPhasingAngle/Time search
         int decimals = 2; // Amount of decimal precision to display
@@ -305,6 +304,7 @@ namespace LunarTransferPlanner
                 { "settingsRect.xMin", settingsRect.xMin },
                 { "settingsRect.yMin", settingsRect.yMin },
                 { "isWindowOpen", isWindowOpen },
+                { "targetName", targetName }, // we convert it to an actual target later
                 { "targetVessel", targetVessel },
                 { "showSettings", showSettings },
                 { "useAltSkin", useAltSkin },
@@ -327,7 +327,6 @@ namespace LunarTransferPlanner
                 { "expandParking0", expandParking0 },
                 { "expandParking1", expandParking1 },
                 { "expandParking2", expandParking2 },
-                { "deltaVTolerance", deltaVTolerance },
                 { "maxDeltaVScaled", maxDeltaVScaled },
                 { "showPhasing", showPhasing },
                 { "maxWindows", maxWindows },
@@ -348,7 +347,6 @@ namespace LunarTransferPlanner
                 { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser (or considered in the phasing angle/time optimizer), default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
                 { "altBehaviorNaN", "Return a NaN when a global minimum cannot be found within the time limit, instead of returning the best local minimum" },
-                { "deltaVTolerance", "Tolerance (in seconds) of how close the estimated flight time given by the delta-V should be to the expected flight time, default of 0.01 seconds. Decrease if you want more accuracy" },
                 { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 100000 (the Moon is about 3100). Increase if you're getting NaN for delta-V and the error messages say you need to increase the delta-V" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
@@ -386,6 +384,7 @@ namespace LunarTransferPlanner
                     Read(ref y2, "settingsRect.yMin");
 
                     Read(ref isWindowOpen, "isWindowOpen");
+                    Read(ref targetName, "targetName"); // we convert it to an actual target later
                     Read(ref targetVessel, "targetVessel");
                     Read(ref showSettings, "showSettings");
                     Read(ref useAltSkin, "useAltSkin");
@@ -408,7 +407,6 @@ namespace LunarTransferPlanner
                     Read(ref expandParking0, "expandParking0");
                     Read(ref expandParking1, "expandParking1");
                     Read(ref expandParking2, "expandParking2");
-                    Read(ref deltaVTolerance, "deltaVTolerance");
                     Read(ref maxDeltaVScaled, "maxDeltaVScaled");
                     Read(ref showPhasing, "showPhasing");
                     Read(ref maxWindows, "maxWindows");
@@ -809,24 +807,20 @@ namespace LunarTransferPlanner
         {
             // The formulas are from http://www.braeunig.us/space/orbmech.htm
 
+            const double tolerance = 0.01;
             double gravParameter = mainBody.gravParameter;
-
-            // Radius of the circular orbit, including the radius of the mainBody
-            double r0 = mainBody.Radius + parkingAltitude * 1000d;
-
-            // Initial guess for the altitude of the target
-            double r1 = targetOrbit.GetRadiusAtUT(currentUT);
-
-            //Log($"initial r1: {r1}");
-
+            double r0 = mainBody.Radius + parkingAltitude * 1000d; // Radius of the circular orbit, including the radius of the mainBody
+            double r1 = targetOrbit.GetRadiusAtUT(currentUT); // Initial guess for the altitude of the target
             double previousT1 = 0d;
             double t1 = double.MaxValue;
             double e = 0d;
 
+            //Log($"initial r1: {r1}");
+
             // The target is moving, so we need to know its altitude when the vessel arrives
             // For that we need to know the flight time, so we can iterate the flight time until the error is small enough
 
-            while (Math.Abs(t1 - previousT1) >= deltaVTolerance)
+            while (Math.Abs(t1 - previousT1) >= tolerance)
             {
                 previousT1 = t1;
                 double v0 = Math.Sqrt(gravParameter / r0) + dV;
@@ -885,6 +879,7 @@ namespace LunarTransferPlanner
             double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
             double expectedFlightTime = flightTime * solarDayLength;
             const double epsilon = 1e-9;
+            const double tolerance = 0.01;
             int errorStateDV = 0; // no errors
 
             // current search range, both of these values will change during the search
@@ -913,7 +908,7 @@ namespace LunarTransferPlanner
             double eLeft = FlightTimeError(left);
             double eRight = FlightTimeError(right);
 
-            while (Math.Abs(upperBound - lowerBound) > epsilon) // this should not be deltaV tolerance
+            while (Math.Abs(upperBound - lowerBound) > epsilon)
             {
                 if (eLeft < eRight)
                 {
@@ -940,14 +935,14 @@ namespace LunarTransferPlanner
 
             if (Math.Abs(dV - maxPossibleDV) <= 1d)
             { // dV seems to get only sorta close to the max, like within .03
-                Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN.");
+                //Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN.");
                 dV = double.NaN;
                 eccentricity = double.NaN;
                 errorStateDV = 2;
             }
-            else if (double.IsNaN(finalTime) || Math.Abs(finalTime - expectedFlightTime) >= deltaVTolerance)
+            else if (double.IsNaN(finalTime) || Math.Abs(finalTime - expectedFlightTime) >= tolerance)
             {
-                Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
+                //Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
                 dV = double.NaN;
                 eccentricity = double.NaN;
                 errorStateDV = 1;
@@ -970,28 +965,29 @@ namespace LunarTransferPlanner
         {
             const double tolerance = 0.01;
 
-            // remove expired or mismatched entries
             for (int i = 0; i <= windowCache.Count - 1; i++)
             {
                 var entry = windowCache[i];
                 bool expired = currentUT > entry.absoluteLaunchTime;
                 bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody, assuming we dont get restarted due to a scene switch
-                //Log($"oldTarget: {entry.target}, newTarget: {target}");
+                                                                //Log($"oldTarget: {entry.target}, newTarget: {target}");
                 bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
-                bool altitudeMismatch = Math.Abs(entry.targetAltitude - targetAltitude) >= tolerance * 100d * 1000d; // kilometer
+                bool altitudeMismatch = Math.Abs(entry.targetAltitude - targetAltitude) / targetAltitude >= tolerance; // 1%
                 bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch || altitudeMismatch)
                 {
-                    //Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch" : "")}");
-                    if (targetMismatch) Log($"Now targeting {target}"); // this will only trigger if the mainBody actually has targets(s)
+                    Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, altitude: {entry.targetAltitude}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
+                    if (targetMismatch) // this will only trigger if the mainBody actually has targets(s)
+                    {
+                        Log($"Now targeting {target}");
+                    }
                     windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
                     launchOrbitCache.Clear();
                     phasingCache.Clear();
                     break;
                 }
             }
-
         }
 
         private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double inclination, bool useAltBehavior, int windowNumber)
@@ -1216,6 +1212,12 @@ namespace LunarTransferPlanner
 
             GUILayout.EndHorizontal();
 
+            if (double.IsNaN(valueDouble))
+            {
+                valueDouble = minValueDouble;
+                textBuffer[controlId] = minValueDouble.ToString("G17");
+            }
+
             value = (T)Convert.ChangeType(valueDouble, typeof(T)); // convert back to original type
         }
 
@@ -1286,12 +1288,12 @@ namespace LunarTransferPlanner
             rect = new Rect(rect.xMin, rect.yMin, -1f, -1f);
         }
 
-        private void ResetDefault(ref double value, double defaultValue)
+        private void ResetDefault(ref double value, double defaultValue, string tooltip = "Reset to Default")
         {
             GUILayout.BeginHorizontal();
             GUILayout.BeginVertical();
             GUILayout.Space(5);
-            if (GUILayout.Button(new GUIContent(" R", "Reset to Default"), GUILayout.Width(20))) value = defaultValue;
+            if (GUILayout.Button(new GUIContent(" R", tooltip), GUILayout.Width(20))) value = defaultValue;
             GUILayout.EndVertical();
             GUILayout.FlexibleSpace(); // push to left
             GUILayout.EndHorizontal();
@@ -1422,10 +1424,10 @@ namespace LunarTransferPlanner
             vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).OrderBy(vessel => vessel.vesselName).ToList();
             // TODO, instead of ordering alphabetically, order by closest periapsis? make this a setting
 
-            GUILayout.Space(5);
-
             moonsInvalid = moons == null || moons.Count == 0;
             vesselsInvalid = vessels == null || vessels.Count == 0;
+
+            GUILayout.Space(5);
 
             if (mainBody == null)
             {
@@ -1478,34 +1480,56 @@ namespace LunarTransferPlanner
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
                 }
+
+                Vessel matchingVessel = null;
+                CelestialBody matchingMoon = null;
+                if (targetName != string.Empty)
+                {
+                    matchingVessel = vessels?.FirstOrDefault(v => v.vesselName == targetName);
+                    matchingMoon = moons?.FirstOrDefault(b => b.bodyName == targetName);
+                }
+
+                //Log($"matchingVessel: {matchingVessel}, matchingMoon: {matchingMoon}, target: {target}");
+
                 int count;
                 if (targetVessel)
                 {
-                    if (target == null || !vessels.Contains(target)) target = vessels[0] as Vessel;
+                    if (target == null)
+                    {
+                        if (matchingVessel != null) target = matchingVessel as Vessel;
+                        else target = vessels[0] as Vessel;
+                    }
                     count = vessels.Count;
                     //Log($"vessels: {vessels}, count: {count}, target: {target}");
                 }
                 else
                 {
-                    if (target == null || !moons.Contains(target)) target = moons[0] as CelestialBody;
+                    if (target == null)
+                    {
+                        if (matchingMoon != null) target = matchingMoon as CelestialBody;
+                        else target = moons[0] as CelestialBody;
+                    }
                     count = moons.Count;
-                    //Log($"vessels: {moons}, count: {count}, target: {target}");
+                    //Log($"moons: {moons}, count: {count}, target: {target}");
                 }
 
                 if (target is Vessel vessel)
                 {
                     targetOrbit = vessel?.orbit;
                     targetName = vessel?.vesselName;
+                    if (currentBody == -1) currentBody = vessels.FindIndex(v => v.vesselName == targetName);
                 }
                 else if (target is CelestialBody body)
                 {
                     targetOrbit = body?.orbit;
-                    targetName = body?.bodyName;;
+                    targetName = body?.bodyName;
+                    if (currentBody == -1) currentBody = moons.FindIndex(b => b.bodyName == targetName);
                 }
                 else LogError("Unknown target type: " + target.GetType().Name);
 
+                CheckWindowCache(latitude, longitude, inclination, targetAltitude);
+
                 currentUT = Planetarium.GetUniversalTime();
-                //if (target == null || !moons.Contains(target)) target = moons[0];
                 inclination = GetTargetInclination(targetOrbit);
                 isLowLatitude = Math.Abs(latitude) <= inclination;
                 (double dV, double eccentricity, int errorStateDV) = GetCachedDeltaV();
@@ -1519,6 +1543,7 @@ namespace LunarTransferPlanner
 
                 if (count > 1) // only display target selector screen if theres multiple targets
                 {
+                    if (currentBody == -1) currentBody = 0; // currentBody should already be set, but just in case
                     if (currentBody > count - 1) currentBody = count - 1; // this can happen when switching mainBody or when a vessel is destroyed
 
                     GUILayout.BeginHorizontal();
@@ -1571,7 +1596,11 @@ namespace LunarTransferPlanner
                 //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
                 GUILayout.Space(5);
-                GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"));
+                ResetDefault(ref flightTime, EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time / solarDayLength, "Reset to Minimum Delta-V");
+                // min delta-V from first half of hohmann transfer, + .01 to make it not NaN, use targetOrbit.ApR instead of targetAltitude to prevent the delta-V from being too low
+                GUILayout.EndHorizontal();
                 MakeNumberEditField("flightTime", ref flightTime, 0.1d, double.Epsilon, double.MaxValue);
                 if (StateChanged("flightTime", flightTime))
                 {
@@ -1582,8 +1611,6 @@ namespace LunarTransferPlanner
                 }
                 double l = Math.Round(flightTime * solarDayLength);
                 GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
-                
-                CheckWindowCache(latitude, longitude, inclination, targetAltitude);
 
                 OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
                 //Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
@@ -1606,13 +1633,15 @@ namespace LunarTransferPlanner
 
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
-                if (errorStateDV != 0) GUILayout.Label(new GUIContent("<b>!!!</b>", errorStateDV == 1 ? "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude." : "The delta-V is above the maximum allowed by maxDeltaVScaled for this body. Try increasing maxDeltaVScaled in settings, or increasing your flight time."));
+                if (errorStateDV != 0) GUILayout.Label(new GUIContent("<b>!!!</b>", errorStateDV == 1
+                    ? "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."
+                    : $"The delta-V is above the maximum allowed for this body ({maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius)}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."));
                 GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"), GUILayout.ExpandWidth(true));
                 ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
                 GUILayout.EndHorizontal();
 
                 GUILayout.Space(5);
-                GUILayout.Box(new GUIContent($"{FormatDecimals(dV)} m/s", $"Eccentricity of {(eccentricity > 1 ? "hyperbolic" : "elliptical")} trajectory: {FormatDecimals(eccentricity)}"), GUILayout.MinWidth(100));
+                GUILayout.Box(new GUIContent($"{FormatDecimals(dV)} m/s", $"Eccentricity of {(!double.IsNaN(eccentricity) ? (eccentricity > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(eccentricity)}"), GUILayout.MinWidth(100));
 
                 if (expandAltitude)
                 {
@@ -1718,7 +1747,7 @@ namespace LunarTransferPlanner
                 }
 
                 GUILayout.Space(5);
-                GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
                 MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
 
                 bool addAlarm;

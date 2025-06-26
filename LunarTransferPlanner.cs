@@ -1034,7 +1034,7 @@ namespace LunarTransferPlanner
 
             // The target is moving, so we need to know its altitude when the vessel arrives
             // For that we need to know the flight time, so we can iterate the flight time until the error is small enough or goes over maxIterations
-            // TODO, optimize this much better ([add link])
+            // TODO, optimize this much better (https://github.com/Clayell/LunarTransferPlanner/commit/d73af739c4ffa7163fc43c567cb28710b0bc0113#commitcomment-160841101)
             // TLDR of TODO: this converges really slowly, but I can't find a better way to find a good time (maybe something with Lambert?)
 
             while (Math.Abs(t1 - previousT1) >= tolerance)

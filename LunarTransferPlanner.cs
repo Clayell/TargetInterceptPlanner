@@ -569,7 +569,7 @@ namespace LunarTransferPlanner
 
         private void Log(string message)
         {
-            Debug.Log($"[LunarTransferPlanner]: {message}");
+            Debug.Log($"[LunarTransferPlanner]: {message}"); // could also do KSPLog.print
         }
 
         private void LogError(string message)
@@ -1716,7 +1716,7 @@ namespace LunarTransferPlanner
             if (FlightGlobals.currentMainBody != null)
                 mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
             else if (MapView.MapIsEnabled && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
-                mainBody = MapView.MapCamera.target.celestialBody; // tracking station, could work for flight map view too
+                mainBody = MapView.MapCamera.target.celestialBody; // tracking station, technically works for flight map view too but we already checked that
             else if (FlightGlobals.GetHomeBody() != null)
                 mainBody = FlightGlobals.GetHomeBody(); // vab/sph, this always gives the home body (could also do Planetarium.fetch.Home)
             else LogError("CRITICAL ERROR: No main body found!");

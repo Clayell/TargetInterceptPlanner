@@ -217,6 +217,7 @@ namespace LunarTransferPlanner
         bool requireSurfaceVessel = true; // Do not consider useVesselPosition if the vessel is not on the surface
         bool inVessel;
         bool useAltAlarm = false; // Set an alarm based on the extra window instead of the next launch window
+        bool useKAC = true; // Use KAC if installed
         double latitude = 0d;
         double longitude = 0d;
         //double altitude = 0d; // height above sea level in meters // currently, this has no effect on the calculations, because the vectors are always normalized
@@ -423,6 +424,8 @@ namespace LunarTransferPlanner
                 { "displaySeconds", displaySeconds },
                 { "useVesselPosition", useVesselPosition },
                 { "requireSurfaceVessel", requireSurfaceVessel },
+                { "useAltAlarm", useAltAlarm },
+                { "useKAC", useKAC },
                 { "latitude", latitude },
                 { "longitude", longitude },
                 { "showAzimuth", showAzimuth },
@@ -534,6 +537,8 @@ namespace LunarTransferPlanner
                     Read(ref displaySeconds, "displaySeconds");
                     Read(ref useVesselPosition, "useVesselPosition");
                     Read(ref requireSurfaceVessel, "requireSurfaceVessel");
+                    Read(ref useAltAlarm, "useAltAlarm");
+                    Read(ref useKAC, "useKAC");
                     Read(ref latitude, "latitude");
                     Read(ref longitude, "longitude");
                     Read(ref showAzimuth, "showAzimuth");
@@ -2037,13 +2042,13 @@ namespace LunarTransferPlanner
                 }
 
                 GUILayout.Space(5);
+                double launchInclination = launchOrbit.azimuth > 90d && launchOrbit.azimuth < 270d ? -launchOrbit.inclination : launchOrbit.inclination; // need this outside for alarm description
                 if (showAzimuth)
                 {
                     GUILayout.Box(new GUIContent($"{FormatDecimals(launchOrbit.azimuth)}\u00B0", $"{FormatDecimals(launchOrbit.azimuth * degToRad)} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
                 else
                 {
-                    double launchInclination = launchOrbit.azimuth > 90d && launchOrbit.azimuth < 270d ? -launchOrbit.inclination : launchOrbit.inclination;
                     GUILayout.Box(new GUIContent($"{FormatDecimals(launchInclination)}\u00B0", $"{FormatDecimals(launchInclination * degToRad)} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
 
@@ -2066,9 +2071,10 @@ namespace LunarTransferPlanner
                 GUILayout.Space(5);
                 GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
 
+                // need this outside for alarm description
+                (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchETA, 0);
                 if (expandParking1)
                 {
-                    (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchETA, 0);
                     ShowOrbitInfo(ref showPhasing, phaseTime1, phaseAngle1);
                 }
 
@@ -2094,31 +2100,12 @@ namespace LunarTransferPlanner
                 GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
                 MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
 
-                bool addAlarm;
-                bool toggleWarp;
                 GUILayout.Space(10);
-                if (KACInstalled)
-                {
-                    GUILayout.BeginHorizontal();
-                    addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", "Add Alarm to Kerbal Alarm Clock"), GUILayout.MinWidth(80));
+                GUILayout.BeginHorizontal();
+                bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", $"Add Alarm for {(useAltAlarm && expandExtraWindow ? $"Window {extraWindowNumber}" : "Next Window")} to {(KACInstalled && useKAC ? "Kerbal Alarm Clock" : "stock Alarm Clock")}"), GUILayout.MinWidth(80));
 
-                    toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
-                    GUILayout.EndHorizontal();
-                }
-                else
-                {
-                    addAlarm = false;
-                    toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(160));
-                }
-
-                //GUILayout.Space(10);
-                //GUILayout.BeginHorizontal();
-                //GUI.enabled = KACInstalled;
-                //bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", "Add Alarm to Kerbal Alarm Clock"), GUILayout.MinWidth(80));
-                //GUI.enabled = true;
-
-                //bool toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
-                //GUILayout.EndHorizontal();
+                bool toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
+                GUILayout.EndHorizontal();
 
                 if (specialWarpActive)
                 {
@@ -2156,32 +2143,71 @@ namespace LunarTransferPlanner
                 ShowSettings();
                 GUILayout.EndHorizontal();
 
-                // TODO, add compatibility with normal alarm clock if KAC not installed
-
                 if (addAlarm)
                 {
-                    if (!useAltAlarm && !double.IsNaN(nextLaunchETA))
-                    {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window", nextLaunchUT - warpMargin); // remove warpMargin? might need to check for overspill?
-                        if (!string.IsNullOrEmpty(alarmId))
-                        {
-                            //if the alarm was made get the object so we can update it
-                            KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.First(z => z.ID == alarmId);
+                    string title = string.Empty; // might need to check for overspill in title?
+                    string description = string.Empty;
+                    double time = double.NaN;
 
-                            //Now update some of the other properties
-                            alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
-                        }
+                    void DescribeD(string identifier, string unit, double value) => description += !double.IsNaN(value) ? $"{identifier}: {FormatDecimals(value)}{unit}\n" : "";
+                    void DescribeI(string identifier, string unit, int value) => description += $"{identifier}: {value}{unit}\n";
+                    void DescribeB(string identifier, bool value) => description += $"{identifier}: {value}\n";
+
+                    if (!double.IsNaN(nextLaunchUT) && (!useAltAlarm || (useAltAlarm && expandExtraWindow && extraWindowNumber == 1)))
+                    {
+                        title = $"Next {targetName} Launch Window";
+                        time = nextLaunchUT - warpMargin;
+                        DescribeI("Window Number", "", 1);
                     }
-                    else if (useAltAlarm && !double.IsNaN(extraLaunchETA))
+                    else if (useAltAlarm && expandExtraWindow && !double.IsNaN(extraLaunchUT))
                     {
-                        string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, $"{targetName} Launch Window {extraWindowNumber}", extraLaunchUT - warpMargin); // remove warpMargin? might need to check for overspill?
-                        if (!string.IsNullOrEmpty(alarmId))
-                        {
-                            //if the alarm was made get the object so we can update it
-                            KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.First(z => z.ID == alarmId);
+                        title = $"{targetName} Launch Window {extraWindowNumber}";
+                        time = extraLaunchUT - warpMargin;
+                        DescribeI("Window Number", "", extraWindowNumber);
+                    }
 
-                            //Now update some of the other properties
-                            alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
+                    DescribeD("UT", "s", time);
+                    DescribeD("Warp Margin", "s", warpMargin);
+                    DescribeD("Latitude", "\u00B0", latitude);
+                    DescribeD("Longitude", "\u00B0", longitude);
+                    DescribeD("Flight Time", $" {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days", flightTime);
+                    DescribeD("Required delta-V", "m/s", dV);
+                    DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
+                    DescribeD("Launch Inclination", "\u00B0", launchInclination);
+                    DescribeD("Launch Azimuth", "\u00B0", launchOrbit.azimuth);
+                    DescribeD("Phasing Time", "s", phaseTime1);
+                    DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
+                    DescribeB("Special Warp Active", specialWarpActive);
+
+                    description = description.TrimEnd('\n');
+
+                    if (title != string.Empty && time != double.NaN)
+                    {
+                        // alarm type should be raw because this isn't really a maneuver or transfer alarm, its a launch time alarm
+                        if (KACInstalled && useKAC)
+                        {
+                            string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, title, time);
+                            if (!string.IsNullOrEmpty(alarmId))
+                            {
+                                // if the alarm was made, get the object
+                                KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.First(z => z.ID == alarmId);
+
+                                alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
+                                //alarm.AlarmMargin = warpMargin; // this doesnt seem to work, so we need to put warpMargin into the time
+                                alarm.Notes = description;
+                            }
+                        }
+                        else
+                        {
+                            AlarmTypeRaw alarm = new AlarmTypeRaw
+                            {
+                                title = title,
+                                description = description,
+                                ut = time,
+                                //eventOffset = warpMargin, // this doesnt seem to work, so we need to put warpMargin into the time
+                            };
+                            AlarmClockScenario.AddAlarm(alarm);
+                            alarm.actions.warp = AlarmActions.WarpEnum.KillWarp;
                         }
                     }
                 }
@@ -2406,10 +2432,10 @@ namespace LunarTransferPlanner
                     DrawLine();
 
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label("Change the \"Add Alarm\" button to set an alarm based on the extra window instead of the next launch window");
+                    GUILayout.Label("Use Kerbal Alarm Clock instead of the stock Alarm Clock");
                     GUILayout.FlexibleSpace();
                     BeginCenter();
-                    useAltAlarm = GUILayout.Toggle(useAltAlarm, "");
+                    useKAC = GUILayout.Toggle(useKAC, "");
                     EndCenter();
                     GUILayout.EndHorizontal();
                 }
@@ -2457,6 +2483,16 @@ namespace LunarTransferPlanner
 
                 if (expandExtraWindow)
                 {
+                    DrawLine();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Change the \"Add Alarm\" button to set an alarm based on the extra launch window instead of the next launch window");
+                    GUILayout.FlexibleSpace();
+                    BeginCenter();
+                    useAltAlarm = GUILayout.Toggle(useAltAlarm, "");
+                    EndCenter();
+                    GUILayout.EndHorizontal();
+
                     DrawLine();
 
                     GUILayout.BeginHorizontal();

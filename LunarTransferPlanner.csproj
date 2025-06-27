@@ -34,6 +34,7 @@
     <Prefer32Bit>false</Prefer32Bit>
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
+  <!-- Make sure KSPRoot is set as a system variable when building this, it should link to the root folder of your KSP install -->
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\Assembly-CSharp.dll</HintPath>

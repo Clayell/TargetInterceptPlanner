@@ -2328,7 +2328,7 @@ namespace LunarTransferPlanner
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect); // TODO, for some reason this isnt working with errorStateTargets != 0
                     target = null;
-                    targetOrbit = null;
+                    //targetOrbit = null;
                     targetName = string.Empty;
                 }
             }
@@ -2351,7 +2351,7 @@ namespace LunarTransferPlanner
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
                     target = null;
-                    targetOrbit = null;
+                    //targetOrbit = null;
                     targetName = string.Empty;
                 }
             }

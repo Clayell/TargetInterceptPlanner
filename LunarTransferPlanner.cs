@@ -2727,6 +2727,9 @@ namespace LunarTransferPlanner
             GUI.DragWindow();
         }
 
+        #endregion
+        #region MakeManualOrbitWindow
+
         private void MakeManualOrbitWindow(int id)
         {
             windowWidth = 500;

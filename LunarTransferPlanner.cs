@@ -43,6 +43,7 @@ namespace LunarTransferPlanner
         public static Vector3 x = Vector3.right;
         public static Vector3 y = Vector3.up;
         public static Vector3 z = Vector3.forward;
+
         public static void TryReadValue<T>(ref T target, ConfigNode node, string name)
         {
             if (node.HasValue(name))
@@ -137,7 +138,7 @@ namespace LunarTransferPlanner
         const double EarthRadius = 6371000; // meters
         const double EarthMass = 3.9860043543609598e+14 / 6.673e-11;
         // Earth sources from RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
-        const double tau = 2 * Math.PI;
+        const double tau = 2 * Math.PI; // Math.Tau is in .NET 5
         const double radToDeg = 180d / Math.PI; // unity only has floats
         const double degToRad = Math.PI / 180d; // unity only has floats
         readonly double invphi = (Math.Sqrt(5) - 1) / 2; // positive conjugate of golden ratio
@@ -2793,7 +2794,7 @@ namespace LunarTransferPlanner
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent("Apoapsis (km)", $"In kilometers from {textAdjusted}"));
                     GUILayout.FlexibleSpace();
-                    if (manualTargetMode == 0 || manualTargetMode == 3) MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d), SoI);
+                    if (manualTargetMode == 0) MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d), SoI);
                     else MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, (radiusScaled + atmosphereDepthScaled) * (1d + eccentricity) / (1d - eccentricity) - radiusScaled), SoI);
                     GUILayout.EndHorizontal();
 

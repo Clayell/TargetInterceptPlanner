@@ -4,7 +4,7 @@ Copyright (c) 2022, RCrockford
 
 Copyright (c) 2023, Martin Reverda (Nazfib)
 
-Copyright (c) 2025, Clayel
+Copyright (c) 2025, Clayel (Clayell)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

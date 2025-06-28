@@ -2019,7 +2019,6 @@ namespace LunarTransferPlanner
                 }
 
                 GUILayout.Space(5);
-                double launchInclination = launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination; // need this outside for alarm description
                 if (showAzimuth)
                 {
                     GUILayout.Box(new GUIContent($"{FormatDecimals(launchOrbit0.azimuth)}\u00B0", $"{FormatDecimals(launchOrbit0.azimuth * degToRad)} rads, this is {(launchOrbit0.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));

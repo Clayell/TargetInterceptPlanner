@@ -2026,6 +2026,7 @@ namespace LunarTransferPlanner
                 }
                 else
                 {
+                    double launchInclination = launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination; // need this outside for alarm description
                     GUILayout.Box(new GUIContent($"{FormatDecimals(launchInclination)}\u00B0", $"{FormatDecimals(launchInclination * degToRad)} rads, this is {(launchOrbit0.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
 
@@ -2150,7 +2151,7 @@ namespace LunarTransferPlanner
                     DescribeD("Flight Time", $" {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days", flightTime);
                     DescribeD("Required delta-V", "m/s", dV);
                     DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
-                    DescribeD("Launch Inclination", "\u00B0", launchInclination);
+                    DescribeD("Launch Inclination", "\u00B0", launchOrbit1.azimuth > 90d && launchOrbit1.azimuth < 270d ? -launchOrbit1.inclination : launchOrbit1.inclination);
                     DescribeD("Launch Azimuth", "\u00B0", launchOrbit1.azimuth);
                     DescribeD("Phasing Time", "s", phaseTime1);
                     DescribeD("Phasing Angle", "\u00B0", phaseAngle1);

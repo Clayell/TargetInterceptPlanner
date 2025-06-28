@@ -1936,7 +1936,6 @@ namespace LunarTransferPlanner
                 double l = Math.Round(flightTime * solarDayLength);
                 GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
 
-                OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
                 //Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
                 //var stopwatch = Stopwatch.StartNew();
                 double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, 0);
@@ -1949,6 +1948,9 @@ namespace LunarTransferPlanner
                 double extraLaunchETA = extraLaunchUT - currentUT;
                 //stopwatch.Stop();
                 //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
+
+                OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
+                OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
 
                 bool inSpecialWarp = warpState == 2 || warpState == 3;
                 bool specialWarpActive = warpState == 1 || inSpecialWarp;
@@ -2017,14 +2019,14 @@ namespace LunarTransferPlanner
                 }
 
                 GUILayout.Space(5);
-                double launchInclination = launchOrbit.azimuth > 90d && launchOrbit.azimuth < 270d ? -launchOrbit.inclination : launchOrbit.inclination; // need this outside for alarm description
+                double launchInclination = launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination; // need this outside for alarm description
                 if (showAzimuth)
                 {
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(launchOrbit.azimuth)}\u00B0", $"{FormatDecimals(launchOrbit.azimuth * degToRad)} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent($"{FormatDecimals(launchOrbit0.azimuth)}\u00B0", $"{FormatDecimals(launchOrbit0.azimuth * degToRad)} rads, this is {(launchOrbit0.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
                 else
                 {
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(launchInclination)}\u00B0", $"{FormatDecimals(launchInclination * degToRad)} rads, this is {(launchOrbit.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent($"{FormatDecimals(launchInclination)}\u00B0", $"{FormatDecimals(launchInclination * degToRad)} rads, this is {(launchOrbit0.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
 
                 if (expandParking0)
@@ -2149,7 +2151,7 @@ namespace LunarTransferPlanner
                     DescribeD("Required delta-V", "m/s", dV);
                     DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
                     DescribeD("Launch Inclination", "\u00B0", launchInclination);
-                    DescribeD("Launch Azimuth", "\u00B0", launchOrbit.azimuth);
+                    DescribeD("Launch Azimuth", "\u00B0", launchOrbit1.azimuth);
                     DescribeD("Phasing Time", "s", phaseTime1);
                     DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
                     DescribeB("Special Warp Active", specialWarpActive);

@@ -56,4 +56,4 @@ Source Code: https://github.com/KSP-RO/LunarTransferPlanner
 * [siimav](https://github.com/siimav) ([Tooltips from RP-1](https://github.com/KSP-RO/RP-1/blob/master/Source/RP0/UI/Tooltip.cs))
 
 ## License
-The code is subject to the MIT license (see LICENSE.md). 
+The code is subject to the MIT license (see [LICENSE.md](https://github.com/Clayell/LunarTransferPlanner/blob/2.0.0/LICENSE.md)). 

@@ -1,6 +1,6 @@
 # Lunar Transfer Planner
 
-### Provides a GUI for planning a transfer to a satellite (natural or artificial) from the surface of the planet (or moon, gas giant, star, etc.) on which you are currently on.
+### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) from the surface of the celestial body (planet, moon, gas giant, star, etc.) on which you are currently on.
 
 Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive (usually on the Ascending/Descending node), and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
 
@@ -10,6 +10,7 @@ Why use this over simply launching into the same LAN and Inclination as your tar
 * Launching to the Moon from any position on Earth
 * Launching to the Mun or Minmus from any position on Kerbin
 * Rendezvousing with a vessel in any orbit (a plane change may be needed at the intersection point)
+* Launching into an orbit given by a contract, even if no vessel is present there
 
 #### Parameters that you can change:
 * The expected flight time to the satellite (the time from leaving your circular parking orbit to reaching the closest approach to your target)
@@ -17,6 +18,7 @@ Why use this over simply launching into the same LAN and Inclination as your tar
 * The target launch azimuth or inclination for the launch window, with a default of 90° azimuth (directly due east)
 * The latitude and longitude of your position
     * This can be given automatically by the position of your launch site or vessel, or by manually typing in a latitude and longitude
+* The exact parameters of the target orbit (in manual target orbit mode)
 
 #### Info given back to help you plan:
 * The time of the next launch window to your parking orbit at the target azimuth/inclination
@@ -40,7 +42,7 @@ Source Code: https://github.com/KSP-RO/LunarTransferPlanner
 * ToolbarController
 
 #### Recommended:
-* Kerbal Alarm Clock ("Add Alarm" button uses KAC by default if installed)
+* Kerbal Alarm Clock (the "Add Alarm" button uses KAC by default if installed)
 
 #### Compatible with:
 * Principia (specifically, the changing inclination of the target's orbit due to Principia)
@@ -50,7 +52,7 @@ Source Code: https://github.com/KSP-RO/LunarTransferPlanner
 * [RCrockford](https://github.com/RCrockford) (original author)
 * [Clayel](https://github.com/Clayell) (current maintainer)
 
-## Extra Thanks To
+## Special Thanks To
 * [Nazfib](https://github.com/Nazfib) ([Southern Latitude fix](https://github.com/KSP-RO/LunarTransferPlanner/pull/8))
 * test_account ([Delta-V and phasing time calculations](https://github.com/KSP-RO/LunarTransferPlanner/pull/3))
 * [siimav](https://github.com/siimav) ([Tooltips from RP-1](https://github.com/KSP-RO/RP-1/blob/master/Source/RP0/UI/Tooltip.cs))

@@ -1,3 +1,5 @@
+(while this is still a WIP, use [this guide](https://github.com/KSP-RO/RP-1/wiki/How-To-Install-a-Mod-From-Github#grabbing-a-branchs-source-code-the-less-common-way-to-install) to learn how to install this)
+
 # Lunar Transfer Planner
 
 ### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) from the surface of the celestial body (planet, moon, gas giant, star, etc.) on which you are currently on.
@@ -35,7 +37,7 @@ Forum Thread: N/A
 
 Source Code: https://github.com/Clayell/LunarTransferPlanner
 
-## Mod Relationships (using CKAN is highly recommended)
+## Mod Relationships (using [CKAN](https://github.com/KSP-CKAN/CKAN) is highly recommended)
 
 #### Required:
 * ClickThroughBlocker

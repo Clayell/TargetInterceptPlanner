@@ -1149,10 +1149,9 @@ namespace LunarTransferPlanner
             {
                 var entry = windowCache[i];
                 bool expired = currentUT > entry.absoluteLaunchTime;
-                bool targetMismatch = entry.target != target; // this will also trigger when changing mainBody, assuming we dont get restarted due to a scene switch
-                                                                //Log($"oldTarget: {entry.target}, newTarget: {target}");
+                bool targetMismatch = StateChanged("targetManualWindowCache", targetManual) || (!targetManual && entry.target != target); // this will also trigger when changing mainBody, assuming we dont get restarted due to a scene switch
                 bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
-                bool altitudeMismatch = Math.Abs(entry.targetAltitude - targetAltitude) / targetAltitude >= tolerance; // 1%
+                bool altitudeMismatch = targetAltitude == double.NaN || Math.Abs(entry.targetAltitude - targetAltitude) / targetAltitude >= tolerance; // 1%
                 bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch || altitudeMismatch)
@@ -1840,15 +1839,15 @@ namespace LunarTransferPlanner
                     targetName = "[Manual Target]";
                 }
 
-                CheckWindowCache(latitude, longitude, inclination, targetAltitude);
-
                 isLowLatitude = Math.Abs(latitude) <= inclination;
                 (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV();
                 dayScale = mainBody.rotationPeriod / EarthSiderealDay;
                 CelestialBody homeBody = FlightGlobals.GetHomeBody();
                 solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
-                targetAltitude = targetOrbit.GetRadiusAtUT(currentUT);
+                targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
                 const double epsilon = 1e-9;
+
+                CheckWindowCache(latitude, longitude, inclination, targetAltitude);
 
                 if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
                 else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open

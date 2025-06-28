@@ -33,7 +33,7 @@ Note: As the orbital period of the target approaches the sidereal day length of 
 
 Forum Thread: N/A
 
-Source Code: https://github.com/KSP-RO/LunarTransferPlanner
+Source Code: https://github.com/Clayell/LunarTransferPlanner
 
 ## Mod Relationships (using CKAN is highly recommended)
 

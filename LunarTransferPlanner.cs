@@ -282,7 +282,11 @@ namespace LunarTransferPlanner
 
             // white: (255, 255, 255) | green: (183, 255, 0) | 16x16
 
-            Texture2D LoadImage(string url) => GameDatabase.Instance.GetTexture("LunarTransferPlanner/Icons/" + url, false);
+            Texture2D LoadImage(string url)
+            {
+                Log($"Loaded {url} image");
+                return GameDatabase.Instance.GetTexture("LunarTransferPlanner/Icons/" + url, false);
+            }
 
             gearWhite = LoadImage("gearWhite");
             gearGreen = LoadImage("gearGreen");
@@ -558,7 +562,7 @@ namespace LunarTransferPlanner
                     Read(ref maxWindows, "maxWindows");
                     Read(ref warpMargin, "warpMargin");
                     Read(ref specialWarpSelected, "specialWarpSelected");
-                    Read(ref displayParking, "displayParkingd");
+                    Read(ref displayParking, "displayParking");
                     Read(ref displayPhasing, "displayPhasing");
                     Read(ref targetLaunchAzimuth, "targetLaunchAzimuth");
                     Read(ref targetPhasingAngle, "targetPhasingAngle");

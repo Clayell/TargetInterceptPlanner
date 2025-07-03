@@ -300,7 +300,7 @@ namespace LunarTransferPlanner
             // set it to null before the caption update methods can make use of it.
             var orbit = new Orbit(inc, 0, cb.Radius + alt, lan, 0, 0, 0, cb);
             var renderer = ContractOrbitRenderer.Setup(new Contracts.Contract(), orbit, activedraw);
-            renderer.SetColor(Color.red);
+            renderer.SetColor(Color.red); // TODO, let this color be changed?
             renderer.contract = null;
             return new ParkingOrbitRendererHack(renderer);
         }

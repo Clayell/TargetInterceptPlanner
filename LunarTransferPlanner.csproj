@@ -89,11 +89,10 @@
     <Compile Include="KACWrapper.cs" />
     <Compile Include="LunarTransferPlanner.cs" />
     <Compile Include="PrincipiaWrapper.cs" />
+    <Compile Include="Renderers.cs" />
     <Compile Include="Tooltip.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Properties\" />
-  </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
     <None Include="LICENSE.md" />
     <None Include="README.md" />

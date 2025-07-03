@@ -2040,12 +2040,6 @@ namespace LunarTransferPlanner
                 //stopwatch.Stop();
                 //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
-                OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
-                OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
-
-                //Log($"targetLaunchAzimuth: {targetLaunchAzimuth}, targetLaunchInclination: {targetLaunchInclination}, launchOrbit0.azimuth: {launchOrbit0.azimuth}, launchOrbit0.inclination: {launchOrbit0.inclination}");
-                // TODO, the azimuths are out of sync?
-
                 double launchLAN1 = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, nextLaunchUT, 0);
 
                 //if (FlightGlobals.ActiveVessel != null) Log($"vessel LAN: {FlightGlobals.ActiveVessel.orbit.LAN}");
@@ -2117,8 +2111,11 @@ namespace LunarTransferPlanner
                         break;
                 }
 
+                OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
+                OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
+
                 GUILayout.Space(5);
-                if (showAzimuth)
+                if (showAzimuth) // we could switch these to using targetLaunchAzimuth and targetLaunchInclination instead...
                 {
                     GUILayout.Box(new GUIContent($"{FormatDecimals(launchOrbit0.azimuth)}\u00B0", $"{FormatDecimals(launchOrbit0.azimuth * degToRad)} rads, this is {(launchOrbit0.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }

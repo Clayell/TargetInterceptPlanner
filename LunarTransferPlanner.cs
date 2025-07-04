@@ -241,6 +241,7 @@ namespace LunarTransferPlanner
         bool ranSearch = false; // If we've ran the targetPhasingAngle/Time search
         int decimals = 2; // Amount of decimal precision to display
         bool useAngle = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
+        bool useLAN = true; // Show the LAN of the parking orbit instead of the AoP of the parking orbit, applies to all boxes
         int maxWindows = 100; // Maximum amount of extra windows that can be calculated
         bool isLowLatitude;
         bool targetSet = false;
@@ -448,6 +449,7 @@ namespace LunarTransferPlanner
                 { "expandParking2", expandParking2 },
                 { "maxDeltaVScaled", maxDeltaVScaled },
                 { "useAngle", useAngle },
+                { "useLAN", useLAN },
                 { "maxWindows", maxWindows },
                 { "warpMargin", warpMargin },
                 { "specialWarpSelected", specialWarpSelected },
@@ -565,6 +567,7 @@ namespace LunarTransferPlanner
                     Read(ref expandParking2, "expandParking2");
                     Read(ref maxDeltaVScaled, "maxDeltaVScaled");
                     Read(ref useAngle, "useAngle");
+                    Read(ref useLAN, "useLAN");
                     Read(ref maxWindows, "maxWindows");
                     Read(ref warpMargin, "warpMargin");
                     Read(ref specialWarpSelected, "specialWarpSelected");
@@ -992,12 +995,12 @@ namespace LunarTransferPlanner
             return finalResult;
         }
 
-        private (double LAN, double AoP) CalculateLAN(double latitude, double longitude, double azimuth, double targetTimeUT)
+        private (double LAN, double AoP) CalculateLAN(double latitude, double longitude, double azimuth, double startTime)
         {
             // Remember that Unity (and KSP) use a left-handed coordinate system; therefore, the cross product follows the left-hand rule.
 
-            // rotation angle of the body at targetTimeUT to get longitude of launch location
-            double bodyRotationAngle = Util.ClampAngle(mainBody.initialRotation + (targetTimeUT * 360d / mainBody.rotationPeriod) - 180d, false); // im not entirely sure why -180 is needed
+            // rotation angle of the body at target time (in UT) to get longitude of launch location
+            double bodyRotationAngle = Util.ClampAngle(mainBody.initialRotation + ((startTime + currentUT) * 360d / mainBody.rotationPeriod) - 180d, false); // im not entirely sure why -180 is needed
             double lonRad = Util.ClampAngle(longitude + bodyRotationAngle, false) * degToRad;
 
             double latRad = latitude * degToRad;
@@ -1022,7 +1025,7 @@ namespace LunarTransferPlanner
 
             double LAN = Util.ClampAngle(Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right)), true);
 
-            if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make sure LAN is in the correct quadrant
+            if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make surwhate LAN is in the correct quadrant
 
             if (azimuth > 90d && azimuth < 270d) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing south, flip LAN
 
@@ -1042,8 +1045,10 @@ namespace LunarTransferPlanner
             return (LAN * radToDeg, AoP * radToDeg);
         }
 
-        (double phasingTime, double phasingAngle) EstimateTimeBeforeManeuver(Vector3d launchPos, double startTime) // TODO, make sure handedness is good (left hand)
+        private (double phasingTime, double phasingAngle) EstimateTimeBeforeManeuver(Vector3d launchPos, double startTime)
         {
+            // Remember that Unity (and KSP) use a left-handed coordinate system; therefore, the cross product follows the left-hand rule.
+
             //CelestialBody mainBody = target.referenceBody;
             double gravParameter = mainBody.gravParameter;
             double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
@@ -1060,12 +1065,13 @@ namespace LunarTransferPlanner
             Vector3d maneuverUpVector = (MainPos - targetPos).normalized;
 
             // KSP lies about having QuaternionD.FromToRotation, EulerAngles, and Euler (https://github.com/KSPModdingLibs/KSPCommunityFixes/issues/316)
-            Vector3d rotationAxis = Vector3d.Cross(upVector, maneuverUpVector).normalized;
+            Vector3d rotationAxis = Vector3d.Cross(maneuverUpVector, upVector).normalized;
             double dot = Vector3d.Dot(upVector.normalized, maneuverUpVector.normalized);
             double phasingAngle = Math.Acos(Util.Clamp(dot, -1d, 1d)) * radToDeg;
 
-            if (Vector3d.Dot(rotationAxis, MainAxis) < 0)
-            { // rotationAxis is pointing roughly opposite to mainBody rotation axis, therefore rotation is retrograde
+            //if (Vector3d.Dot(rotationAxis, MainAxis) < 0 && Math.Abs(Vector3d.Dot(rotationAxis, MainAxis)) > 1e-9)
+            if (Vector3d.Dot(rotationAxis, MainAxis) > 1e-9)
+            {
                 phasingAngle = 360d - phasingAngle;
             }
 
@@ -1346,19 +1352,23 @@ namespace LunarTransferPlanner
             }
         }
 
-        private (double LAN, double AoP) GetCachedLAN(double latitude, double longitude, double azimuth, double targetTimeUT, int windowNumber)
+        private (double LAN, double AoP) GetCachedLAN(double latitude, double longitude, double azimuth, double startTime, int? windowNumber = null)
         {
-            // returning the LAN for the current time is useless, so we can just require a windowNumber 
-
-            int index = LANCache.FindIndex(item => item.windowNumber == windowNumber);
-            if (index != -1) return (LANCache[index].LAN, LANCache[index].AoP); // return if exists
+            if (windowNumber.HasValue)
+            {
+                int index = LANCache.FindIndex(item => item.windowNumber == windowNumber.Value);
+                if (index != -1) return (LANCache[index].LAN, LANCache[index].AoP); // return if exists
+                else
+                {
+                    (double LAN, double AoP) = CalculateLAN(latitude, longitude, azimuth, startTime);
+                    LANCache.Add((LAN, AoP, windowNumber.Value));
+                    return (LAN, AoP);
+                }
+            }
             else
             {
-                (double LAN, double AoP) = CalculateLAN(latitude, longitude, azimuth, targetTimeUT);
-                LANCache.Add((LAN, AoP, windowNumber));
-                return (LAN, AoP);
+                return CalculateLAN(latitude, longitude, azimuth, startTime);
             }
-
         }
 
         private (double phasingTime, double phasingAngle) GetCachedPhasingTime(Vector3d launchPos, double startTime, int? windowNumber = null)
@@ -1705,7 +1715,7 @@ namespace LunarTransferPlanner
             GUILayout.Space(10);
         }
 
-        private void ShowOrbitInfo(ref bool useAngle, double phaseTime, double phaseAngle)
+        private void ShowOrbitInfo(ref bool useAngle, ref bool useLAN, double phaseTime, double phaseAngle, double launchLAN, double launchAoP)
         {
             if (useAngle)
             {
@@ -1728,7 +1738,28 @@ namespace LunarTransferPlanner
                 bool useAngle_pressed = GUILayout.Button(new GUIContent(" P", "Switch to phasing angle"), GUILayout.Width(20));
                 ButtonPressed(ref useAngle, useAngle_pressed);
                 GUILayout.EndHorizontal();
-                GUILayout.Box(new GUIContent(FormatTime(phaseTime), $"{phaseTime:0}s"), GUILayout.MinWidth(100));
+                GUILayout.Box(new GUIContent(FormatTime(phaseTime), $"{FormatDecimals(phaseTime)}s"), GUILayout.MinWidth(100));
+            }
+
+            if (useLAN)
+            {
+                GUILayout.Space(5);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(new GUIContent("LAN", "Longitude of the Ascending Node of the Parking Orbit, max of 360\u00B0"), GUILayout.ExpandWidth(true));
+                bool useLAN_pressed = GUILayout.Button(new GUIContent("A", "Switch to Argument of Periapsis"), GUILayout.Width(20));
+                ButtonPressed(ref useLAN, useLAN_pressed);
+                GUILayout.EndHorizontal();
+                GUILayout.Box(new GUIContent($"{FormatDecimals(launchLAN)}\u00B0", $"{FormatDecimals(launchLAN * degToRad)} rads"), GUILayout.MinWidth(60));
+            }
+            else
+            {
+                GUILayout.Space(5);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(new GUIContent("AoP", $"Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver"), GUILayout.ExpandWidth(true));
+                bool useLAN_pressed = GUILayout.Button(new GUIContent(" L", "Switch to Longitude of the Ascending Node"), GUILayout.Width(20));
+                ButtonPressed(ref useLAN, useLAN_pressed);
+                GUILayout.EndHorizontal();
+                GUILayout.Box(new GUIContent($"{FormatDecimals(launchAoP)}\u00B0", $"{FormatDecimals(launchAoP * degToRad)} rads"), GUILayout.MinWidth(60));
             }
         }
 
@@ -1785,7 +1816,7 @@ namespace LunarTransferPlanner
                 return "...";
             }
             else return text;
-        } // putting the full text in the tooltip is a good idea anyway
+        } // this is mainly for the visible text, putting the full text in the tooltip is a good idea anyway
 
         private void ExpandCollapse(ref bool button, string tooltip = "", bool overrideButton = false)
         {
@@ -1983,7 +2014,7 @@ namespace LunarTransferPlanner
                     GUILayout.Space(5);
 
                     showManualOrbit = false;
-                    
+
                     if (count > 1) // only display target selector screen if theres multiple targets
                     {
                         if (currentBody == -1) currentBody = 0; // currentBody should already be set, but just in case
@@ -2075,8 +2106,6 @@ namespace LunarTransferPlanner
                 //stopwatch.Stop();
                 //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
-                (double launchLAN1, double launchAoP1) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, nextLaunchUT, 0);
-
                 //if (FlightGlobals.ActiveVessel != null) Log($"vessel LAN: {FlightGlobals.ActiveVessel.orbit.LAN}");
 
                 bool inSpecialWarp = warpState == 2 || warpState == 3;
@@ -2118,7 +2147,7 @@ namespace LunarTransferPlanner
                 {
                     GUILayout.Label(new GUIContent(launchLabel + (showAzimuth ? " Az." : " Incl."), "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.ExpandWidth(true));
                 }
-                ExpandCollapse(ref expandParking0);
+                ExpandCollapse(ref expandParking0, "Show Orbit Details");
                 GUILayout.EndHorizontal();
 
                 switch (referenceTimeButton)
@@ -2163,7 +2192,8 @@ namespace LunarTransferPlanner
                 if (expandParking0)
                 {
                     (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
-                    ShowOrbitInfo(ref useAngle, phaseTime0, phaseAngle0);
+                    (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
+                    ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0);
                 }
 
                 string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(targetLaunchAzimuth - 90d) < 0.01 ?
@@ -2173,17 +2203,18 @@ namespace LunarTransferPlanner
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("Next Window", windowTooltip), GUILayout.ExpandWidth(true));
-                ExpandCollapse(ref expandParking1);
+                ExpandCollapse(ref expandParking1, "Show Orbit Details");
                 GUILayout.EndHorizontal();
 
                 GUILayout.Space(5);
                 GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
 
-                // need this outside for alarm description and transfer orbit
+                // we need this outside for alarm description and transfer orbit
                 (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchETA, 0);
+                (double launchLAN1, double launchAoP1) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, nextLaunchETA, 0);
                 if (expandParking1)
                 {
-                    ShowOrbitInfo(ref useAngle, phaseTime1, phaseAngle1);
+                    ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1);
                 }
 
                 if (expandExtraWindow)
@@ -2191,7 +2222,7 @@ namespace LunarTransferPlanner
                     GUILayout.Space(5);
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip), GUILayout.ExpandWidth(true));
-                    ExpandCollapse(ref expandParking2);
+                    ExpandCollapse(ref expandParking2, "Show Orbit Details");
                     GUILayout.EndHorizontal();
 
                     GUILayout.Space(5);
@@ -2200,7 +2231,8 @@ namespace LunarTransferPlanner
                     if (expandParking2)
                     {
                         (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchETA, extraWindowNumber - 1);
-                        ShowOrbitInfo(ref useAngle, phaseTime2, phaseAngle2);
+                        (double launchLAN2, double launchAoP2) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, extraLaunchETA, extraWindowNumber - 1);
+                        ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2);
                     }
                 }
 
@@ -2289,16 +2321,20 @@ namespace LunarTransferPlanner
                 }
 
                 if (StateChanged("RendererButtons", MapViewEnabled()))
-                { 
+                {
                     ResetWindow(ref mainRect);
                 }
 
                 double azRad = targetLaunchAzimuth * degToRad;
                 double latRad = latitude * degToRad;
-                if (double.IsNaN(targetLaunchInclination) || !showSettings) targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
+                if (double.IsNaN(targetLaunchInclination) || !showSettings) // need to update if NaN or if showSettings isnt open to update it (in case of a latitude change)
+                {
+                    targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
                     ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
-                    : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // need to update if NaN or if showSettings isnt open to update it (in case of a latitude change)
-                if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
+                    : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg;
+
+                    if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
+                }
 
                 if (displayParking && _parkingOrbitRenderer == null && MapViewEnabled())
                 {
@@ -2406,6 +2442,8 @@ namespace LunarTransferPlanner
                     DescribeD("Launch Azimuth", "\u00B0", launchOrbit1.azimuth);
                     DescribeD("Phasing Time", "s", phaseTime1);
                     DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
+                    DescribeD("Parking Orbit LAN", "\u00B0", launchLAN1);
+                    DescribeD("Parking Orbit AoP", "\u00B0", launchAoP1);
                     DescribeB("Special Warp Active", specialWarpActive);
 
                     description = description.TrimEnd('\n');

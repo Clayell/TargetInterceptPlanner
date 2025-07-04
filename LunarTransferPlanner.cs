@@ -1717,9 +1717,10 @@ namespace LunarTransferPlanner
 
         private void ShowOrbitInfo(ref bool useAngle, ref bool useLAN, double phaseTime, double phaseAngle, double launchLAN, double launchAoP)
         {
+            GUILayout.Space(5);
+
             if (useAngle)
             {
-                GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("Phasing angle", "Phasing angle between launch location and maneuver in orbit, max of 360\u00B0"), GUILayout.ExpandWidth(true));
                 bool useAngle_pressed = GUILayout.Button(new GUIContent("T", "Switch to phasing time"), GUILayout.Width(20));
@@ -1732,18 +1733,18 @@ namespace LunarTransferPlanner
                 double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
                 double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / mainBody.gravParameter);
 
-                GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Time in orbit", $"Phasing time spent waiting in parking orbit before maneuver, max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Phasing time", $"Phasing time spent waiting in parking orbit before maneuver, max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"), GUILayout.ExpandWidth(true));
                 bool useAngle_pressed = GUILayout.Button(new GUIContent(" P", "Switch to phasing angle"), GUILayout.Width(20));
                 ButtonPressed(ref useAngle, useAngle_pressed);
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent(FormatTime(phaseTime), $"{FormatDecimals(phaseTime)}s"), GUILayout.MinWidth(100));
             }
 
+            GUILayout.Space(5);
+
             if (useLAN)
             {
-                GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("LAN", "Longitude of the Ascending Node of the Parking Orbit, max of 360\u00B0"), GUILayout.ExpandWidth(true));
                 bool useLAN_pressed = GUILayout.Button(new GUIContent("A", "Switch to Argument of Periapsis"), GUILayout.Width(20));
@@ -1753,7 +1754,6 @@ namespace LunarTransferPlanner
             }
             else
             {
-                GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(new GUIContent("AoP", $"Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver"), GUILayout.ExpandWidth(true));
                 bool useLAN_pressed = GUILayout.Button(new GUIContent(" L", "Switch to Longitude of the Ascending Node"), GUILayout.Width(20));

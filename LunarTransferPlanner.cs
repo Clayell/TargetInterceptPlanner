@@ -2178,11 +2178,13 @@ namespace LunarTransferPlanner
                 GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
                 MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
 
+                bool inWarp() => TimeWarp.CurrentRate > 1d;
+
                 GUILayout.Space(10);
                 GUILayout.BeginHorizontal();
                 bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", $"Add Alarm for {(useAltAlarm && expandExtraWindow ? $"Window {extraWindowNumber}" : "Next Window")} to {(KACInstalled && useKAC ? "Kerbal Alarm Clock" : "stock Alarm Clock")}"), GUILayout.MinWidth(80));
 
-                bool toggleWarp = GUILayout.Button(new GUIContent(TimeWarp.CurrentRate > 1d || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
+                bool toggleWarp = GUILayout.Button(new GUIContent(inWarp() || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
                 GUILayout.EndHorizontal();
 
                 if (specialWarpActive)
@@ -2379,8 +2381,6 @@ namespace LunarTransferPlanner
                         }
                     }
                 }
-
-                bool inWarp() => TimeWarp.CurrentRate > 1d;
 
                 if (toggleWarp)
                 {

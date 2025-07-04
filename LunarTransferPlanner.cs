@@ -129,7 +129,7 @@ namespace LunarTransferPlanner
     {
         const double EarthSiderealDay = 86164.098903691;
         const double EarthRadius = 6371000; // meters
-        const double EarthMass = 3.9860043543609598e+14 / 6.673e-11;
+        const double EarthMass = 3.9860043543609598e+14 / 6.67408e-11; // API docs say 6.673e-11 for the grav constant, which is wrong
         // Earth sources from RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
         const double tau = 2 * Math.PI; // Math.Tau is in .NET 5
         const double radToDeg = 180d / Math.PI; // unity only has floats
@@ -251,7 +251,7 @@ namespace LunarTransferPlanner
 
         bool displayParking = false; // Show parking orbit in map view
         bool displayPhasing = false; // Show phasing angle in map view
-        private ParkingOrbitRendererHack _parkingOrbitRenderer = null;
+        private OrbitRendererHack _parkingOrbitRenderer = null;
         private MapAngleRenderer _ejectAngleRenderer = null;
 
         List<CelestialBody> moons;
@@ -646,6 +646,7 @@ namespace LunarTransferPlanner
         {
             // adopted from https://en.wikipedia.org/wiki/Golden-section_search
             // I have no idea why this works, but it works so well
+            // TODO, switch to Brent?
 
             double left = upperBound - invphi * (upperBound - lowerBound);
             double right = lowerBound + invphi * (upperBound - lowerBound);
@@ -2263,7 +2264,19 @@ namespace LunarTransferPlanner
                         : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // need to update if NaN or if showSettings isnt open to update it (in case of a latitude change)
                     if (StateChanged("targetLaunchInclination", targetLaunchInclination)) LANCache.Clear();
 
-                    _parkingOrbitRenderer = ParkingOrbitRendererHack.Setup(mainBody, parkingAltitude * 1000d, targetLaunchInclination, launchLAN1);
+                    Orbit parkingOrbit = new Orbit
+                    {
+                        inclination = targetLaunchInclination,
+                        eccentricity = 0d,
+                        semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
+                        LAN = launchLAN1,
+                        argumentOfPeriapsis = 0d,
+                        meanAnomalyAtEpoch = 0d,
+                        epoch = currentUT,
+                        referenceBody = mainBody,
+                    };
+
+                    _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, Color.red); // TODO, allow this color to be changed in ingame settings
                 }
                 else if (!displayParking && _parkingOrbitRenderer != null)
                 {
@@ -2985,6 +2998,8 @@ namespace LunarTransferPlanner
                 double step = useRadians ? Math.PI / 12d : 1d; // jump by 15 degree increments if using radians
                 double radiusAdjusted = useCenterDistance ? 0d : radius;
                 string textAdjusted = useCenterDistance ? $"the center of {mainBody.bodyName}" : "sea level";
+
+                // TODO, fix the various min/max bugs edit fields in the modes below
 
                 void EditApoapsis()
                 {

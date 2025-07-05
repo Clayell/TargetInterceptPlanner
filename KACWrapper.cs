@@ -1,6 +1,6 @@
 ﻿// this was originally copied from linuxgurugamer's KCT (https://github.com/linuxgurugamer/KCT/blob/master/Kerbal_Construction_Time/KACWrapper.cs),
 // but that code is not original and seems to be used in 30 projects
-// it originates from TriggerAu's KAC example code (https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock_APITester/KACWrapper.cs)
+// it originates from TriggerAu's KAC Wrapper example code (https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock_APITester/KACWrapper.cs)
 
 using System;
 using System.Collections;

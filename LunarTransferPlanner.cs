@@ -1,6 +1,5 @@
 using ClickThroughFix;
 using ToolbarControl_NS;
-using KerbalAlarmClock;
 using KSP.UI.Screens;
 using System;
 using System.Collections.Generic;

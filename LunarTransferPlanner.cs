@@ -215,7 +215,7 @@ namespace LunarTransferPlanner
         double longitude = 0d;
         //double altitude = 0d; // height above sea level in meters // currently, this has no effect on the calculations, because the vectors are always normalized
 
-        int referenceTimeButton = 0;
+        int referenceTimeButton = 1; // 0, 1, 2 (default to Next Window)
         string referenceTimeLabel;
         string referenceTimeTooltip;
         string launchLabel;
@@ -1261,6 +1261,7 @@ namespace LunarTransferPlanner
                     LANCache.Clear();
                     ClearOrbitDisplays();
                     _ejectAngleRenderer = null;
+                    ResetTargetInclination();
                     // leave deltaVCache alone
                     break;
                 }
@@ -1701,6 +1702,16 @@ namespace LunarTransferPlanner
         {
             _transferOrbitRenderer?.Cleanup();
             _transferOrbitRenderer = null;
+        }
+
+        private void ResetTargetInclination()
+        {
+            double azRad = targetLaunchAzimuth * degToRad;
+            double latRad = latitude * degToRad;
+
+            targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
+            ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
+            : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg;
         }
 
         private void DrawLine()
@@ -2325,13 +2336,10 @@ namespace LunarTransferPlanner
                     ResetWindow(ref mainRect);
                 }
 
-                double azRad = targetLaunchAzimuth * degToRad;
-                double latRad = latitude * degToRad;
-                if (double.IsNaN(targetLaunchInclination) || !showSettings) // need to update if NaN or if showSettings isnt open to update it (in case of a latitude change)
+                
+                if (double.IsNaN(targetLaunchInclination)) // need to update if NaN and showSettings isnt open to update it (in case of a latitude change)
                 {
-                    targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
-                    ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
-                    : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg;
+                    ResetTargetInclination();
 
                     if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
                 }
@@ -2917,17 +2925,11 @@ namespace LunarTransferPlanner
 
                 string azimuthTooltip = "90° is the default, which is directly east. Range is 0° to 360°, where 0° and 180° are North and South respectively.";
                 string inclinationTooltip = $"Your latitude of {FormatDecimals(latitude)}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively.";
-                double azRad = targetLaunchAzimuth * degToRad;
-                double latRad = latitude * degToRad;
-                if (double.IsNaN(targetLaunchInclination)) targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
-                    ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
-                    : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // initialize value, this isnt rounded but rounding led to floating point issues so whatever
+                //if (double.IsNaN(targetLaunchInclination)) ResetTargetInclination(); // initialize value, this isnt rounded but rounding led to floating point issues so whatever
 
                 if (showAzimuth)
                 {
-                    targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
-                    ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
-                    : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg; // continuously update value
+                    ResetTargetInclination(); // continuously update value
 
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent("Change Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
@@ -2954,7 +2956,7 @@ namespace LunarTransferPlanner
                     MakeNumberEditField("targetLaunchInclination", ref targetLaunchInclination, 1d, -180d, 180d, true);
 
                     double cosInc = Math.Cos(targetLaunchInclination * degToRad);
-                    double cosLat = Math.Cos(latRad);
+                    double cosLat = Math.Cos(latitude * degToRad);
                     double sinAz = cosInc / cosLat;
 
                     if (Math.Abs(sinAz) >= 1d - 1e-9)

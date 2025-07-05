@@ -2145,19 +2145,19 @@ namespace LunarTransferPlanner
                 {
                     case 0:
                         referenceTimeLabel = "Launch Now";
-                        referenceTimeTooltip = "Change to Next Launch Window";
+                        referenceTimeTooltip = "Change reference time to Next Launch Window";
                         referenceTime = 0d;
                         referenceWindowNumber = null;
                         break;
                     case 1:
                         referenceTimeLabel = "Next Window";
-                        referenceTimeTooltip = $"Change to Launch Window {extraWindowNumber}";
+                        referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
                         referenceTime = nextLaunchETA;
                         referenceWindowNumber = 0;
                         break;
                     case 2:
                         referenceTimeLabel = $"Window {extraWindowNumber}";
-                        referenceTimeTooltip = "Change to the Launch Now Window";
+                        referenceTimeTooltip = "Change reference time to the Launch Now Window";
                         referenceTime = extraLaunchETA;
                         referenceWindowNumber = extraWindowNumber - 1;
                         break;
@@ -2274,12 +2274,6 @@ namespace LunarTransferPlanner
                 }
                 ShowSettings();
                 GUILayout.EndHorizontal();
-
-
-                //GUILayout.Label(new GUIContent($"LAN: {FormatDecimals(launchLAN)}", $"{launchLAN}"));
-
-                //if (GUILayout.Button("Log")) Log($"launchOrbit.LAN: {launchLAN}, launchOrbit.inclination: {launchOrbit1.inclination}, MapViewEnabled: {MapViewEnabled()}");
-                //if (GUILayout.Button("Reset")) ClearAllCaches();
 
                 if (MapViewEnabled())
                 {

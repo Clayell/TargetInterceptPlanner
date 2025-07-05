@@ -252,10 +252,12 @@ namespace LunarTransferPlanner
 
         bool displayParking = false; // Show parking orbit in map view
         bool displayTransfer = false; // Show transfer orbit in map view
+        bool displayManual = false; // Show manual orbit in map view, if applicable
         bool displayPhasing = false; // Show phasing angle in map view
-        private OrbitRendererHack _parkingOrbitRenderer = null;
-        private OrbitRendererHack _transferOrbitRenderer = null;
-        private MapAngleRenderer _ejectAngleRenderer = null;
+        OrbitRendererHack _parkingOrbitRenderer = null;
+        OrbitRendererHack _transferOrbitRenderer = null;
+        OrbitRendererHack _manualOrbitRenderer = null;
+        MapAngleRenderer _ejectAngleRenderer = null;
 
         List<CelestialBody> moons;
         List<Vessel> vessels;
@@ -453,6 +455,7 @@ namespace LunarTransferPlanner
                 { "specialWarpSelected", specialWarpSelected },
                 { "displayParking", displayParking },
                 { "displayTransfer", displayTransfer },
+                { "displayManual", displayManual },
                 { "displayPhasing", displayPhasing },
                 { "targetLaunchAzimuth", targetLaunchAzimuth },
                 { "targetPhasingAngle", targetPhasingAngle },
@@ -571,6 +574,7 @@ namespace LunarTransferPlanner
                     Read(ref specialWarpSelected, "specialWarpSelected");
                     Read(ref displayParking, "displayParking");
                     Read(ref displayTransfer, "displayTransfer");
+                    Read(ref displayManual, "displayManual");
                     Read(ref displayPhasing, "displayPhasing");
                     Read(ref targetLaunchAzimuth, "targetLaunchAzimuth");
                     Read(ref targetPhasingAngle, "targetPhasingAngle");
@@ -1228,7 +1232,7 @@ namespace LunarTransferPlanner
             phasingCache.Clear();
             LANCache.Clear();
             deltaVCache = null;
-            ClearOrbitDisplays();
+            ClearAllOrbitDisplays();
             _ejectAngleRenderer = null;
             ResetTargetInclination();
         }
@@ -1258,7 +1262,7 @@ namespace LunarTransferPlanner
                     launchOrbitCache.Clear();
                     phasingCache.Clear();
                     LANCache.Clear();
-                    ClearOrbitDisplays();
+                    ClearAllOrbitDisplays();
                     _ejectAngleRenderer = null;
                     ResetTargetInclination();
                     // leave deltaVCache alone
@@ -1676,22 +1680,17 @@ namespace LunarTransferPlanner
             return pressed;
         }
 
-        private void ClearOrbitDisplays()
+        private void ClearAllOrbitDisplays()
         {
-            ClearParkingDisplay();
-            ClearTransferDisplay();
+            ClearOrbitDisplay(ref _parkingOrbitRenderer);
+            ClearOrbitDisplay(ref _transferOrbitRenderer);
+            ClearOrbitDisplay(ref _manualOrbitRenderer);
         }
 
-        private void ClearParkingDisplay()
+        private void ClearOrbitDisplay(ref OrbitRendererHack renderer)
         {
-            _parkingOrbitRenderer?.Cleanup();
-            _parkingOrbitRenderer = null;
-        }
-
-        private void ClearTransferDisplay()
-        {
-            _transferOrbitRenderer?.Cleanup();
-            _transferOrbitRenderer = null;
+            renderer?.Cleanup();
+            renderer = null;
         }
 
         private void ResetTargetInclination()
@@ -2125,7 +2124,7 @@ namespace LunarTransferPlanner
                     {
                         phasingCache.Clear();
                         deltaVCache = null;
-                        ClearOrbitDisplays();
+                        ClearAllOrbitDisplays();
                     }
                 }
 
@@ -2300,6 +2299,17 @@ namespace LunarTransferPlanner
                     EndCenter();
                     GUILayout.EndHorizontal();
 
+                    if (targetManual)
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Show Manual Orbit", "Show Manual Target Orbit in Map View"));
+                        GUILayout.FlexibleSpace();
+                        BeginCenter();
+                        displayManual = GUILayout.Toggle(displayManual, "");
+                        EndCenter();
+                        GUILayout.EndHorizontal();
+                    }
+
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent("Show Phasing Angle", "Show Phasing Angle for the Next Launch Window in Map View"));
                     GUILayout.FlexibleSpace();
@@ -2342,7 +2352,7 @@ namespace LunarTransferPlanner
                 }
                 else if (!displayParking && _parkingOrbitRenderer != null)
                 {
-                    ClearParkingDisplay();
+                    ClearOrbitDisplay(ref _parkingOrbitRenderer);
                 }
 
                 if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled())
@@ -2365,7 +2375,18 @@ namespace LunarTransferPlanner
                 }
                 else if (!displayTransfer && _transferOrbitRenderer != null)
                 {
-                    ClearTransferDisplay();
+                    ClearOrbitDisplay(ref _transferOrbitRenderer);
+                }
+
+                if (displayManual && _manualOrbitRenderer == null && MapViewEnabled() && targetManual)
+                {
+                    _manualOrbitRenderer?.Cleanup(); // just in case
+
+                    _manualOrbitRenderer = OrbitRendererHack.Setup(targetOrbit, Color.blue); // TODO, allow this color to be changed in ingame settings
+                }
+                else if ((!displayManual || !targetManual) && _manualOrbitRenderer != null)
+                {
+                    ClearOrbitDisplay(ref _manualOrbitRenderer);
                 }
 
                 //if (_ejectAngleRenderer == null)
@@ -2949,7 +2970,7 @@ namespace LunarTransferPlanner
                 if (StateChanged("targetLaunchAzimuth", targetLaunchAzimuth))
                 {
                     ClearAllCaches(); // this doesn't always result in new minimums
-                    ClearOrbitDisplays();
+                    ClearAllOrbitDisplays();
                 }
             }
 
@@ -2979,6 +3000,21 @@ namespace LunarTransferPlanner
                 ApR = SMA * (1d + eccentricity);
                 PeR = SMA * (1d - eccentricity);
                 period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+
+                // set the orbit to current parameters initially
+                targetOrbit = new Orbit
+                {
+                    eccentricity = eccentricity,
+                    semiMajorAxis = SMA,
+                    inclination = inclination,
+                    LAN = LAN,
+                    argumentOfPeriapsis = AoP,
+                    meanAnomalyAtEpoch = MNA,
+                    epoch = currentUT,
+                    referenceBody = mainBody,
+                };
+                targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
+                _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
             }
 
             GUILayout.Space(5);

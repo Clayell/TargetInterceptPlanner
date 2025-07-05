@@ -2052,9 +2052,7 @@ namespace LunarTransferPlanner
 
                 GUILayout.BeginHorizontal();
                 if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>!!!</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
-
-                GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as")} launch location"), GUILayout.ExpandWidth(true));
-
+                GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : (useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as"))} launch location"), GUILayout.ExpandWidth(true));
                 ExpandCollapse(ref expandLatLong, ref mainRect, "Set manual latitude and longitude");
                 GUILayout.EndHorizontal();
 

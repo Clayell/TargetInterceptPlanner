@@ -1,5 +1,7 @@
 The MIT License (MIT)
 
+Copyright (c) 2014, David Tregoning (TriggerAu)
+
 Copyright (c) 2022 RCrockford
 
 Copyright (c) 2023 Martin Reverda (Nazfib)

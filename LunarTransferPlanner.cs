@@ -363,23 +363,26 @@ namespace LunarTransferPlanner
             if (isWindowOpen && isKSPGUIActive) // all windows hide if not true
             { // HighLogic.LoadedScene != GameScenes.LOADING && HighLogic.LoadedScene != GameScenes.LOADINGBUFFER // these dont seem to work? at least not in the way im using them
                 GUI.skin = !useAltSkin ? this.skin : null;
+                int id0 = this.GetHashCode();
+                int id1 = this.GetHashCode() + 1;
+                int id2 = this.GetHashCode() + 2;
 
-                mainRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode(), mainRect, MakeMainWindow, mainTitle);
+                mainRect = ClickThruBlocker.GUILayoutWindow(id0, mainRect, MakeMainWindow, mainTitle);
                 ClampToScreen(ref mainRect);
-                Tooltip.Instance?.ShowTooltip(this.GetHashCode());
+                Tooltip.Instance?.ShowTooltip(id0);
 
                 if (showSettings)
                 {
-                    settingsRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode() + 1, settingsRect, MakeSettingsWindow, settingsTitle);
+                    settingsRect = ClickThruBlocker.GUILayoutWindow(id1, settingsRect, MakeSettingsWindow, settingsTitle);
                     ClampToScreen(ref settingsRect);
-                    Tooltip.Instance?.ShowTooltip(this.GetHashCode() + 1);
+                    Tooltip.Instance?.ShowTooltip(id1);
                 }
 
                 if (showManualOrbit)
                 {
-                    manualOrbitRect = ClickThruBlocker.GUILayoutWindow(this.GetHashCode() + 2, manualOrbitRect, MakeManualOrbitWindow, manualOrbitTitle);
+                    manualOrbitRect = ClickThruBlocker.GUILayoutWindow(id2, manualOrbitRect, MakeManualOrbitWindow, manualOrbitTitle);
                     ClampToScreen(ref manualOrbitRect);
-                    Tooltip.Instance?.ShowTooltip(this.GetHashCode() + 2);
+                    Tooltip.Instance?.ShowTooltip(id2);
                 }
             }
         }
@@ -2349,6 +2352,7 @@ namespace LunarTransferPlanner
                         referenceBody = mainBody,
                     };
 
+                    // we need to do both of these to access the orbit.pos and orbit.vel in Draw
                     parkingOrbit.Init();
                     parkingOrbit.UpdateFromUT(currentUT);
 
@@ -2980,7 +2984,6 @@ namespace LunarTransferPlanner
             }
 
             Tooltip.Instance?.RecordTooltip(id);
-
             GUI.DragWindow();
         }
 
@@ -3570,7 +3573,6 @@ namespace LunarTransferPlanner
             }
 
             Tooltip.Instance?.RecordTooltip(id);
-
             GUI.DragWindow();
         }
 

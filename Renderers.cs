@@ -88,9 +88,7 @@ namespace LunarTransferPlanner
         private const float AppearTime = 0.5f;
         private const float HideTime = 0.25f;
 
-        // Nullability: initialized in Start(), de-initialized in OnDestroy()
-        private GUIStyle _styleLabelStart = null;
-        private GUIStyle _styleLabelEnd = null;
+        private GUIStyle _styleLabel = null;
 
         private Vector3d Point1Direction;
         private Vector3d Point2Direction;
@@ -130,17 +128,13 @@ namespace LunarTransferPlanner
             _lineEnd = RenderUtils.InitLine(_objLineEnd, Color.red, 2, 10, orbitLines);
             _lineArc = RenderUtils.InitLine(_objLineArc, Color.green, ArcPoints, 10, orbitLines);
 
-            _styleLabelStart = new GUIStyle
+            _styleLabel = new GUIStyle
             {
                 normal = { textColor = Color.white },
                 alignment = TextAnchor.MiddleCenter,
             };
 
-            _styleLabelEnd = new GUIStyle
-            {
-                normal = { textColor = Color.white },
-                alignment = TextAnchor.MiddleCenter,
-            };
+            Tooltip.RecreateInstance();
         }
 
 
@@ -283,9 +277,19 @@ namespace LunarTransferPlanner
             Vector3 dir1 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point1Direction.normalized));
             Vector3 dir2 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point2Direction.normalized));
 
-            if (dir1.z > 0) GUI.Label(new Rect(dir1.x - 50, Screen.height - dir1.y - 15, 100, 30), "Parking Orbit Insertion", _styleLabelStart);
-            if (dir2.z > 0) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), "Transfer Maneuver", _styleLabelEnd);
             // checking z coordinate hides labels when they're behind the camera
+            if (dir1.z > 0) GUI.Label(new Rect(dir1.x - 50, Screen.height - dir1.y - 15, 100, 30), new GUIContent("Parking Orbit Insertion", "This is the point directly above the launch site"), _styleLabel);
+            if (dir2.z > 0) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
+
+            Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction.normalized;
+            double arcRadius = 2.5 * BodyOrigin.Radius;
+
+            Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
+
+            if (arcPoint.z > 0) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{AoPDiff:F2}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
+            
+            Tooltip.Instance?.RecordTooltip(this.GetHashCode());
+            Tooltip.Instance?.ShowTooltip(this.GetHashCode());
         }
     }
 

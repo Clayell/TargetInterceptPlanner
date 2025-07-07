@@ -26,8 +26,6 @@ namespace LunarTransferPlanner
             return lineReturn;
         }
 
-        public static Vector3d VectorToUnityFrame(Vector3d v) => Planetarium.fetch.rotation * v.xzy;
-
         public static void DrawArc(LineRenderer line, Vector3d center, Vector3d fromDir, Vector3d orbitNormal, double angle, double radius, int arcPoints)
         {
             if (line == null) return;
@@ -119,7 +117,7 @@ namespace LunarTransferPlanner
                 return;
             }
 
-            Log("Initializing PhaseAngle Render");
+            //Log("Initializing PhaseAngle Render");
             _objLineStart = new GameObject("LineStart");
             _objLineEnd = new GameObject("LineEnd");
             _objLineArc = new GameObject("LineArc");
@@ -167,12 +165,18 @@ namespace LunarTransferPlanner
             BodyOrigin = orbit.referenceBody;
             orbitNormal = ToWorld(Vector3d.Cross(orbit.pos, orbit.vel)).normalized;
 
-            Point1Direction = AoPToWorldVector(orbit, launchAoP * LunarTransferPlanner.degToRad);
-            Point2Direction = AoPToWorldVector(orbit, Util.ClampAngle(launchAoP - phasingAngle, false) * LunarTransferPlanner.degToRad);
+            //Log($"orbit.pos: {orbit.pos}, orbit.vel: {orbit.vel}");
+
+            if (orbit.pos.z < 1e-5 || orbit.vel.z < 1e-5)
+            {
+                Quaternion tilt = Quaternion.AngleAxis((float)1e-5, Vector3.right); // tilt by .00001 degrees to make it not equatorial
+                orbitNormal = ToWorld(Vector3d.Cross(tilt * orbit.pos, tilt * orbit.vel)).normalized;
+            }
+
+            Point1Direction = AoPToWorldVector(launchAoP * LunarTransferPlanner.degToRad);
+            Point2Direction = AoPToWorldVector(Util.ClampAngle(launchAoP - phasingAngle, false) * LunarTransferPlanner.degToRad);
 
             AoPDiff = phasingAngle;
-
-            Log($"launchAoP: {launchAoP}, phasingAngle: {phasingAngle}, AoP1 dir: {Point1Direction}, AoP2 dir: {Point2Direction}");
 
             _startDrawing = DateTime.Now;
             _currentDrawingState = DrawingState.DrawingLinesAppearing;
@@ -186,21 +190,10 @@ namespace LunarTransferPlanner
 
         private Vector3d ToWorld(Vector3d v) => new Vector3d(v.x, v.z, v.y);
 
-        private Vector3d AoPToWorldVector(Orbit orbit, double AoPRad)
+        private Vector3d AoPToWorldVector(double AoPRad)
         {
-            Vector3d nodeLine = Vector3d.Cross(Vector3d.up, orbitNormal);
+            Vector3d nodeLine = Vector3d.Cross(Vector3d.up, orbitNormal).normalized;
 
-            if (nodeLine.sqrMagnitude < 1e-9)
-            {
-                // Equatorial orbit, fallback to using eccVec
-                nodeLine = ToWorld(orbit.eccVec).normalized;
-            }
-            else
-            {
-                nodeLine.Normalize();
-            }
-
-            // Rotate in orbital plane from ascending node
             return Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(orbitNormal, nodeLine);
         }
 

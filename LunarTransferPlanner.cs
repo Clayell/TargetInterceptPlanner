@@ -1008,7 +1008,7 @@ namespace LunarTransferPlanner
             double bodyRotationAngle = Util.ClampAngle(mainBody.initialRotation + ((startTime + currentUT) * 360d / mainBody.rotationPeriod) - 180d, false); // im not entirely sure why -180 is needed
             double lonRad = Util.ClampAngle(longitude + bodyRotationAngle, false) * degToRad;
 
-            double latRad = latitude * degToRad;
+            double latRad = Math.Max(latitude, 1e-6) * degToRad; // prevent NaN from equatorial orbit
             double aziRad = Util.ClampAngle((180d - azimuth) * degToRad, true); // im not entirely sure why 180 is needed
             double r = mainBody.Radius;
 
@@ -2171,8 +2171,8 @@ namespace LunarTransferPlanner
                 OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
                 OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
 
-                double displayAz = referenceTimeButton == 0 ? launchOrbit0.azimuth : targetLaunchAzimuth;
-                double displayInc = referenceTimeButton == 0 ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
+                double displayAz = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth : targetLaunchAzimuth;
+                double displayInc = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
                 // launchOrbit doesnt really display retrograde azimuths/inclinations, so itd be unhelpful to display them if they're misleading
 
                 GUILayout.Space(5);
@@ -2337,10 +2337,9 @@ namespace LunarTransferPlanner
 
                 if (displayParking && MapViewEnabled())
                 {
-
                     Orbit parkingOrbit = new Orbit
                     {
-                        inclination = targetLaunchInclination,
+                        inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
                         eccentricity = epsilon, // just to make periapsis visible
                         semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
                         LAN = launchLAN1,
@@ -2350,7 +2349,7 @@ namespace LunarTransferPlanner
                         referenceBody = mainBody,
                     };
 
-                    parkingOrbit.Init(); // this is needed to get the OrbitFrame
+                    parkingOrbit.Init();
                     parkingOrbit.UpdateFromUT(currentUT);
 
                     if (_parkingOrbitRenderer == null)
@@ -2388,7 +2387,7 @@ namespace LunarTransferPlanner
                     double AoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP1 + phaseAngle1 + 180d, false) : Util.ClampAngle(launchAoP1 + phaseAngle1, false);
                     Orbit transferOrbit = new Orbit
                     {
-                        inclination = targetLaunchInclination,
+                        inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
                         eccentricity = !double.IsNaN(trajectoryEccentricity) || !double.IsNaN(dV) ? trajectoryEccentricity : 0d,
                         semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
                         LAN = launchLAN1,
@@ -2674,7 +2673,7 @@ namespace LunarTransferPlanner
                 DrawLine();
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than {targetName} inclination"));
+                GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than {targetName} inclination ({FormatDecimals(inclination)}\u00B0)"));
                 GUILayout.FlexibleSpace();
                 BeginCenter();
                 GUI.enabled = isLowLatitude;
@@ -2683,13 +2682,14 @@ namespace LunarTransferPlanner
                 EndCenter();
                 GUILayout.EndHorizontal();
 
-                //if (!isLowLatitude) useAltBehavior_toggled = false; // if we change useAltBehavior to false instead, the next code will just set it to true again // not needed, we check for isLowLatitude anyway
-
                 if (StateChanged("useAltBehavior", useAltBehavior))
                 {
                     //Log("windowCache Cleared due to useAltBehavior change");
                     windowCache.Clear(); // remove local mins so that we can replace them with global mins
                     // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
+
+                    ClearAllOrbitDisplays();
+                    ClearAngleRenderer();
                 }
 
                 DrawLine();

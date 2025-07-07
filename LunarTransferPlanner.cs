@@ -131,8 +131,8 @@ namespace LunarTransferPlanner
         const double EarthMass = 3.9860043543609598e+14 / 6.67408e-11; // API docs say 6.673e-11 for the grav constant, which is wrong
         // Earth sources from RealSolarSystem/RSSKopernicus/Earth/Earth.cfg
         const double tau = 2 * Math.PI; // Math.Tau is in .NET 5
-        const double radToDeg = 180d / Math.PI; // unity only has floats
-        const double degToRad = Math.PI / 180d; // unity only has floats
+        internal const double radToDeg = 180d / Math.PI; // unity only has floats
+        internal const double degToRad = Math.PI / 180d; // unity only has floats
         readonly double invphi = (Math.Sqrt(5) - 1) / 2; // positive conjugate of golden ratio
 
         Rect mainRect = new Rect(100, 100, -1, -1);
@@ -141,7 +141,8 @@ namespace LunarTransferPlanner
         readonly string mainTitle = "Lunar Transfer";
         readonly string settingsTitle = "Additional Settings";
         readonly string manualOrbitTitle = "Specify Manual Orbit";
-        int windowWidth;
+        float windowWidth;
+        //float UIScale; // TODO, can't think of a great way to make this look good right now
         GUISkin skin;
         Texture2D gearWhite;
         Texture2D gearGreen;
@@ -257,7 +258,7 @@ namespace LunarTransferPlanner
         OrbitRendererHack _parkingOrbitRenderer = null;
         OrbitRendererHack _transferOrbitRenderer = null;
         OrbitRendererHack _manualOrbitRenderer = null;
-        MapAngleRenderer _ejectAngleRenderer = null;
+        MapAngleRenderer _phasingAngleRenderer = null;
 
         List<CelestialBody> moons;
         List<Vessel> vessels;
@@ -313,6 +314,8 @@ namespace LunarTransferPlanner
 
         void Start()
         {
+            //UIScale = GameSettings.UI_SCALE;
+
             InitToolbar();
 
             KACWrapper.InitKACWrapper();
@@ -1029,9 +1032,7 @@ namespace LunarTransferPlanner
 
             if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make surwhate LAN is in the correct quadrant
 
-            if (azimuth > 90d && azimuth < 270d) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing south, flip LAN
-
-            if (azimuth > 180d) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing retrograde, flip LAN (possibly again)
+            if ((azimuth > 90d && azimuth <= 180d) || (azimuth >= 270d && azimuth < 360d)) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing south-east or north-west
 
 
             Vector3d periapsisVector = (pos - (Vector3d.Dot(pos, orbitNormal) * orbitNormal)).normalized; // bring pos into orbit, consider it the periapsis of the parking orbit
@@ -1040,9 +1041,9 @@ namespace LunarTransferPlanner
 
             if (Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal) < 0d) AoP = Util.ClampAngle(tau - AoP, true);
 
-            if (azimuth > 90d && azimuth < 270d) AoP = Util.ClampAngle(AoP + Math.PI, true); // azimuth is pointing south, flip AoP
-
-            if (azimuth > 180d) AoP = Util.ClampAngle(AoP + Math.PI, true); // azimuth is pointing retrograde, flip AoP (possibly again)
+            // intentionally excluding 180 for these, 180 just doesnt need any flips for some reason
+            if (azimuth > 90d && azimuth < 180d) AoP = Util.ClampAngle(AoP + Math.PI, true); // azimuth is pointing south-east
+            else if (azimuth > 180d && azimuth < 360d) AoP = Util.ClampAngle(Math.PI - AoP, true); // azimuth is pointing retrograde
 
             return (LAN * radToDeg, AoP * radToDeg);
         }
@@ -1233,7 +1234,7 @@ namespace LunarTransferPlanner
             LANCache.Clear();
             deltaVCache = null;
             ClearAllOrbitDisplays();
-            _ejectAngleRenderer = null;
+            ClearAngleRenderer();
             ResetTargetInclination();
         }
 
@@ -1263,7 +1264,7 @@ namespace LunarTransferPlanner
                     phasingCache.Clear();
                     LANCache.Clear();
                     ClearAllOrbitDisplays();
-                    _ejectAngleRenderer = null;
+                    ClearAngleRenderer();
                     ResetTargetInclination();
                     // leave deltaVCache alone
                     break;
@@ -1693,6 +1694,12 @@ namespace LunarTransferPlanner
             renderer = null;
         }
 
+        private void ClearAngleRenderer() 
+        {
+            _phasingAngleRenderer?.Hide();
+            _phasingAngleRenderer = null;
+        }
+
         private void ResetTargetInclination()
         {
             double azRad = targetLaunchAzimuth * degToRad;
@@ -2097,8 +2104,6 @@ namespace LunarTransferPlanner
                 //stopwatch.Stop();
                 //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
-                //if (FlightGlobals.ActiveVessel != null) Log($"vessel LAN: {FlightGlobals.ActiveVessel.orbit.LAN}");
-
                 bool inSpecialWarp = warpState == 2 || warpState == 3;
                 bool specialWarpActive = warpState == 1 || inSpecialWarp;
                 if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarpSelected && !inSpecialWarp) warpState = 1;
@@ -2136,7 +2141,7 @@ namespace LunarTransferPlanner
                 GUILayout.EndVertical();
                 GUILayout.BeginVertical();
                 GUILayout.Space(5);
-                if (GUILayout.Button(new GUIContent(showAzimuth ? "Az" : "In", showAzimuth ? "Launch to this azimuth to get into the target parking orbit" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
+                if (GUILayout.Button(new GUIContent(showAzimuth ? "Az." : "In.", showAzimuth ? "Launch to this azimuth to get into the target parking orbit" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
                 GUILayout.EndVertical();
                 ExpandCollapse(ref expandParking0, ref mainRect, "Show Orbit Details");
                 GUILayout.EndHorizontal();
@@ -2166,15 +2171,18 @@ namespace LunarTransferPlanner
                 OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
                 OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
 
+                double displayAz = referenceTimeButton == 0 ? launchOrbit0.azimuth : targetLaunchAzimuth;
+                double displayInc = referenceTimeButton == 0 ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
+                // launchOrbit doesnt really display retrograde azimuths/inclinations, so itd be unhelpful to display them if they're misleading
+
                 GUILayout.Space(5);
-                if (showAzimuth) // we could switch these to using targetLaunchAzimuth and targetLaunchInclination instead... TODO
+                if (showAzimuth)
                 {
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(launchOrbit0.azimuth)}\u00B0", $"Azimuth\n{FormatDecimals(launchOrbit0.azimuth * degToRad)} rads, this is {(launchOrbit0.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent($"{FormatDecimals(displayAz)}\u00B0", $"Azimuth\n{FormatDecimals(displayAz * degToRad)} rads, this is {(displayAz <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
                 else
                 {
-                    double launchInclination = launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination; // need this outside for alarm description
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(launchInclination)}\u00B0", $"Inclination\n{FormatDecimals(launchInclination * degToRad)} rads, this is {(launchOrbit0.azimuth < 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    GUILayout.Box(new GUIContent($"{FormatDecimals(displayInc)}\u00B0", $"Inclination\n{FormatDecimals(displayInc * degToRad)} rads, this is {(displayAz <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
                 }
 
                 if (expandParking0)
@@ -2184,9 +2192,9 @@ namespace LunarTransferPlanner
                     ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0);
                 }
 
-                string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(targetLaunchAzimuth - 90d) < 0.01 ?
-                    "Launch Easterly at this time to get into the target parking orbit" :
-                    "Launch at this time at this inclination to get into the target parking orbit";
+                string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(targetLaunchAzimuth - 90d) < epsilon ?
+                    "Launch Easterly at this time to get into the required parking orbit" :
+                    $"Launch at this time at this {(showAzimuth ? "azimuth" : "inclination")} to get into the required parking orbit";
 
                 GUILayout.Space(5);
                 GUILayout.BeginHorizontal();
@@ -2308,7 +2316,9 @@ namespace LunarTransferPlanner
                     GUILayout.Label(new GUIContent("Show Phasing Angle", "Show Phasing Angle for the Next Launch Window in Map View"));
                     GUILayout.FlexibleSpace();
                     BeginCenter();
-                    displayPhasing = GUILayout.Toggle(displayPhasing, "");
+                    GUI.enabled = displayParking;
+                    displayPhasing = GUILayout.Toggle(displayPhasing, new GUIContent("", displayParking ? "" : "The Parking Orbit needs to be enabled for this to be shown"));
+                    GUI.enabled = true;
                     EndCenter();
                     GUILayout.EndHorizontal();
                 }
@@ -2317,7 +2327,6 @@ namespace LunarTransferPlanner
                 {
                     ResetWindow(ref mainRect);
                 }
-
                 
                 if (double.IsNaN(targetLaunchInclination)) // need to update if NaN and showSettings isnt open to update it (in case of a latitude change)
                 {
@@ -2326,9 +2335,8 @@ namespace LunarTransferPlanner
                     if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
                 }
 
-                if (displayParking && _parkingOrbitRenderer == null && MapViewEnabled())
+                if (displayParking && MapViewEnabled())
                 {
-                    _parkingOrbitRenderer?.Cleanup(); // just in case
 
                     Orbit parkingOrbit = new Orbit
                     {
@@ -2342,24 +2350,49 @@ namespace LunarTransferPlanner
                         referenceBody = mainBody,
                     };
 
-                    _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, Color.red); // TODO, allow this color to be changed in ingame settings
+                    parkingOrbit.Init(); // this is needed to get the OrbitFrame
+                    parkingOrbit.UpdateFromUT(currentUT);
+
+                    if (_parkingOrbitRenderer == null)
+                    {
+                        _parkingOrbitRenderer?.Cleanup(); // just in case
+
+                        _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, Color.red); // TODO, allow this color to be changed in ingame settings
+                    }
+
+                    if (displayPhasing && (_phasingAngleRenderer == null || !_phasingAngleRenderer.IsDrawing))
+                    {
+                        if (_phasingAngleRenderer == null)
+                        {
+                            _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
+                        }
+
+                        double AoPmodified = ((targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP1, false) : 180d - launchAoP1);
+                        _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle1);
+                    }
                 }
                 else if (!displayParking && _parkingOrbitRenderer != null)
                 {
                     ClearOrbitDisplay(ref _parkingOrbitRenderer);
                 }
 
+                if ((!displayParking || !displayPhasing) && _phasingAngleRenderer != null && !_phasingAngleRenderer.IsHiding)
+                {
+                    ClearAngleRenderer();
+                }
+
                 if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled())
                 {
                     _transferOrbitRenderer?.Cleanup(); // just in case
 
+                    double AoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP1 + phaseAngle1 + 180d, false) : Util.ClampAngle(launchAoP1 + phaseAngle1, false);
                     Orbit transferOrbit = new Orbit
                     {
                         inclination = targetLaunchInclination,
                         eccentricity = !double.IsNaN(trajectoryEccentricity) || !double.IsNaN(dV) ? trajectoryEccentricity : 0d,
                         semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
                         LAN = launchLAN1,
-                        argumentOfPeriapsis = Util.ClampAngle(launchAoP1 + phaseAngle1, false),
+                        argumentOfPeriapsis = AoPmodified,
                         meanAnomalyAtEpoch = 0d,
                         epoch = currentUT,
                         referenceBody = mainBody,
@@ -2382,28 +2415,6 @@ namespace LunarTransferPlanner
                 {
                     ClearOrbitDisplay(ref _manualOrbitRenderer);
                 }
-
-                //if (_ejectAngleRenderer == null)
-                //{
-                //    _ejectAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
-                //}
-
-                //if (displayPhasing && !_ejectAngleRenderer.IsDrawing && MapViewEnabled())
-                //{
-                //    if (!_transferDetails.IsValid) { return; }
-                //    if (!_transferDetails.Origin.IsCelestial) { return; }
-                //    if (_ejectAngleRenderer == null) { return; }
-
-                //    var vInf = _transferDetails.DepartureVInf.ToVector3d();
-                //    var peDir = _transferDetails.DeparturePeDirection.ToVector3d();
-
-                //    _ejectAngleRenderer.Draw(_transferDetails.Origin.Celestial!, vInf, peDir);
-                //}
-                //else if (!displayPhasing && !_ejectAngleRenderer.IsHiding)
-                //{
-                //    if (_ejectAngleRenderer == null) { return; }
-                //    _ejectAngleRenderer.Hide();
-                //}
 
 
 

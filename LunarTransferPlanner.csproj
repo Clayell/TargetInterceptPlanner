@@ -92,10 +92,18 @@
     <Compile Include="Renderers.cs" />
     <Compile Include="Tooltip.cs" />
   </ItemGroup>
-  <ItemGroup />
   <ItemGroup>
     <None Include="LICENSE.md" />
     <None Include="README.md" />
+	<None Include="GameData\LunarTransferPlanner\LunarTransferPlanner.version" />
+	<None Include="GameData\LunarTransferPlanner\Icons\gearGreen.png" />
+	<None Include="GameData\LunarTransferPlanner\Icons\gearWhite.png" />
+	<None Include="GameData\LunarTransferPlanner\Icons\resetGreen.png" />
+	<None Include="GameData\LunarTransferPlanner\Icons\resetWhite.png" />
+	<None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-24.png" />
+	<None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-64.png" />
+	<None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.dll" />
+	<None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.pdb" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

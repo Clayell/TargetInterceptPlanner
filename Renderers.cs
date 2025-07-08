@@ -132,6 +132,8 @@ namespace LunarTransferPlanner
             {
                 normal = { textColor = Color.white },
                 alignment = TextAnchor.MiddleCenter,
+                fontSize = 16,
+                fontStyle = FontStyle.Bold,
             };
 
             Tooltip.RecreateInstance();
@@ -282,7 +284,7 @@ namespace LunarTransferPlanner
             if (dir2.z > 0) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
 
             Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction.normalized;
-            double arcRadius = 2.5 * BodyOrigin.Radius;
+            double arcRadius = 3.5 * BodyOrigin.Radius; // arc uses 3 * radius
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 

@@ -1011,7 +1011,7 @@ namespace LunarTransferPlanner
             double bodyRotationAngle = Util.ClampAngle(mainBody.initialRotation + ((startTime + currentUT) * 360d / mainBody.rotationPeriod) - 180d, false); // im not entirely sure why -180 is needed
             double lonRad = Util.ClampAngle(longitude + bodyRotationAngle, false) * degToRad;
 
-            double latRad = Math.Max(latitude, 1e-6) * degToRad; // prevent NaN from equatorial orbit
+            double latRad = (Math.Abs(latitude) > 1e-9 ? latitude : 1e-9) * degToRad; // prevent NaN from equatorial orbit
             double aziRad = Util.ClampAngle((180d - azimuth) * degToRad, true); // im not entirely sure why 180 is needed
             double r = mainBody.Radius;
 

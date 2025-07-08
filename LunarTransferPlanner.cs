@@ -2133,6 +2133,7 @@ namespace LunarTransferPlanner
                         phasingCache.Clear();
                         deltaVCache = null;
                         ClearAllOrbitDisplays();
+                        ClearAngleRenderer();
                     }
                 }
 
@@ -2329,6 +2330,8 @@ namespace LunarTransferPlanner
                 if (StateChanged("RendererButtons", MapViewEnabled()))
                 {
                     ResetWindow(ref mainRect);
+                    ClearAllOrbitDisplays();
+                    ClearAngleRenderer();
                 }
                 
                 if (double.IsNaN(targetLaunchInclination)) // need to update if NaN and showSettings isnt open to update it (in case of a latitude change)
@@ -2352,9 +2355,7 @@ namespace LunarTransferPlanner
                         referenceBody = mainBody,
                     };
 
-                    // we need to do both of these to access the orbit.pos and orbit.vel in Draw
-                    parkingOrbit.Init();
-                    parkingOrbit.UpdateFromUT(currentUT);
+                    //Log($"launchLAN1: {launchLAN1}, launchAoP1: {launchAoP1}");
 
                     if (_parkingOrbitRenderer == null)
                     {
@@ -2365,13 +2366,21 @@ namespace LunarTransferPlanner
 
                     if (displayPhasing && (_phasingAngleRenderer == null || !_phasingAngleRenderer.IsDrawing))
                     {
+                        // we need to do both of these to access the orbit.pos and orbit.vel in Draw (we're not running them every frame, so its fine)
+                        parkingOrbit.Init();
+                        parkingOrbit.UpdateFromUT(currentUT);
+
+                        ClearAngleRenderer(); // just in case
+
                         if (_phasingAngleRenderer == null)
                         {
                             _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
                         }
 
-                        double AoPmodified = ((targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP1, false) : 180d - launchAoP1);
+                        double AoPmodified = (targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP1, false) : 180d - launchAoP1;
                         _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle1);
+
+                        //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
                     }
                 }
                 else if (!displayParking && _parkingOrbitRenderer != null)
@@ -2418,10 +2427,6 @@ namespace LunarTransferPlanner
                 {
                     ClearOrbitDisplay(ref _manualOrbitRenderer);
                 }
-
-
-
-
 
                 if (addAlarm)
                 {
@@ -2637,6 +2642,26 @@ namespace LunarTransferPlanner
                     ResetWindow(ref settingsRect); // TODO, for some reason this isnt working with errorStateTargets != 0
                     target = null;
                     targetName = "";
+
+                    // these 3 are all 'fake' variables, we dont actually use them for setting the orbit, just for determining the SMA or eccentricity;
+                    ApR = SMA * (1d + eccentricity);
+                    PeR = SMA * (1d - eccentricity);
+                    period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
+
+                    // set the orbit to current parameters initially
+                    targetOrbit = new Orbit
+                    {
+                        eccentricity = eccentricity,
+                        semiMajorAxis = SMA,
+                        inclination = inclination,
+                        LAN = LAN,
+                        argumentOfPeriapsis = AoP,
+                        meanAnomalyAtEpoch = MNA,
+                        epoch = currentUT,
+                        referenceBody = mainBody,
+                    };
+                    targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
+                    _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
                 }
             }
             
@@ -3002,28 +3027,6 @@ namespace LunarTransferPlanner
             double SoI = mainBody.sphereOfInfluence;
             double gravParameter = mainBody.gravParameter;
             CelestialBody homeBody = FlightGlobals.GetHomeBody();
-
-            if (StateChanged("showManualOrbit", showManualOrbit)) // this gets triggered when the window first opens
-            { // these are all 'fake' variables, we dont actually use them for setting the orbit, just for determining the SMA or eccentricity;
-                ApR = SMA * (1d + eccentricity);
-                PeR = SMA * (1d - eccentricity);
-                period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-
-                // set the orbit to current parameters initially
-                targetOrbit = new Orbit
-                {
-                    eccentricity = eccentricity,
-                    semiMajorAxis = SMA,
-                    inclination = inclination,
-                    LAN = LAN,
-                    argumentOfPeriapsis = AoP,
-                    meanAnomalyAtEpoch = MNA,
-                    epoch = currentUT,
-                    referenceBody = mainBody,
-                };
-                targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
-                _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
-            }
 
             GUILayout.Space(5);
             GUILayout.Label("Hover over select text for tooltips", GUILayout.Width(windowWidth)); // this sets the width of the window
@@ -3509,11 +3512,10 @@ namespace LunarTransferPlanner
                 GUILayout.EndHorizontal();
                 MNA = useRadians ? MNA_Adj : MNA_Adj * degToRad; // MNA is in radians
 
-                GUILayout.Space(5);
-
-                if (GUILayout.Button("Log")) Log($"useRadians: {useRadians}, manualTargetMode: {manualTargetMode}," +
-                    $" eccentricity: {eccentricity}, SMA: {SMA}, period: {period}, inclination: {inclination}, " +
-                    $"ApR: {ApR}, PeR: {PeR}, LAN: {LAN}, AoP: {AoP}, MNA: {MNA}, maxEccentricity: {Math.Min(1d - epsilon, 1d - (radius + atmosphereDepth) / SMA)}, minSMA: {Math.Max(radiusScaled + atmosphereDepthScaled, (radiusScaled + atmosphereDepthScaled) / (1d - eccentricity))}, mainBody: {mainBody}");
+                //GUILayout.Space(5);
+                //if (GUILayout.Button("Log")) Log($"useRadians: {useRadians}, manualTargetMode: {manualTargetMode}," +
+                //    $" eccentricity: {eccentricity}, SMA: {SMA}, period: {period}, inclination: {inclination}, " +
+                //    $"ApR: {ApR}, PeR: {PeR}, LAN: {LAN}, AoP: {AoP}, MNA: {MNA}, maxEccentricity: {Math.Min(1d - epsilon, 1d - (radius + atmosphereDepth) / SMA)}, minSMA: {Math.Max(radiusScaled + atmosphereDepthScaled, (radiusScaled + atmosphereDepthScaled) / (1d - eccentricity))}, mainBody: {mainBody}");
 
                 GUILayout.Space(5);
 

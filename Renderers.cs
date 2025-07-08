@@ -11,7 +11,7 @@ namespace LunarTransferPlanner
         public static LineRenderer InitLine(GameObject objToAttach, Color lineColor, int vertexCount, int initialWidth, Material linesMaterial)
         {
             objToAttach.layer = 9;
-            var lineReturn = objToAttach.AddComponent<LineRenderer>();
+            LineRenderer lineReturn = objToAttach.AddComponent<LineRenderer>();
 
             lineReturn.material = linesMaterial;
             lineReturn.startColor = lineColor;
@@ -47,9 +47,9 @@ namespace LunarTransferPlanner
         {
             if (line == null) return;
 
-            var startPos = ScaledSpace.LocalToScaledSpace(center + start);
-            var endPos = ScaledSpace.LocalToScaledSpace(center + end);
-            var camPos = PlanetariumCamera.Camera.transform.position;
+            Vector3d startPos = ScaledSpace.LocalToScaledSpace(center + start);
+            Vector3d endPos = ScaledSpace.LocalToScaledSpace(center + end);
+            Vector3d camPos = PlanetariumCamera.Camera.transform.position;
 
             line.SetPosition(0, startPos);
             line.SetPosition(1, endPos);
@@ -85,8 +85,8 @@ namespace LunarTransferPlanner
         private LineRenderer _lineArc = null;
 
         private const int ArcPoints = 72;
-        private const float AppearTime = 0.5f;
-        private const float HideTime = 0.25f;
+        private const double AppearTime = 0.5;
+        private const double HideTime = 0.25;
 
         private GUIStyle _styleLabel = null;
 
@@ -95,6 +95,7 @@ namespace LunarTransferPlanner
 
         private Vector3d orbitNormal;
         private double AoPDiff;
+        private Orbit parkingOrbit;
 
         private enum DrawingState
         {
@@ -121,12 +122,12 @@ namespace LunarTransferPlanner
             _objLineArc = new GameObject("LineArc");
 
             //Get the orbit lines material so things look similar
-            var orbitLines = ((MapView)FindObjectOfType(typeof(MapView))).orbitLinesMaterial;
+            Material orbitLines = ((MapView)FindObjectOfType(typeof(MapView))).orbitLinesMaterial;
 
             //init all the lines
-            _lineStart = RenderUtils.InitLine(_objLineStart, Color.blue, 2, 10, orbitLines); // TODO, allow all of these colors to be changed
-            _lineEnd = RenderUtils.InitLine(_objLineEnd, Color.red, 2, 10, orbitLines);
-            _lineArc = RenderUtils.InitLine(_objLineArc, Color.green, ArcPoints, 10, orbitLines);
+            _lineStart = RenderUtils.InitLine(_objLineStart, Color.red, 2, 10, orbitLines); // TODO, allow all of these colors to be changed
+            _lineEnd = RenderUtils.InitLine(_objLineEnd, Color.green, 2, 10, orbitLines);
+            _lineArc = RenderUtils.InitLine(_objLineArc, Color.yellow, ArcPoints, 10, orbitLines);
 
             _styleLabel = new GUIStyle
             {
@@ -159,6 +160,8 @@ namespace LunarTransferPlanner
         public void Draw(Orbit orbit, double launchAoP, double phasingAngle)
         {
             BodyOrigin = orbit.referenceBody;
+            parkingOrbit = orbit;
+            AoPDiff = phasingAngle;
             orbitNormal = ToWorld(Vector3d.Cross(orbit.pos, orbit.vel)).normalized;
 
             //Log($"orbit.pos: {orbit.pos}, orbit.vel: {orbit.vel}");
@@ -171,8 +174,6 @@ namespace LunarTransferPlanner
 
             Point1Direction = AoPToWorldVector(launchAoP * LunarTransferPlanner.degToRad);
             Point2Direction = AoPToWorldVector(Util.ClampAngle(launchAoP - phasingAngle, false) * LunarTransferPlanner.degToRad);
-
-            AoPDiff = phasingAngle;
 
             _startDrawing = DateTime.Now;
             _currentDrawingState = DrawingState.DrawingLinesAppearing;
@@ -207,37 +208,37 @@ namespace LunarTransferPlanner
                 return;
             }
 
-            var lineLength = BodyOrigin.Radius * 5;
-            var arcRadius = BodyOrigin.Radius * 3;
-            var dir1 = Point1Direction.normalized;
-            var dir2 = Point2Direction.normalized;
+            double lineLength = parkingOrbit.semiMajorAxis * 4d;
+            double arcRadius = parkingOrbit.semiMajorAxis * 2d;
+            Vector3d dir1 = Point1Direction.normalized;
+            Vector3d dir2 = Point2Direction.normalized;
 
             //Are we Showing, Hiding or Static State
-            float pctDone;
+            double pctDone;
 
-            var center = BodyOrigin.transform.position;
+            Vector3d center = BodyOrigin.transform.position;
             switch (_currentDrawingState)
             {
                 case DrawingState.Hidden:
                     break;
 
                 case DrawingState.DrawingLinesAppearing:
-                    pctDone = (float)(DateTime.Now - _startDrawing).TotalSeconds / AppearTime;
+                    pctDone = (DateTime.Now - _startDrawing).TotalSeconds / AppearTime;
                     if (pctDone >= 1)
                     {
                         _currentDrawingState = DrawingState.DrawingArcAppearing;
                         _startDrawing = DateTime.Now;
                     }
-                    pctDone = Mathf.Clamp01(pctDone);
+                    pctDone = Mathf.Clamp01((float)pctDone);
 
-                    var partialdir1 = dir1 * Mathf.Lerp(0, (float)lineLength, pctDone);
+                    Vector3d partialdir1 = dir1 * Mathf.Lerp(0, (float)lineLength, (float)pctDone);
                     RenderUtils.DrawLine(_lineStart, center, Vector3d.zero, partialdir1);
                     break;
 
                 case DrawingState.DrawingArcAppearing:
-                    pctDone = (float)(DateTime.Now - _startDrawing).TotalSeconds / AppearTime;
+                    pctDone = (DateTime.Now - _startDrawing).TotalSeconds / AppearTime;
                     if (pctDone >= 1) { _currentDrawingState = DrawingState.DrawingFullPicture; }
-                    pctDone = Mathf.Clamp01(pctDone);
+                    pctDone = Mathf.Clamp01((float)pctDone);
 
                     Vector3d partialdir2 = QuaternionD.AngleAxis(AoPDiff * pctDone, -orbitNormal) * dir1;
 
@@ -253,12 +254,12 @@ namespace LunarTransferPlanner
                     break;
 
                 case DrawingState.Hiding:
-                    pctDone = (float)(DateTime.Now - _startDrawing).TotalSeconds / HideTime;
+                    pctDone = (DateTime.Now - _startDrawing).TotalSeconds / HideTime;
                     if (pctDone >= 1) { _currentDrawingState = DrawingState.Hidden; }
-                    pctDone = Mathf.Clamp01(pctDone);
+                    pctDone = Mathf.Clamp01((float)pctDone);
 
-                    var partialLineLength = Mathf.Lerp((float)lineLength, 0, pctDone);
-                    var partialArcRadius = Mathf.Lerp((float)arcRadius, 0, pctDone);
+                    double partialLineLength = Mathf.Lerp((float)lineLength, 0, (float)pctDone);
+                    double partialArcRadius = Mathf.Lerp((float)arcRadius, 0, (float)pctDone);
 
                     RenderUtils.DrawLine(_lineStart, center, Vector3d.zero, dir1 * partialLineLength);
                     RenderUtils.DrawLine(_lineEnd, center, Vector3d.zero, dir2 * partialLineLength);
@@ -275,7 +276,7 @@ namespace LunarTransferPlanner
             if (!MapView.MapIsEnabled || !(_currentDrawingState is DrawingState.DrawingFullPicture)) { return; }
 
             Vector3 center = BodyOrigin.transform.position;
-            double length = 5 * BodyOrigin.Radius;
+            double length = 4d * parkingOrbit.semiMajorAxis; // line uses 4
             Vector3 dir1 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point1Direction.normalized));
             Vector3 dir2 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point2Direction.normalized));
 
@@ -284,7 +285,7 @@ namespace LunarTransferPlanner
             if (dir2.z > 0) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
 
             Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction.normalized;
-            double arcRadius = 3.5 * BodyOrigin.Radius; // arc uses 3 * radius
+            double arcRadius = 2.5 * parkingOrbit.semiMajorAxis; // arc uses 2
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 
@@ -316,7 +317,7 @@ namespace LunarTransferPlanner
             // Agent, which we can't provide (it's a protected field of the Contract class).
             // So, the full workaround is this: provide a default-initialized Contract to the Setup method, then immediately
             // set it to null before the caption update methods can make use of it.
-            var renderer = ContractOrbitRenderer.Setup(new Contracts.Contract(), orbit, activedraw);
+            ContractOrbitRenderer renderer = ContractOrbitRenderer.Setup(new Contracts.Contract(), orbit, activedraw);
             renderer.SetColor(color);
             renderer.contract = null;
             return new OrbitRendererHack(renderer);

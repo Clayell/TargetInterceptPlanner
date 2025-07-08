@@ -1647,11 +1647,6 @@ namespace LunarTransferPlanner
 
         private string FormatDecimals(double value, int extra = 0)
         {
-            if (StateChanged("decimals", decimals))
-            {
-                ResetWindow(ref mainRect);
-                ResetWindow(ref settingsRect);
-            }
             return $"{value.ToString($"F{Math.Max(0, decimals + extra)}", CultureInfo.InvariantCulture)}";
         }
 
@@ -2931,6 +2926,12 @@ namespace LunarTransferPlanner
 
                 GUILayout.Label(new GUIContent("Change Decimal Places of Precision", "Editable text fields will not be effected"));
                 MakeNumberEditField("decimals", ref decimals, 1, 0, int.MaxValue);
+
+                if (StateChanged("decimals", decimals))
+                {
+                    ResetWindow(ref mainRect);
+                    ResetWindow(ref settingsRect);
+                }
 
                 DrawLine();
 

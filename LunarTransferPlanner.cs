@@ -164,7 +164,7 @@ namespace LunarTransferPlanner
         bool KACInstalled;
         bool PrincipiaInstalled;
 
-        double inclination = double.NaN; // inclination of target's orbit (manual or nonmanual), in degrees
+        double inclination = double.NaN; // inclination of target's orbit (manual or nonmanual), in degrees (TODO, split this into manual and nonmanual)
         double inclination_Adj;
         double eccentricity = double.NaN; // eccentricity of manual target
         double eccentricity_Adj;
@@ -2661,6 +2661,7 @@ namespace LunarTransferPlanner
                         referenceBody = mainBody,
                     };
                     targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
+                    targetOrbit.UpdateFromUT(currentUT);
                     _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
                 }
             }
@@ -3536,6 +3537,7 @@ namespace LunarTransferPlanner
                         referenceBody = mainBody,
                     };
                     targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
+                    targetOrbit.UpdateFromUT(currentUT);
                     _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
                     ClearAllCaches();
                     //Log("manual orbit changed");

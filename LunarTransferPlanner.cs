@@ -1238,7 +1238,7 @@ namespace LunarTransferPlanner
             deltaVCache = null;
             ClearAllOrbitDisplays();
             ClearAngleRenderer();
-            ResetTargetInclination();
+            ResetLaunchInclination();
         }
 
         private void CheckWindowCache(double latitude, double longitude, double inclination, double targetAltitude)
@@ -1268,7 +1268,7 @@ namespace LunarTransferPlanner
                     LANCache.Clear();
                     ClearAllOrbitDisplays();
                     ClearAngleRenderer();
-                    ResetTargetInclination();
+                    ResetLaunchInclination();
                     // leave deltaVCache alone
                     break;
                 }
@@ -1698,7 +1698,7 @@ namespace LunarTransferPlanner
             _phasingAngleRenderer = null;
         }
 
-        private void ResetTargetInclination()
+        private void ResetLaunchInclination()
         {
             double azRad = targetLaunchAzimuth * degToRad;
             double latRad = latitude * degToRad;
@@ -2331,7 +2331,7 @@ namespace LunarTransferPlanner
                 
                 if (double.IsNaN(targetLaunchInclination)) // need to update if NaN and showSettings isnt open to update it (in case of a latitude change)
                 {
-                    ResetTargetInclination();
+                    ResetLaunchInclination();
 
                     if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
                 }
@@ -2945,7 +2945,7 @@ namespace LunarTransferPlanner
 
                 if (showAzimuth)
                 {
-                    ResetTargetInclination(); // continuously update value
+                    ResetLaunchInclination(); // continuously update value
 
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent("Change Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));

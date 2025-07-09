@@ -189,6 +189,7 @@ namespace LunarTransferPlanner
         string modeLabel;
         string modeTooltip;
 
+        bool needReset = true;
         double targetAltitude;
         double currentUT;
         double dayScale;
@@ -304,6 +305,7 @@ namespace LunarTransferPlanner
 
             GameEvents.onShowUI.Add(KSPShowGUI);
             GameEvents.onHideUI.Add(KSPHideGUI);
+            GameEvents.onGameSceneLoadRequested.Add(OnSceneChange);
         }
 
         // for some reason the button icons only load if they're in PluginData, but the other icons only load if they're NOT in PluginData /shrug
@@ -348,14 +350,21 @@ namespace LunarTransferPlanner
         void OnDestroy()
         {
             SaveSettings();
-            if (toolbarControl != null)
-            {
-                toolbarControl.OnDestroy();
-                Destroy(toolbarControl);
-            }
+
+            toolbarControl?.OnDestroy();
+            Destroy(toolbarControl);
 
             GameEvents.onShowUI.Remove(KSPShowGUI);
             GameEvents.onHideUI.Remove(KSPHideGUI);
+            GameEvents.onGameSceneLoadRequested.Remove(OnSceneChange);
+
+            ClearAllCaches(); // mostly needed for clearing orbits and angle displays
+        }
+
+        private void OnSceneChange(GameScenes s) // thanks Nazfib
+        {
+            // we could call ToggleWindow here to make it closed during loading, but that would leave it closed during the next scene until the user opens it again
+            ClearAllCaches(); // mostly needed for clearing orbits and angle displays
         }
 
         void OnGUI()
@@ -378,12 +387,14 @@ namespace LunarTransferPlanner
                     Tooltip.Instance?.ShowTooltip(id1);
                 }
 
-                if (showManualOrbit)
+                if (showManualOrbit && targetManual)
                 {
                     manualOrbitRect = ClickThruBlocker.GUILayoutWindow(id2, manualOrbitRect, MakeManualOrbitWindow, manualOrbitTitle);
                     ClampToScreen(ref manualOrbitRect);
                     Tooltip.Instance?.ShowTooltip(id2);
                 }
+
+                needReset = false; // reset this at the end of every frame
             }
         }
 
@@ -1229,16 +1240,18 @@ namespace LunarTransferPlanner
         // if the factor can be changed by the game itself, or can be changed by the user in multiple ways (in the case of the target), then put the value in the cache and check in the method if its crossed the tolerance
         // (the reset in special warp is a unique case and should be kept as such)
 
-        private void ClearAllCaches()
+        private void ClearAllCaches() // TODO, just replace all cache clears with this?
         {
             windowCache.Clear();
             launchOrbitCache.Clear();
             phasingCache.Clear();
             LANCache.Clear();
-            deltaVCache = null;
+            ClearDeltaVCache();
             ClearAllOrbitDisplays();
             ClearAngleRenderer();
             ResetLaunchInclination();
+
+            needReset = true;
         }
 
         private void CheckWindowCache(double latitude, double longitude, double inclination, double targetAltitude)
@@ -1679,6 +1692,8 @@ namespace LunarTransferPlanner
             return pressed;
         }
 
+        private void ClearDeltaVCache() => deltaVCache = null;
+
         private void ClearAllOrbitDisplays()
         {
             ClearOrbitDisplay(ref _parkingOrbitRenderer);
@@ -1695,7 +1710,9 @@ namespace LunarTransferPlanner
         private void ClearAngleRenderer() 
         {
             _phasingAngleRenderer?.Hide();
+            Destroy(_phasingAngleRenderer);
             _phasingAngleRenderer = null;
+            
         }
 
         private void ResetLaunchInclination()
@@ -1825,7 +1842,8 @@ namespace LunarTransferPlanner
             GUILayout.BeginHorizontal();
             GUILayout.FlexibleSpace(); // push button to the right
             GUI.enabled = !overrideButton;
-            if (GUILayout.Button(new GUIContent(!button ? "+" : "\u2013", tooltip + (overrideButton ? "\nThis button is currently disabled" : "")), GUILayout.Width(30))) { button = !button; ResetWindow(ref rect); } // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
+            if (GUILayout.Button(new GUIContent(!button ? "+" : "\u2013", tooltip + (overrideButton ? "\nThis button is currently disabled" : "")), GUILayout.Width(30))) // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
+            { button = !button; ResetWindow(ref rect); }
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
@@ -2011,8 +2029,6 @@ namespace LunarTransferPlanner
                 {
                     GUILayout.Space(5);
 
-                    showManualOrbit = false;
-
                     if (count > 1) // only display target selector screen if theres multiple targets
                     {
                         if (currentBody == -1) currentBody = 0; // currentBody should already be set, but just in case
@@ -2126,7 +2142,7 @@ namespace LunarTransferPlanner
                     if (StateChanged("parkingAltitude", parkingAltitude))
                     {
                         phasingCache.Clear();
-                        deltaVCache = null;
+                        ClearDeltaVCache();
                         ClearAllOrbitDisplays();
                         ClearAngleRenderer();
                     }
@@ -2328,7 +2344,7 @@ namespace LunarTransferPlanner
                     ClearAllOrbitDisplays();
                     ClearAngleRenderer();
                 }
-                
+
                 if (double.IsNaN(targetLaunchInclination)) // need to update if NaN and showSettings isnt open to update it (in case of a latitude change)
                 {
                     ResetLaunchInclination();
@@ -2336,7 +2352,7 @@ namespace LunarTransferPlanner
                     if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
                 }
 
-                if (displayParking && MapViewEnabled())
+                if (displayParking && MapViewEnabled() && !needReset)
                 {
                     Orbit parkingOrbit = new Orbit
                     {
@@ -2388,7 +2404,9 @@ namespace LunarTransferPlanner
                     ClearAngleRenderer();
                 }
 
-                if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled())
+                //Log($"trajectoryEccentricity: {trajectoryEccentricity}, errorStateDV: {errorStateDV}");
+
+                if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needReset)
                 {
                     _transferOrbitRenderer?.Cleanup(); // just in case
 
@@ -2396,7 +2414,7 @@ namespace LunarTransferPlanner
                     Orbit transferOrbit = new Orbit
                     {
                         inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
-                        eccentricity = !double.IsNaN(trajectoryEccentricity) || !double.IsNaN(dV) ? trajectoryEccentricity : 0d,
+                        eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
                         semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
                         LAN = launchLAN1,
                         argumentOfPeriapsis = AoPmodified,
@@ -2405,6 +2423,8 @@ namespace LunarTransferPlanner
                         referenceBody = mainBody,
                     };
 
+                    //Log($"transferOrbit.eccentricity: {transferOrbit.eccentricity}");
+
                     _transferOrbitRenderer = OrbitRendererHack.Setup(transferOrbit, Color.green); // TODO, allow this color to be changed in ingame settings
                 }
                 else if (!displayTransfer && _transferOrbitRenderer != null)
@@ -2412,7 +2432,7 @@ namespace LunarTransferPlanner
                     ClearOrbitDisplay(ref _transferOrbitRenderer);
                 }
 
-                if (displayManual && _manualOrbitRenderer == null && MapViewEnabled() && targetManual)
+                if (displayManual && _manualOrbitRenderer == null && MapViewEnabled() && targetManual && !needReset)
                 {
                     _manualOrbitRenderer?.Cleanup(); // just in case
 
@@ -2596,7 +2616,7 @@ namespace LunarTransferPlanner
             {
                 ResetWindow(ref mainRect);
                 ResetWindow(ref settingsRect);
-                if (showManualOrbit) ResetWindow(ref manualOrbitRect);
+                if (showManualOrbit && targetManual) ResetWindow(ref manualOrbitRect);
 
                 ClearAllCaches();
             }
@@ -2941,7 +2961,6 @@ namespace LunarTransferPlanner
 
                 string azimuthTooltip = "90° is the default, which is directly east. Range is 0° to 360°, where 0° and 180° are North and South respectively.";
                 string inclinationTooltip = $"Your latitude of {FormatDecimals(latitude)}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively.";
-                //if (double.IsNaN(targetLaunchInclination)) ResetTargetInclination(); // initialize value, this isnt rounded but rounding led to floating point issues so whatever
 
                 if (showAzimuth)
                 {
@@ -2956,7 +2975,7 @@ namespace LunarTransferPlanner
                     GUILayout.Label(new GUIContent("Target Launch Inclination", inclinationTooltip));
                     GUILayout.BeginVertical();
                     GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(targetLaunchInclination)}\u00B0", $"{targetLaunchInclination}\u00B0"), GUILayout.MaxWidth(100)); // F2 is overkill but just in case
+                    GUILayout.Box(new GUIContent($"{FormatDecimals(targetLaunchInclination)}\u00B0", $"{targetLaunchInclination}\u00B0"), GUILayout.MaxWidth(100));
                     GUILayout.EndVertical();
                     GUILayout.FlexibleSpace();
                     GUILayout.EndHorizontal();

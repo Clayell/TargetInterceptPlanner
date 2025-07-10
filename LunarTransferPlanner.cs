@@ -301,7 +301,7 @@ namespace LunarTransferPlanner
             resetWhite = LoadImage("resetWhite");
             resetGreen = LoadImage("resetGreen");
 
-            LoadSettings(); // move this to Start?
+            LoadSettings();
 
             GameEvents.onShowUI.Add(KSPShowGUI);
             GameEvents.onHideUI.Add(KSPHideGUI);
@@ -362,8 +362,9 @@ namespace LunarTransferPlanner
         }
 
         private void OnSceneChange(GameScenes s) // thanks Nazfib
-        {
-            // we could call ToggleWindow here to make it closed during loading, but that would leave it closed during the next scene until the user opens it again
+        { // we could call ToggleWindow here to make it closed during loading, but that would leave it closed during the next scene until the user opens it again
+            SaveSettings();
+
             ClearAllCaches(); // mostly needed for clearing orbits and angle displays
         }
 
@@ -598,6 +599,7 @@ namespace LunarTransferPlanner
 
                     mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
+                    manualOrbitRect = new Rect(x3, y3, manualOrbitRect.width, manualOrbitRect.height);
                 }
             }
         }
@@ -669,7 +671,6 @@ namespace LunarTransferPlanner
         {
             return GetState<object[]>(key);
         }
-
 
         private double GoldenSectionSearch(double lowerBound, double upperBound, double epsilon, Func<double, double> errorFunc, bool enableLogging = false)
         {
@@ -1086,7 +1087,6 @@ namespace LunarTransferPlanner
             double dot = Vector3d.Dot(upVector.normalized, maneuverUpVector.normalized);
             double phasingAngle = Math.Acos(Util.Clamp(dot, -1d, 1d)) * radToDeg;
 
-            //if (Vector3d.Dot(rotationAxis, MainAxis) < 0 && Math.Abs(Vector3d.Dot(rotationAxis, MainAxis)) > 1e-9)
             if (Vector3d.Dot(rotationAxis, MainAxis) > 1e-9)
             {
                 phasingAngle = 360d - phasingAngle;
@@ -1725,7 +1725,7 @@ namespace LunarTransferPlanner
             : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg;
         }
 
-        private void DrawLine()
+        private void DrawLine() // use this in the main window? TODO
         {
             GUILayout.Space(10);
             GUIStyle lineStyle = new GUIStyle();
@@ -1889,6 +1889,8 @@ namespace LunarTransferPlanner
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
+
+                    ClearAllCaches();
                 }
                 ShowSettings();
             }
@@ -1899,6 +1901,8 @@ namespace LunarTransferPlanner
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
+
+                    ClearAllCaches();
                 }
                 ShowSettings();
             }
@@ -1921,6 +1925,8 @@ namespace LunarTransferPlanner
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
+
+                    ClearAllCaches();
                 }
                 ShowSettings();
                 GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
@@ -1932,6 +1938,8 @@ namespace LunarTransferPlanner
                 {
                     ResetWindow(ref mainRect);
                     ResetWindow(ref settingsRect);
+
+                    ClearAllCaches();
                 }
 
                 int count = -1;
@@ -1991,8 +1999,16 @@ namespace LunarTransferPlanner
                     if (double.IsNaN(AoP)) AoP = 0d;
                     if (double.IsNaN(MNA)) MNA = 0d;
 
-                    if (StateChanged("targetManual", true)) // Init and SetOrbit murder FPS, so they should only be called when absolutely necessary (like 200 FPS drop if done every frame)
-                    {
+                    double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
+                    if (double.IsNaN(ApR)) ApR = SMA * (1d + eccentricity);
+                    if (double.IsNaN(ApA_Adj)) ApA_Adj = (ApR - radiusAdjusted) / 1000d;
+                    if (double.IsNaN(PeR)) PeR = SMA * (1d - eccentricity);
+                    if (double.IsNaN(PeA_Adj)) PeA_Adj = (PeR - radiusAdjusted) / 1000d;
+                    if (double.IsNaN(period)) period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
+                    if (double.IsNaN(period_Adj)) period_Adj = period;
+
+                    if (StateChanged("targetManual", true)) // || StateChanged("mainBodyManualTarget", mainBody) // dont think this is needed
+                    { // Init and SetOrbit murder FPS, so they should only be called when absolutely necessary (like 200 FPS drop if done every frame)
                         targetOrbit = new Orbit
                         {
                             eccentricity = eccentricity,
@@ -2068,6 +2084,38 @@ namespace LunarTransferPlanner
                     GUILayout.EndHorizontal();
 
                     GUILayout.Space(5);
+                }
+
+                if (StateChanged("targetManual", targetManual)) // this needs to be set here, as settings window isnt always open
+                {
+                    ResetWindow(ref mainRect);
+                    ResetWindow(ref settingsRect); // TODO, for some reason this isnt working with errorStateTargets != 0
+                    target = null;
+                    targetName = "";
+
+                    double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
+                    ApR = SMA * (1d + eccentricity);
+                    ApA_Adj = (ApR - radiusAdjusted) / 1000d;
+                    PeR = SMA * (1d - eccentricity);
+                    PeA_Adj = (PeR - radiusAdjusted) / 1000d;
+                    period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
+                    period_Adj = period;
+
+                    // set the orbit to current parameters initially
+                    targetOrbit = new Orbit
+                    {
+                        eccentricity = eccentricity,
+                        semiMajorAxis = SMA,
+                        inclination = inclination,
+                        LAN = LAN,
+                        argumentOfPeriapsis = AoP,
+                        meanAnomalyAtEpoch = MNA,
+                        epoch = currentUT,
+                        referenceBody = mainBody,
+                    };
+                    targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
+                    targetOrbit.UpdateFromUT(currentUT);
+                    _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
                 }
 
                 GUILayout.BeginHorizontal();
@@ -2650,35 +2698,6 @@ namespace LunarTransferPlanner
                 targetManual = GUILayout.Toggle(targetManual, "");
                 EndCenter();
                 GUILayout.EndHorizontal();
-
-                if (StateChanged("targetManual", targetManual))
-                {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect); // TODO, for some reason this isnt working with errorStateTargets != 0
-                    target = null;
-                    targetName = "";
-
-                    // these 3 are all 'fake' variables, we dont actually use them for setting the orbit, just for determining the SMA or eccentricity;
-                    ApR = SMA * (1d + eccentricity);
-                    PeR = SMA * (1d - eccentricity);
-                    period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
-
-                    // set the orbit to current parameters initially
-                    targetOrbit = new Orbit
-                    {
-                        eccentricity = eccentricity,
-                        semiMajorAxis = SMA,
-                        inclination = inclination,
-                        LAN = LAN,
-                        argumentOfPeriapsis = AoP,
-                        meanAnomalyAtEpoch = MNA,
-                        epoch = currentUT,
-                        referenceBody = mainBody,
-                    };
-                    targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
-                    targetOrbit.UpdateFromUT(currentUT);
-                    _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
-                }
             }
             
             if ((errorStateTargets == 0 || errorStateTargets == 2 || errorStateTargets == 3) && !targetManual)
@@ -3134,8 +3153,8 @@ namespace LunarTransferPlanner
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent("Apoapsis (km)", $"In kilometers from {textAdjusted}"));
                     GUILayout.FlexibleSpace();
-                    if (manualTargetMode == 0) MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d), SoI);
-                    else MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, (radiusScaled + atmosphereDepthScaled) * (1d + eccentricity) / (1d - eccentricity) - radiusScaled), SoI);
+                    if (manualTargetMode == 0) MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, parkingAltitude), SoI);
+                    else MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, (radiusScaled + atmosphereDepthScaled) * (1d + eccentricity) / (1d - eccentricity) - radiusScaled, parkingAltitude), SoI);
                     GUILayout.EndHorizontal();
 
                     ApR = (ApA_Adj * 1000d) + radiusAdjusted;
@@ -3152,7 +3171,7 @@ namespace LunarTransferPlanner
 
                 void ResetApoapsis(bool fullReset = false)
                 {
-                    if (fullReset) ApR = SMA * (1 + eccentricity);
+                    if (fullReset) ApR = SMA * (1d + eccentricity);
                     ApA_Adj = (ApR - radiusAdjusted) / 1000d;
                 }
 
@@ -3161,7 +3180,7 @@ namespace LunarTransferPlanner
                     GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent("Periapsis (km)", $"In kilometers from {textAdjusted}"));
                     GUILayout.FlexibleSpace();
-                    MakeNumberEditField("periapsis", ref PeA_Adj, 1d, atmosphereDepthScaled + (useCenterDistance ? radius / 1000d : 0d), (ApR - radiusAdjusted) / 1000d);
+                    MakeNumberEditField("periapsis", ref PeA_Adj, 1d, Math.Max(atmosphereDepthScaled + (useCenterDistance ? radius / 1000d : 0d), parkingAltitude), (ApR - radiusAdjusted) / 1000d);
                     GUILayout.EndHorizontal();
 
                     PeR = (PeA_Adj * 1000d) + radiusAdjusted;
@@ -3178,7 +3197,7 @@ namespace LunarTransferPlanner
 
                 void ResetPeriapsis(bool fullReset = false)
                 {
-                    if (fullReset) PeR = SMA * (1 - eccentricity);
+                    if (fullReset) PeR = SMA * (1d - eccentricity);
                     PeA_Adj = (PeR - radiusAdjusted) / 1000d;
                 }
 
@@ -3586,7 +3605,7 @@ namespace LunarTransferPlanner
                         ResetPeriapsis(true);
                         ResetPeriod(true);
 
-                        // if in a different mode than the original, needsUpdate wont switch to false due to floating point stuff, TODO
+                        // if in a different mode than the original, needsUpdate wont switch to false due to floating point stuff, TODO (need optional tolerance check with StateChanged)
                     }
                     else isSavedOrbitCorrect = false;
                 }

@@ -141,6 +141,16 @@ namespace LunarTransferPlanner
         readonly string mainTitle = "Lunar Transfer";
         readonly string settingsTitle = "Additional Settings";
         readonly string manualOrbitTitle = "Specify Manual Orbit";
+        bool needMainReset = true;
+        bool needSettingsReset = true;
+        bool needManualOrbitReset = true;
+        enum WindowState
+        {
+            Main,
+            Settings,
+            ManualOrbit
+        }
+        WindowState windowState;
         float windowWidth;
         //float UIScale; // TODO, can't think of a great way to make this look good right now
         GUISkin skin;
@@ -150,6 +160,8 @@ namespace LunarTransferPlanner
         Texture2D resetGreen;
         bool isWindowOpen = false; // hide on first start-up
         bool isKSPGUIActive = true; // for some reason, this initially only turns to true when you turn off and on the KSP GUI
+        Vector2 settingsScroll = Vector2.zero; // TODO, save this in settings?
+        bool needReset = true;
 
         int currentBody = -1;
         object target = null; // will later become CelestialBody or Vessel
@@ -189,7 +201,6 @@ namespace LunarTransferPlanner
         string modeLabel;
         string modeTooltip;
 
-        bool needReset = true;
         double targetAltitude;
         double currentUT;
         double dayScale;
@@ -260,6 +271,15 @@ namespace LunarTransferPlanner
         OrbitRendererHack _transferOrbitRenderer = null;
         OrbitRendererHack _manualOrbitRenderer = null;
         MapAngleRenderer _phasingAngleRenderer = null;
+
+        // colors use r,g,b,a floats from 0 to 1
+        // XKCDColors has an impressively large color list, but displaying it in-game would be a nightmare. better for it to be .cfg only
+        Color parkingColor = Color.red; // 1,0,0,1
+        Color transferColor = Color.green; // 0,1,0,1
+        Color manualColor = Color.blue; // 0,0,1,1
+        internal static Color startLineColor = Color.red; // 1,0,0,1
+        internal static Color endLineColor = Color.green; // 0,1,0,1
+        internal static Color arcLineColor = Color.yellow; // 1,0.9215686,0.01568628,1
 
         List<CelestialBody> moons;
         List<Vessel> vessels;
@@ -483,6 +503,26 @@ namespace LunarTransferPlanner
 
             ConfigNode root = new ConfigNode();
             root.AddNode(settings);
+
+            ConfigNode colorNode = new ConfigNode("COLORS");
+
+            Dictionary<string, Color> colors = new Dictionary<string, Color>
+            {
+                { "parkingColor", parkingColor },
+                { "transferColor", transferColor },
+                { "manualColor", manualColor },
+                { "startLineColor", startLineColor },
+                { "endLineColor", endLineColor },
+                { "arcLineColor", arcLineColor },
+            };
+            foreach (var kvp in colors)
+            {
+                Color c = kvp.Value;
+                colorNode.AddValue(kvp.Key, $"{c.r},{c.g},{c.b},{c.a}");
+            }
+
+            settings.AddNode(colorNode);
+
             root.Save(SettingsPath);
 
             Dictionary<string, string> comments = new Dictionary<string, string>
@@ -505,6 +545,7 @@ namespace LunarTransferPlanner
                 { "showManualOrbit", "Only used when targetManual is true" },
                 { "tickSpeed", "The rate at which holding down the \"-\" or \"+\" button changes the value in seconds, default of 0.2" },
                 { "maxIterations", "The max amount of iterations for various calculations, most relevant for EstimateTimeAfterManeuver (which is used for Delta-V calculations). Increase for more accuracy in exchange for a larger lag spike." },
+                { "COLORS", "All colors are stored as red, green, blue, and alpha, from 0 to 1" },
             };
 
             List<string> lines = File.ReadAllLines(SettingsPath).ToList();
@@ -600,6 +641,44 @@ namespace LunarTransferPlanner
                     mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
                     manualOrbitRect = new Rect(x3, y3, manualOrbitRect.width, manualOrbitRect.height);
+
+                    ConfigNode colorNode = settings.GetNode("COLORS");
+                    if (colorNode != null)
+                    {
+                        bool TryParseColor(string s, out Color c)
+                        {
+                            c = Color.white; // fallback
+                            if (string.IsNullOrEmpty(s)) return false;
+
+                            string[] parts = s.Split(',');
+                            if (parts.Length != 4) return false;
+
+                            return float.TryParse(parts[0], out float r) &&
+                                   float.TryParse(parts[1], out float g) &&
+                                   float.TryParse(parts[2], out float b) &&
+                                   float.TryParse(parts[3], out float a) &&
+                                   ((c = new Color(r, g, b, a)) != null);
+                        }
+
+                        Dictionary<string, Action<Color>> colorSetters = new Dictionary<string, Action<Color>>
+                        {
+                            { "parkingColor", c => parkingColor = c },
+                            { "transferColor", c => transferColor = c },
+                            { "manualColor", c => manualColor = c },
+                            { "startLineColor", c => startLineColor = c },
+                            { "endLineColor", c => endLineColor = c },
+                            { "arcLineColor", c => arcLineColor = c },
+                        };
+
+                        foreach (var kvp in colorSetters)
+                        {
+                            string value = colorNode.GetValue(kvp.Key);
+                            if (TryParseColor(value, out Color c))
+                            {
+                                kvp.Value(c);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1663,10 +1742,32 @@ namespace LunarTransferPlanner
             return $"{value.ToString($"F{Math.Max(0, decimals + extra)}", CultureInfo.InvariantCulture)}";
         }
 
-        private void ResetWindow(ref Rect rect)
+        private void ResetWindow(ref bool needsReset, ref Rect rect) // This should only be used at the end of the current window
         { // Doing this forces the window to be resized. Without it, the window will become bigger when controls expand, but never become smaller again
-            rect = new Rect(rect.xMin, rect.yMin, -1f, -1f);
+            if (needsReset)
+            {
+                rect = new Rect(rect.xMin, rect.yMin, -1f, -1f);
+                needsReset = false;
+            }
         }
+
+        private void ResetWindow(WindowState windowState)  // This should only be used when resetting windows other than the current one
+        {
+            switch (windowState)
+            {
+                case WindowState.Main:
+                    needMainReset = true;
+                    break;
+                case WindowState.Settings:
+                    needSettingsReset = true;
+                    break;
+                case WindowState.ManualOrbit:
+                    needManualOrbitReset = true;
+                    break;
+            }
+        }
+
+        private void ResetWindow() => ResetWindow(windowState); // This resets the current window
 
         private void ResetDefault(ref double value, double defaultValue, string tooltip = "Reset to Default", bool pushDown = true) => value = ResetDefault(tooltip, pushDown) ? defaultValue : value;
 
@@ -1834,7 +1935,7 @@ namespace LunarTransferPlanner
             else return text;
         } // this is mainly for the visible text, putting the full text in the tooltip is a good idea anyway
 
-        private void ExpandCollapse(ref bool button, ref Rect rect, string tooltip = "", bool overrideButton = false)
+        private void ExpandCollapse(ref bool button, string tooltip = "", bool overrideButton = false)
         {
             GUILayout.BeginVertical();
             GUILayout.Space(5); // push down 5
@@ -1843,7 +1944,7 @@ namespace LunarTransferPlanner
             GUILayout.FlexibleSpace(); // push button to the right
             GUI.enabled = !overrideButton;
             if (GUILayout.Button(new GUIContent(!button ? "+" : "\u2013", tooltip + (overrideButton ? "\nThis button is currently disabled" : "")), GUILayout.Width(30))) // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
-            { button = !button; ResetWindow(ref rect); }
+            { button = !button; ResetWindow(); }
             GUI.enabled = true;
             GUILayout.EndHorizontal();
 
@@ -1856,159 +1957,846 @@ namespace LunarTransferPlanner
         private void MakeMainWindow(int id)
         {
             windowWidth = 160;
+            windowState = WindowState.Main;
 
-            currentUT = Planetarium.GetUniversalTime();
-
-            if (FlightGlobals.currentMainBody != null)
-                mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
-            else if (MapView.MapIsEnabled && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
-                mainBody = MapView.MapCamera.target.celestialBody; // tracking station, technically works for flight map view too but we already checked that
-            else if (FlightGlobals.GetHomeBody() != null)
-                mainBody = FlightGlobals.GetHomeBody(); // vab/sph, this always gives the home body (could also do Planetarium.fetch.Home)
-            else LogError("CRITICAL ERROR: No main body found!");
-
-            // TODO, implement setting that allows people to switch mainBody in the flight map view instead of being locked to their currentMainBody
-
-            if (StateChanged("mainBody", mainBody))
+            try
             {
-                target = null;
-                targetName = "";
-                ClearAllCaches();
-                moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
-                vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).OrderBy(vessel => vessel.vesselName).ToList();
-            }
-            // TODO, instead of ordering alphabetically, order by closest periapsis? make this a setting
+                currentUT = Planetarium.GetUniversalTime();
 
-            moonsInvalid = moons == null || moons.Count == 0;
-            vesselsInvalid = vessels == null || vessels.Count == 0;
+                if (FlightGlobals.currentMainBody != null)
+                    mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
+                else if (MapView.MapIsEnabled && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
+                    mainBody = MapView.MapCamera.target.celestialBody; // tracking station, technically works for flight map view too but we already checked that
+                else if (FlightGlobals.GetHomeBody() != null)
+                    mainBody = FlightGlobals.GetHomeBody(); // vab/sph, this always gives the home body (could also do Planetarium.fetch.Home)
+                else LogError("CRITICAL ERROR: No main body found!");
 
-            if (mainBody == null)
-            {
-                GUILayout.Label("CRITICAL ERROR: No main body found!", GUILayout.Width(windowWidth)); // this is really bad
-                if (StateChanged("errorStateTargets", ref errorStateTargets, 4))
+                // TODO, implement setting that allows people to switch mainBody in the flight map view instead of being locked to their currentMainBody
+
+                if (StateChanged("mainBody", mainBody))
                 {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
-
+                    target = null;
+                    targetName = "";
                     ClearAllCaches();
+                    moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
+                    vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).OrderBy(vessel => vessel.vesselName).ToList();
                 }
-                ShowSettings();
-            }
-            else if (!targetManual && moonsInvalid && vesselsInvalid)
-            {
-                GUILayout.Label("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged("errorStateTargets", ref errorStateTargets, 1))
-                {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
+                // TODO, instead of ordering alphabetically, order by closest periapsis? make this a setting
 
-                    ClearAllCaches();
+                moonsInvalid = moons == null || moons.Count == 0;
+                vesselsInvalid = vessels == null || vessels.Count == 0;
+
+                if (mainBody == null)
+                {
+                    GUILayout.Label("CRITICAL ERROR: No main body found!", GUILayout.Width(windowWidth)); // this is really bad
+                    if (StateChanged("errorStateTargets", ref errorStateTargets, 4))
+                    {
+                        ResetWindow();
+                        //ResetWindow(ref settingsRect);
+
+                        ClearAllCaches();
+                    }
+                    ShowSettings();
                 }
-                ShowSettings();
-            }
-            else if (!targetManual && targetVessel && vesselsInvalid)
-            {
-                GUILayout.Label("ERROR: There are no vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged("errorStateTargets", ref errorStateTargets, 2))
+                else if (!targetManual && moonsInvalid && vesselsInvalid)
                 {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
+                    GUILayout.Label("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.Width(windowWidth));
+                    if (StateChanged("errorStateTargets", ref errorStateTargets, 1))
+                    {
+                        ResetWindow();
+                        //ResetWindow(ref settingsRect);
+
+                        ClearAllCaches();
+                    }
+                    ShowSettings();
                 }
-                ShowSettings();
-                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
-                // do not switch automatically, this would change the user's settings silently, and they may not want to switch
-            }
-            else if (!targetManual && !targetVessel && moonsInvalid)
-            {
-                GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.Width(windowWidth));
-                if (StateChanged("errorStateTargets", ref errorStateTargets, 3))
+                else if (!targetManual && targetVessel && vesselsInvalid)
                 {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
-
-                    ClearAllCaches();
+                    GUILayout.Label("ERROR: There are no vessels orbiting this planet!", GUILayout.Width(windowWidth));
+                    if (StateChanged("errorStateTargets", ref errorStateTargets, 2))
+                    {
+                        ResetWindow();
+                        //ResetWindow(ref settingsRect);
+                    }
+                    ShowSettings();
+                    GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
+                    // do not switch automatically, this would change the user's settings silently, and they may not want to switch
                 }
-                ShowSettings();
-                GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
-                // do not switch automatically, this would change the user's settings silently, and they may not want to switch
-            }
-            else
-            {
-                if (StateChanged("errorStateTargets", ref errorStateTargets, 0))
+                else if (!targetManual && !targetVessel && moonsInvalid)
                 {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
-
-                    ClearAllCaches();
-                }
-
-                int count = -1;
-
-                if (!targetManual)
-                {
-                    _ = StateChanged("targetManual", false); // this should have been done already, but just in case
-                    Vessel matchingVessel = null;
-                    CelestialBody matchingMoon = null;
-                    if (targetName != "") // this is for loading the target from settings
+                    GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.Width(windowWidth));
+                    if (StateChanged("errorStateTargets", ref errorStateTargets, 3))
                     {
-                        matchingVessel = vessels?.FirstOrDefault(v => v.vesselName == targetName);
-                        matchingMoon = moons?.FirstOrDefault(b => b.bodyName == targetName);
-                    }
+                        ResetWindow();
+                        //ResetWindow(ref settingsRect);
 
-                    if (targetVessel)
-                    {
-                        if (target == null || StateChanged("targetVessel", targetVessel))
-                        {
-                            if (matchingVessel != null) target = matchingVessel as Vessel;
-                            else target = vessels[0] as Vessel;
-                        }
-                        count = vessels.Count;
+                        ClearAllCaches();
                     }
-                    else
-                    {
-                        if (target == null || StateChanged("targetVessel", targetVessel))
-                        {
-                            if (matchingMoon != null) target = matchingMoon as CelestialBody;
-                            else target = moons[0] as CelestialBody;
-                        }
-                        count = moons.Count;
-                    }
-
-                    if (target is Vessel vessel)
-                    {
-                        targetOrbit = vessel?.orbit;
-                        targetName = vessel?.vesselName;
-                        if (currentBody == -1) currentBody = vessels.FindIndex(v => v.vesselName == targetName);
-                    }
-                    else if (target is CelestialBody body)
-                    {
-                        targetOrbit = body?.orbit;
-                        targetName = body?.bodyName;
-                        if (currentBody == -1) currentBody = moons.FindIndex(b => b.bodyName == targetName);
-                    }
-                    else LogError("Unknown target type: " + target.GetType().Name);
-
-                    inclination = GetTargetInclination(targetOrbit);
+                    ShowSettings();
+                    GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
+                    // do not switch automatically, this would change the user's settings silently, and they may not want to switch
                 }
                 else
                 {
-                    if (double.IsNaN(inclination)) inclination = 0d;
-                    if (double.IsNaN(eccentricity)) eccentricity = 0d;
-                    if (double.IsNaN(SMA)) SMA = mainBody.Radius + mainBody.atmosphereDepth;
-                    if (double.IsNaN(LAN)) LAN = 0d;
-                    if (double.IsNaN(AoP)) AoP = 0d;
-                    if (double.IsNaN(MNA)) MNA = 0d;
+                    if (StateChanged("errorStateTargets", ref errorStateTargets, 0))
+                    {
+                        ResetWindow();
+                        //ResetWindow(ref settingsRect);
 
-                    double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
-                    if (double.IsNaN(ApR)) ApR = SMA * (1d + eccentricity);
-                    if (double.IsNaN(ApA_Adj)) ApA_Adj = (ApR - radiusAdjusted) / 1000d;
-                    if (double.IsNaN(PeR)) PeR = SMA * (1d - eccentricity);
-                    if (double.IsNaN(PeA_Adj)) PeA_Adj = (PeR - radiusAdjusted) / 1000d;
-                    if (double.IsNaN(period)) period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
-                    if (double.IsNaN(period_Adj)) period_Adj = period;
+                        ClearAllCaches();
+                    }
 
-                    if (StateChanged("targetManual", true)) // || StateChanged("mainBodyManualTarget", mainBody) // dont think this is needed
-                    { // Init and SetOrbit murder FPS, so they should only be called when absolutely necessary (like 200 FPS drop if done every frame)
+                    int count = -1;
+
+                    if (!targetManual)
+                    {
+                        _ = StateChanged("targetManual", false); // this should have been done already, but just in case
+                        Vessel matchingVessel = null;
+                        CelestialBody matchingMoon = null;
+                        if (targetName != "") // this is for loading the target from settings
+                        {
+                            matchingVessel = vessels?.FirstOrDefault(v => v.vesselName == targetName);
+                            matchingMoon = moons?.FirstOrDefault(b => b.bodyName == targetName);
+                        }
+
+                        if (targetVessel)
+                        {
+                            if (target == null || StateChanged("targetVessel", targetVessel))
+                            {
+                                if (matchingVessel != null) target = matchingVessel as Vessel;
+                                else target = vessels[0] as Vessel;
+                            }
+                            count = vessels.Count;
+                        }
+                        else
+                        {
+                            if (target == null || StateChanged("targetVessel", targetVessel))
+                            {
+                                if (matchingMoon != null) target = matchingMoon as CelestialBody;
+                                else target = moons[0] as CelestialBody;
+                            }
+                            count = moons.Count;
+                        }
+
+                        if (target is Vessel vessel)
+                        {
+                            targetOrbit = vessel?.orbit;
+                            targetName = vessel?.vesselName;
+                            if (currentBody == -1) currentBody = vessels.FindIndex(v => v.vesselName == targetName);
+                        }
+                        else if (target is CelestialBody body)
+                        {
+                            targetOrbit = body?.orbit;
+                            targetName = body?.bodyName;
+                            if (currentBody == -1) currentBody = moons.FindIndex(b => b.bodyName == targetName);
+                        }
+                        else LogError("Unknown target type: " + target.GetType().Name);
+
+                        inclination = GetTargetInclination(targetOrbit);
+                    }
+                    else
+                    {
+                        if (double.IsNaN(inclination)) inclination = 0d;
+                        if (double.IsNaN(eccentricity)) eccentricity = 0d;
+                        if (double.IsNaN(SMA)) SMA = mainBody.Radius + mainBody.atmosphereDepth;
+                        if (double.IsNaN(LAN)) LAN = 0d;
+                        if (double.IsNaN(AoP)) AoP = 0d;
+                        if (double.IsNaN(MNA)) MNA = 0d;
+
+                        double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
+                        if (double.IsNaN(ApR)) ApR = SMA * (1d + eccentricity);
+                        if (double.IsNaN(ApA_Adj)) ApA_Adj = (ApR - radiusAdjusted) / 1000d;
+                        if (double.IsNaN(PeR)) PeR = SMA * (1d - eccentricity);
+                        if (double.IsNaN(PeA_Adj)) PeA_Adj = (PeR - radiusAdjusted) / 1000d;
+                        if (double.IsNaN(period)) period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
+                        if (double.IsNaN(period_Adj)) period_Adj = period;
+
+                        if (StateChanged("targetManual", true)) // || StateChanged("mainBodyManualTarget", mainBody) // dont think this is needed
+                        { // Init and SetOrbit murder FPS, so they should only be called when absolutely necessary (like 200 FPS drop if done every frame)
+                            targetOrbit = new Orbit
+                            {
+                                eccentricity = eccentricity,
+                                semiMajorAxis = SMA,
+                                inclination = inclination,
+                                LAN = LAN,
+                                argumentOfPeriapsis = AoP,
+                                meanAnomalyAtEpoch = MNA,
+                                epoch = currentUT,
+                                referenceBody = mainBody,
+                            };
+                            targetOrbit.Init();
+
+                            Log("Manual Orbit Initialized");
+                        } // we handle changes of manual targetOrbit in the orbit selector screen
+
+                        targetName = "[Manual Target]";
+                    }
+
+                    isLowLatitude = Math.Abs(latitude) <= inclination;
+                    (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV();
+                    dayScale = mainBody.rotationPeriod / EarthSiderealDay;
+                    CelestialBody homeBody = FlightGlobals.GetHomeBody();
+                    solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
+                    targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
+                    const double epsilon = 1e-9;
+
+                    CheckWindowCache(latitude, longitude, inclination, targetAltitude);
+
+                    if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
+                    else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
+
+                    if (!targetManual)
+                    {
+                        GUILayout.Space(5);
+
+                        if (count > 1) // only display target selector screen if theres multiple targets
+                        {
+                            if (currentBody == -1) currentBody = 0; // currentBody should already be set, but just in case
+                            if (currentBody > count - 1) currentBody = count - 1; // this can happen when switching mainBody or when a vessel is destroyed
+
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Box(new GUIContent(TextOverspill(targetName, 80, GUI.skin.box), targetName), GUILayout.MinWidth(80));
+
+                            if (GUILayout.Button("<", GUILayout.MinWidth(20)))
+                            {
+                                currentBody--;
+                                if (currentBody < 0) currentBody = count - 1;
+                            }
+
+                            if (GUILayout.Button(">", GUILayout.MinWidth(20)))
+                            {
+                                currentBody++;
+                                if (currentBody > count - 1) currentBody = 0;
+                            }
+                            GUILayout.EndHorizontal();
+                            if (targetVessel) target = vessels[currentBody];
+                            else target = moons[currentBody]; // cant do ternary for this
+                            GUILayout.Space(5);
+                        }
+
+                        if (StateChanged("displayTargetSelector", count > 1))
+                        {
+                            ResetWindow();
+                        }
+                    }
+                    else
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("<b>Manual Target</b>", $"Manual Target Mode is on, open the orbit specifier to specify the orbit{(PrincipiaInstalled ? "\nThe manual orbit specifier does not take into account perturbations from Principia" : "")}"));
+                        GUILayout.FlexibleSpace();
+                        ShowSettings(ref showManualOrbit, manualOrbitTitle);
+                        GUILayout.EndHorizontal();
+
+                        GUILayout.Space(5);
+                    }
+
+                    GUILayout.BeginHorizontal();
+                    if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>!!!</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
+                    GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : (useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as"))} launch location"), GUILayout.ExpandWidth(true));
+                    ExpandCollapse(ref expandLatLong, "Set manual latitude and longitude");
+                    GUILayout.EndHorizontal();
+
+                    if (expandLatLong)
+                    {
+                        GUILayout.Space(6); // weird spacing
+                        MakeNumberEditField("latitude", ref latitude, 1d, -90d, 90d, true);
+                        GUILayout.Space(5);
+                        GUILayout.Label(new GUIContent($"Longitude: <b>{FormatDecimals(longitude)}\u00B0</b>", $"{longitude}\u00B0"));
+                        MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d, true);
+                        //GUILayout.Space(5);
+                        //GUILayout.Label(new GUIContent($"Altitude: <b>{FormatDecimals(altitude)}</b>", "Altitude of launch location (in meters)"));
+                        //MakeNumberEditField("altitude", ref altitude, 100d, -mainBody.Radius + 5d, targetOrbit.PeA - 5d); // this is a laughably large range, but its the only way to make sure it can cover altitudes below and above sea level
+                        launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0d);
+                    }
+                    else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
+
+                    //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
+
+                    GUILayout.Space(5);
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"));
+                    if (ResetDefault($"Reset to Maximum Flight Time{(targetOrbit.eccentricity >= epsilon ? "\n(not exactly maximum due to the eccentricity of the target's orbit)" : "")}"))
+                        flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time / solarDayLength;
+                    // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
+                    // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
+                    GUILayout.EndHorizontal();
+                    MakeNumberEditField("flightTime", ref flightTime, 0.1d, double.Epsilon, double.MaxValue);
+                    if (StateChanged("flightTime", flightTime)) ClearAllCaches();
+                    double l = Math.Round(flightTime * solarDayLength);
+                    GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
+
+                    //Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
+                    //var stopwatch = Stopwatch.StartNew();
+                    double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, 0);
+                    double nextLaunchETA = nextLaunchUT - currentUT;
+                    //stopwatch.Stop();
+                    //Log($"Window 1 Launch Time: {firstLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
+                    //Log("CLAYELADDEDDLOGS SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW");
+                    //stopwatch = Stopwatch.StartNew();
+                    double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, extraWindowNumber - 1);
+                    double extraLaunchETA = extraLaunchUT - currentUT;
+                    //stopwatch.Stop();
+                    //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
+
+                    bool inSpecialWarp = warpState == 2 || warpState == 3;
+                    bool specialWarpActive = warpState == 1 || inSpecialWarp;
+                    if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarpSelected && !inSpecialWarp) warpState = 1;
+                    else if (!inSpecialWarp && !specialWarpWait) warpState = 0;
+
+                    GUILayout.Space(5);
+                    GUILayout.BeginHorizontal();
+                    if (errorStateDV != 0) GUILayout.Label(new GUIContent("<b>!!!</b>", errorStateDV == 1
+                        ? "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."
+                        : $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius))}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."));
+                    GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"), GUILayout.ExpandWidth(true));
+                    ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.Space(5);
+                    GUILayout.Box(new GUIContent($"{FormatDecimals(dV)} m/s", $"Eccentricity of {(!double.IsNaN(trajectoryEccentricity) ? (trajectoryEccentricity > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(trajectoryEccentricity)}"), GUILayout.MinWidth(100));
+
+                    if (expandAltitude)
+                    {
+                        GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
+                        MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : epsilon, Math.Max(targetOrbit.PeA / 1000d, mainBody.atmosphereDepth / 1000d)); // PeA updates every frame so we don't need to ask Principia
+                        if (StateChanged("parkingAltitude", parkingAltitude))
+                        {
+                            phasingCache.Clear();
+                            ClearDeltaVCache();
+                            ClearAllOrbitDisplays();
+                            ClearAngleRenderer();
+                        }
+                    }
+
+                    GUILayout.Space(5);
+                    GUILayout.BeginHorizontal();
+                    GUILayout.BeginVertical();
+                    GUILayout.Space(5);
+                    if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(100))) referenceTimeButton = (referenceTimeButton + 1) % (expandExtraWindow ? 3 : 2);
+                    GUILayout.EndVertical();
+                    GUILayout.BeginVertical();
+                    GUILayout.Space(5);
+                    if (GUILayout.Button(new GUIContent(showAzimuth ? "Az." : "In.", showAzimuth ? "Launch to this azimuth to get into the target parking orbit" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
+                    GUILayout.EndVertical();
+                    ExpandCollapse(ref expandParking0, "Show Orbit Details");
+                    GUILayout.EndHorizontal();
+
+                    switch (referenceTimeButton)
+                    {
+                        case 0:
+                            referenceTimeLabel = "Launch Now";
+                            referenceTimeTooltip = "Change reference time to Next Launch Window";
+                            referenceTime = 0d;
+                            referenceWindowNumber = null;
+                            break;
+                        case 1:
+                            referenceTimeLabel = "Next Window";
+                            referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
+                            referenceTime = nextLaunchETA;
+                            referenceWindowNumber = 0;
+                            break;
+                        case 2:
+                            referenceTimeLabel = $"Window {extraWindowNumber}";
+                            referenceTimeTooltip = "Change reference time to the Launch Now Window";
+                            referenceTime = extraLaunchETA;
+                            referenceWindowNumber = extraWindowNumber - 1;
+                            break;
+                    }
+
+                    OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
+                    OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
+
+                    double displayAz = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth : targetLaunchAzimuth;
+                    double displayInc = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
+                    // launchOrbit doesnt really display retrograde azimuths/inclinations, so itd be unhelpful to display them if they're misleading
+
+                    GUILayout.Space(5);
+                    if (showAzimuth)
+                    {
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(displayAz)}\u00B0", $"Azimuth\n{FormatDecimals(displayAz * degToRad)} rads, this is {(displayAz <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    }
+                    else
+                    {
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(displayInc)}\u00B0", $"Inclination\n{FormatDecimals(displayInc * degToRad)} rads, this is {(displayAz <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                    }
+
+                    if (expandParking0)
+                    {
+                        (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
+                        (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
+                        ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0);
+                    }
+
+                    string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(targetLaunchAzimuth - 90d) < epsilon ?
+                        "Launch Easterly at this time to get into the required parking orbit" :
+                        $"Launch at this time at this {(showAzimuth ? "azimuth" : "inclination")} to get into the required parking orbit";
+
+                    GUILayout.Space(5);
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent("Next Window", windowTooltip), GUILayout.ExpandWidth(true));
+                    ExpandCollapse(ref expandParking1, "Show Orbit Details");
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.Space(5);
+                    GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
+
+                    // we need this outside for alarm description and transfer orbit
+                    (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchETA, 0);
+                    (double launchLAN1, double launchAoP1) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, nextLaunchETA, 0);
+                    if (expandParking1)
+                    {
+                        ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1);
+                    }
+
+                    if (expandExtraWindow)
+                    {
+                        GUILayout.Space(5);
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip), GUILayout.ExpandWidth(true));
+                        ExpandCollapse(ref expandParking2, "Show Orbit Details");
+                        GUILayout.EndHorizontal();
+
+                        GUILayout.Space(5);
+                        GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
+
+                        if (expandParking2)
+                        {
+                            (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchETA, extraWindowNumber - 1);
+                            (double launchLAN2, double launchAoP2) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, extraLaunchETA, extraWindowNumber - 1);
+                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2);
+                        }
+                    }
+
+                    GUILayout.Space(5);
+                    GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
+                    MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
+
+                    bool inWarp() => TimeWarp.CurrentRate > 1d;
+
+                    GUILayout.Space(10);
+                    GUILayout.BeginHorizontal();
+                    bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", $"Add Alarm for {(useAltAlarm && expandExtraWindow ? $"Window {extraWindowNumber}" : "Next Window")} to {(KACInstalled && useKAC ? "Kerbal Alarm Clock" : "stock Alarm Clock")}"), GUILayout.MinWidth(80));
+
+                    bool toggleWarp = GUILayout.Button(new GUIContent(inWarp() || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
+                    GUILayout.EndHorizontal();
+
+                    if (specialWarpActive)
+                    {
+                        BeginCenter(false);
+                        GUILayout.Label(new GUIContent("Special Warp", "See the settings for an in-depth explanation, this CANNOT be halted once started"));
+                        EndCenter(false);
+                    }
+
+                    // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of the above label for some reason (always with BeginCenter or EndCenter)
+                    // its harmless as far as I can tell, but i couldnt figure out a way to actually catch it
+
+                    if (StateChanged("specialWarpActive", specialWarpActive))
+                    {
+                        ResetWindow();
+                    }
+
+                    bool MapViewEnabled() => MapView.MapIsEnabled && !HighLogic.LoadedSceneIsEditor && (HighLogic.LoadedSceneIsFlight || HighLogic.LoadedScene == GameScenes.TRACKSTATION);
+
+                    GUILayout.BeginHorizontal();
+
+                    bool targetPressed;
+                    bool focusPressed;
+                    if (MapViewEnabled() && !targetManual) // if in map view, map view carries over to editor sometimes so just double-check
+                    {
+                        GUI.enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && !targetManual; // targeting button will look "disabled" when the game isnt in focus or paused, but its not actually disabled. not sure how i can fix this, its just visual tho
+                        targetPressed = GUILayout.Button(new GUIContent(targetSet ? "Unset" : "Target", $"{$"Target {targetName}{(InputLockManager.IsUnlocked(ControlTypes.TARGETING) ? "" : "\nTarget Switching is Locked")}"}"), GUILayout.MinWidth(70));
+                        GUI.enabled = true;
+                        focusPressed = GUILayout.Button(new GUIContent("Focus", $"Focus {targetName}"), GUILayout.MinWidth(70));
+                    }
+                    else
+                    {
+                        GUI.enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && !targetManual; // targeting button will look "disabled" when the game isnt in focus or paused, but its not actually disabled. not sure how i can fix this, its just visual tho
+                        targetPressed = GUILayout.Button(new GUIContent(targetManual ? "[Manual Target]" : (targetSet ? "Unset Target" : TextOverspill($"Target {targetName}", 140, GUI.skin.button)), $"{(targetManual ? "Manual Target Mode:\nTargeting Disabled" : $"Target {targetName}{(InputLockManager.IsUnlocked(ControlTypes.TARGETING) ? "" : "\nTarget Switching is Locked")}")}"), GUILayout.MinWidth(140));
+                        GUI.enabled = true;
+                        focusPressed = false; // not in map view, so cant focus
+                    }
+                    ShowSettings();
+                    GUILayout.EndHorizontal();
+
+                    if (MapViewEnabled())
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Show Parking Orbit", $"Show Parking Orbit for the Next Launch Window in Map View"));
+                        GUILayout.FlexibleSpace();
+                        BeginCenter();
+                        displayParking = GUILayout.Toggle(displayParking, "");
+                        EndCenter();
+                        GUILayout.EndHorizontal();
+
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Show Transfer Orbit", $"Show Transfer Orbit for the Next Launch Window in Map View{(double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? "\nError: Trajectory is invalid" : "")}"));
+                        GUILayout.FlexibleSpace();
+                        BeginCenter();
+                        displayTransfer = GUILayout.Toggle(displayTransfer, "");
+                        EndCenter();
+                        GUILayout.EndHorizontal();
+
+                        if (targetManual)
+                        {
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Label(new GUIContent("Show Manual Orbit", "Show Manual Target Orbit in Map View"));
+                            GUILayout.FlexibleSpace();
+                            BeginCenter();
+                            displayManual = GUILayout.Toggle(displayManual, "");
+                            EndCenter();
+                            GUILayout.EndHorizontal();
+                        }
+
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Show Phasing Angle", "Show Phasing Angle for the Next Launch Window in Map View"));
+                        GUILayout.FlexibleSpace();
+                        BeginCenter();
+                        GUI.enabled = displayParking;
+                        displayPhasing = GUILayout.Toggle(displayPhasing, new GUIContent("", displayParking ? "" : "The Parking Orbit needs to be enabled for this to be shown"));
+                        GUI.enabled = true;
+                        EndCenter();
+                        GUILayout.EndHorizontal();
+                    }
+
+                    if (StateChanged("RendererButtons", MapViewEnabled()))
+                    {
+                        ResetWindow();
+                        ClearAllOrbitDisplays();
+                        ClearAngleRenderer();
+                    }
+
+                    if (double.IsNaN(targetLaunchInclination)) // need to update if NaN and showSettings isnt open to update it (in case of a latitude change)
+                    {
+                        ResetLaunchInclination();
+
+                        if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
+                    }
+
+                    if (displayParking && MapViewEnabled() && !needReset)
+                    {
+                        Orbit parkingOrbit = new Orbit
+                        {
+                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
+                            eccentricity = epsilon, // just to make periapsis visible
+                            semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
+                            LAN = launchLAN1,
+                            argumentOfPeriapsis = launchAoP1,
+                            meanAnomalyAtEpoch = 0d,
+                            epoch = currentUT,
+                            referenceBody = mainBody,
+                        };
+
+                        //Log($"launchLAN1: {launchLAN1}, launchAoP1: {launchAoP1}");
+
+                        if (_parkingOrbitRenderer == null)
+                        {
+                            _parkingOrbitRenderer?.Cleanup(); // just in case
+
+                            _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, parkingColor);
+                        }
+
+                        if (displayPhasing && (_phasingAngleRenderer == null || !_phasingAngleRenderer.IsDrawing))
+                        {
+                            // we need to do both of these to access the orbit.pos and orbit.vel in Draw (we're not running them every frame, so its fine)
+                            parkingOrbit.Init();
+                            parkingOrbit.UpdateFromUT(currentUT);
+
+                            ClearAngleRenderer(); // just in case
+
+                            if (_phasingAngleRenderer == null)
+                            {
+                                _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
+                            }
+
+                            double AoPmodified = (targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP1, false) : 180d - launchAoP1;
+                            _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle1);
+
+                            //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
+                        }
+                    }
+                    else if (!displayParking && _parkingOrbitRenderer != null)
+                    {
+                        ClearOrbitDisplay(ref _parkingOrbitRenderer);
+                    }
+
+                    if ((!displayParking || !displayPhasing) && _phasingAngleRenderer != null && !_phasingAngleRenderer.IsHiding)
+                    {
+                        ClearAngleRenderer();
+                    }
+
+                    //Log($"trajectoryEccentricity: {trajectoryEccentricity}, errorStateDV: {errorStateDV}");
+
+                    if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needReset)
+                    {
+                        _transferOrbitRenderer?.Cleanup(); // just in case
+
+                        double AoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP1 + phaseAngle1 + 180d, false) : Util.ClampAngle(launchAoP1 + phaseAngle1, false);
+                        Orbit transferOrbit = new Orbit
+                        {
+                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
+                            eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
+                            semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
+                            LAN = launchLAN1,
+                            argumentOfPeriapsis = AoPmodified,
+                            meanAnomalyAtEpoch = 0d,
+                            epoch = currentUT,
+                            referenceBody = mainBody,
+                        };
+
+                        //Log($"transferOrbit.eccentricity: {transferOrbit.eccentricity}");
+
+                        _transferOrbitRenderer = OrbitRendererHack.Setup(transferOrbit, transferColor);
+                    }
+                    else if (!displayTransfer && _transferOrbitRenderer != null)
+                    {
+                        ClearOrbitDisplay(ref _transferOrbitRenderer);
+                    }
+
+                    if (displayManual && _manualOrbitRenderer == null && MapViewEnabled() && targetManual && !needReset)
+                    {
+                        _manualOrbitRenderer?.Cleanup(); // just in case
+
+                        _manualOrbitRenderer = OrbitRendererHack.Setup(targetOrbit, manualColor);
+                    }
+                    else if ((!displayManual || !targetManual) && _manualOrbitRenderer != null)
+                    {
+                        ClearOrbitDisplay(ref _manualOrbitRenderer);
+                    }
+
+                    if (addAlarm)
+                    {
+                        string title = ""; // might need to check for overspill in title?
+                        string description = "";
+                        double time = double.NaN;
+
+                        void DescribeD(string identifier, string unit, double value) => description += !double.IsNaN(value) ? $"{identifier}: {FormatDecimals(value)}{unit}\n" : "";
+                        void DescribeI(string identifier, string unit, int value) => description += $"{identifier}: {value}{unit}\n";
+                        void DescribeB(string identifier, bool value) => description += $"{identifier}: {value}\n";
+
+                        if (!double.IsNaN(nextLaunchUT) && (!useAltAlarm || (useAltAlarm && expandExtraWindow && extraWindowNumber == 1)))
+                        {
+                            title = $"Next {targetName} Launch Window";
+                            time = nextLaunchUT - warpMargin;
+                            DescribeI("Window Number", "", 1);
+                        }
+                        else if (useAltAlarm && expandExtraWindow && !double.IsNaN(extraLaunchUT))
+                        {
+                            title = $"{targetName} Launch Window {extraWindowNumber}";
+                            time = extraLaunchUT - warpMargin;
+                            DescribeI("Window Number", "", extraWindowNumber);
+                        }
+
+                        DescribeD("UT", "s", time);
+                        DescribeD("Warp Margin", "s", warpMargin);
+                        DescribeD("Latitude", "\u00B0", latitude);
+                        DescribeD("Longitude", "\u00B0", longitude);
+                        DescribeD("Flight Time", $" {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days", flightTime);
+                        DescribeD("Required delta-V", "m/s", dV);
+                        DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
+                        DescribeD("Launch Inclination", "\u00B0", launchOrbit1.azimuth > 90d && launchOrbit1.azimuth < 270d ? -launchOrbit1.inclination : launchOrbit1.inclination);
+                        DescribeD("Launch Azimuth", "\u00B0", launchOrbit1.azimuth);
+                        DescribeD("Phasing Time", "s", phaseTime1);
+                        DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
+                        DescribeD("Parking Orbit LAN", "\u00B0", launchLAN1);
+                        DescribeD("Parking Orbit AoP", "\u00B0", launchAoP1);
+                        DescribeB("Special Warp Active", specialWarpActive);
+
+                        description = description.TrimEnd('\n');
+
+                        if (title != "" && time != double.NaN)
+                        {
+                            // alarm type should be raw because this isn't really a maneuver or transfer alarm, its a launch time alarm
+                            if (KACInstalled && useKAC)
+                            {
+                                string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, title, time);
+                                if (!string.IsNullOrEmpty(alarmId))
+                                {
+                                    // if the alarm was made, get the object
+                                    KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.First(z => z.ID == alarmId);
+
+                                    alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
+                                    //alarm.AlarmMargin = warpMargin; // this doesnt seem to work, so we need to put warpMargin into the time
+                                    alarm.Notes = description;
+                                }
+                            }
+                            else
+                            {
+                                AlarmTypeRaw alarm = new AlarmTypeRaw
+                                {
+                                    title = title,
+                                    description = description,
+                                    ut = time,
+                                    //eventOffset = warpMargin, // this doesnt seem to work, so we need to put warpMargin into the time
+                                };
+                                AlarmClockScenario.AddAlarm(alarm);
+                                alarm.actions.warp = AlarmActions.WarpEnum.KillWarp;
+                            }
+                        }
+                    }
+
+                    if (toggleWarp)
+                    {
+                        if (inWarp())
+                        {
+                            TimeWarp.fetch.CancelAutoWarp();
+                            TimeWarp.SetRate(0, false);
+                        }
+                        else
+                        {
+                            if (warpState == 1)
+                            {
+                                Log("Special warp 1 in progress");
+                                TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
+                                TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
+                                warpState = 2;
+                                specialWarpWait = true;
+                            }
+                            else
+                            {
+                                TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin);
+                            }
+                        }
+                    }
+
+                    if (specialWarpWait && !inWarp())
+                    {
+                        waitingTime = currentUT;
+                        //Log($"waitingTime: {waitingTime}");
+                        windowCache.Clear(); // make sure we have an up to date time
+                        specialWarpWait = false;
+                    }
+
+                    if (warpState == 2 && !inWarp() && currentUT > waitingTime + 0.5d)
+                    {
+                        Log("Special warp 2 in progress");
+                        TimeWarp.fetch.CancelAutoWarp();
+                        TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
+                        TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + 3600d * dayScale)); // warp to within an hour
+                        warpState = 3;
+                        specialWarpWait = true;
+                    }
+
+                    if (warpState == 3 && !inWarp() && currentUT > waitingTime + 0.5d)
+                    {
+                        Log("Special warp 3 in progress");
+                        TimeWarp.fetch.CancelAutoWarp();
+                        TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin); // now warp to final
+                        warpState = 0;
+                        specialWarpWait = false;
+                    }
+
+                    if (targetPressed)
+                    {
+                        if (!targetSet)
+                        {
+                            targetSet = true;
+                            if (target is Vessel vesselTarget)
+                                FlightGlobals.fetch.SetVesselTarget(vesselTarget);
+                            else if (target is CelestialBody bodyTarget)
+                                FlightGlobals.fetch.SetVesselTarget(bodyTarget);
+                            else LogError("Unknown target type passed to targetSet: " + target.GetType().Name);
+                        }
+                        else
+                        {
+                            targetSet = false;
+                            FlightGlobals.fetch.SetVesselTarget(null);
+                        }
+                    }
+
+                    if (focusPressed)
+                    {
+                        if (target is Vessel vesselTarget)
+                            PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
+                        else if (target is CelestialBody bodyTarget)
+                            PlanetariumCamera.fetch.SetTarget(bodyTarget.MapObject);
+                        else LogError("Unknown target type passed to focusSet: " + target.GetType().Name);
+
+                        // lol, who put Vessel as mapObject and CelestialBody as MapObject?
+                    }
+                }
+            }
+            finally
+            {
+                Tooltip.Instance?.RecordTooltip(id);
+                GUI.DragWindow();
+                ResetWindow(ref needMainReset, ref mainRect);
+            }
+        }
+
+        #endregion
+        #region MakeSettingsWindow
+
+        private void MakeSettingsWindow(int id)
+        {
+            windowWidth = 500;
+            windowState = WindowState.Settings;
+
+            GUILayout.Space(5);
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - 50)); // this sets the width of the window
+            // this tooltip is really only useful when paused, it flashes too quickly to be seen otherwise
+            GUILayout.BeginVertical();
+            GUILayout.Space(5);
+            if (GUILayout.Button(new GUIContent("Reset","Reset all windows and caches"), GUILayout.Width(50)))
+            {
+                ResetWindow(WindowState.Main);
+                ResetWindow();
+                if (showManualOrbit && targetManual) ResetWindow(WindowState.ManualOrbit);
+
+                ClearAllCaches();
+            }
+            GUILayout.EndVertical();
+            GUILayout.EndHorizontal();
+
+            DrawLine();
+
+            settingsScroll = GUILayout.BeginScrollView(settingsScroll, GUILayout.Width(windowWidth), GUILayout.Height(500));
+
+            try
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("Use Unity Skin");
+                GUILayout.FlexibleSpace();
+                BeginCenter();
+                useAltSkin = GUILayout.Toggle(useAltSkin, "");
+                EndCenter();
+                GUILayout.EndHorizontal();
+
+                if (StateChanged("useAltSkin", useAltSkin))
+                {
+                    ResetWindow(WindowState.Main);
+                    ResetWindow();
+                    if (showManualOrbit && targetManual) ResetWindow(WindowState.ManualOrbit);
+                }
+
+                if (errorStateTargets != 4)
+                {
+                    DrawLine();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Select an orbit to target manually");
+                    GUILayout.FlexibleSpace();
+                    BeginCenter();
+                    targetManual = GUILayout.Toggle(targetManual, "");
+                    EndCenter();
+                    GUILayout.EndHorizontal();
+
+                    if (StateChanged("targetManual", targetManual))
+                    {
+                        ResetWindow(WindowState.Main);
+                        //ResetWindow(ref settingsRect); // TODO, for some reason this isnt working with errorStateTargets != 0 // this isnt needed with the scroll bar
+                        target = null;
+                        targetName = "";
+
+                        double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
+                        ApR = SMA * (1d + eccentricity);
+                        ApA_Adj = (ApR - radiusAdjusted) / 1000d;
+                        PeR = SMA * (1d - eccentricity);
+                        PeA_Adj = (PeR - radiusAdjusted) / 1000d;
+                        period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
+                        period_Adj = period;
+
+                        // set the orbit to current parameters initially
                         targetOrbit = new Orbit
                         {
                             eccentricity = eccentricity,
@@ -2020,1036 +2808,363 @@ namespace LunarTransferPlanner
                             epoch = currentUT,
                             referenceBody = mainBody,
                         };
-                        targetOrbit.Init();
-
-                        Log("Manual Orbit Initialized");
-                    } // we handle changes of manual targetOrbit in the orbit selector screen
-
-                    targetName = "[Manual Target]";
-                }
-
-                isLowLatitude = Math.Abs(latitude) <= inclination;
-                (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV();
-                dayScale = mainBody.rotationPeriod / EarthSiderealDay;
-                CelestialBody homeBody = FlightGlobals.GetHomeBody();
-                solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
-                targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
-                const double epsilon = 1e-9;
-
-                CheckWindowCache(latitude, longitude, inclination, targetAltitude);
-
-                if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
-                else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
-
-                if (!targetManual)
-                {
-                    GUILayout.Space(5);
-
-                    if (count > 1) // only display target selector screen if theres multiple targets
-                    {
-                        if (currentBody == -1) currentBody = 0; // currentBody should already be set, but just in case
-                        if (currentBody > count - 1) currentBody = count - 1; // this can happen when switching mainBody or when a vessel is destroyed
-
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Box(new GUIContent(TextOverspill(targetName, 80, GUI.skin.box), targetName), GUILayout.MinWidth(80));
-
-                        if (GUILayout.Button("<", GUILayout.MinWidth(20)))
-                        {
-                            currentBody--;
-                            if (currentBody < 0) currentBody = count - 1;
-                        }
-
-                        if (GUILayout.Button(">", GUILayout.MinWidth(20)))
-                        {
-                            currentBody++;
-                            if (currentBody > count - 1) currentBody = 0;
-                        }
-                        GUILayout.EndHorizontal();
-                        if (targetVessel) target = vessels[currentBody];
-                        else target = moons[currentBody]; // cant do ternary for this
-                        GUILayout.Space(5);
-                    }
-
-                    if (StateChanged("displayTargetSelector", count > 1))
-                    {
-                        ResetWindow(ref mainRect);
+                        targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
+                        targetOrbit.UpdateFromUT(currentUT);
+                        _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
                     }
                 }
-                else
+
+                if ((errorStateTargets == 0 || errorStateTargets == 2 || errorStateTargets == 3) && !targetManual)
                 {
+                    DrawLine();
+
+                    if (errorStateTargets == 2 || errorStateTargets == 3) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("<b>Manual Target</b>", $"Manual Target Mode is on, open the orbit specifier to specify the orbit{(PrincipiaInstalled ? "\nThe manual orbit specifier does not take into account perturbations from Principia" : "")}"));
-                    GUILayout.FlexibleSpace();
-                    ShowSettings(ref showManualOrbit, manualOrbitTitle);
-                    GUILayout.EndHorizontal();
-
-                    GUILayout.Space(5);
-                }
-
-                if (StateChanged("targetManual", targetManual)) // this needs to be set here, as settings window isnt always open
-                {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect); // TODO, for some reason this isnt working with errorStateTargets != 0
-                    target = null;
-                    targetName = "";
-
-                    double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
-                    ApR = SMA * (1d + eccentricity);
-                    ApA_Adj = (ApR - radiusAdjusted) / 1000d;
-                    PeR = SMA * (1d - eccentricity);
-                    PeA_Adj = (PeR - radiusAdjusted) / 1000d;
-                    period = tau * Math.Sqrt(Math.Pow(SMA, 3) / mainBody.gravParameter);
-                    period_Adj = period;
-
-                    // set the orbit to current parameters initially
-                    targetOrbit = new Orbit
-                    {
-                        eccentricity = eccentricity,
-                        semiMajorAxis = SMA,
-                        inclination = inclination,
-                        LAN = LAN,
-                        argumentOfPeriapsis = AoP,
-                        meanAnomalyAtEpoch = MNA,
-                        epoch = currentUT,
-                        referenceBody = mainBody,
-                    };
-                    targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
-                    targetOrbit.UpdateFromUT(currentUT);
-                    _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
-                }
-
-                GUILayout.BeginHorizontal();
-                if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>!!!</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
-                GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : (useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as"))} launch location"), GUILayout.ExpandWidth(true));
-                ExpandCollapse(ref expandLatLong, ref mainRect, "Set manual latitude and longitude");
-                GUILayout.EndHorizontal();
-
-                if (expandLatLong)
-                {
-                    GUILayout.Space(6); // weird spacing
-                    MakeNumberEditField("latitude", ref latitude, 1d, -90d, 90d, true);
-                    GUILayout.Space(5);
-                    GUILayout.Label(new GUIContent($"Longitude: <b>{FormatDecimals(longitude)}\u00B0</b>", $"{longitude}\u00B0"));
-                    MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d, true);
-                    //GUILayout.Space(5);
-                    //GUILayout.Label(new GUIContent($"Altitude: <b>{FormatDecimals(altitude)}</b>", "Altitude of launch location (in meters)"));
-                    //MakeNumberEditField("altitude", ref altitude, 100d, -mainBody.Radius + 5d, targetOrbit.PeA - 5d); // this is a laughably large range, but its the only way to make sure it can cover altitudes below and above sea level
-                    launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0d);
-                }
-                else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
-
-                //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
-
-                GUILayout.Space(5);
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"));
-                if (ResetDefault($"Reset to Maximum Flight Time{(targetOrbit.eccentricity >= epsilon ? "\n(not exactly maximum due to the eccentricity of the target's orbit)" : "")}"))
-                    flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time / solarDayLength;
-                // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
-                // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
-                GUILayout.EndHorizontal();
-                MakeNumberEditField("flightTime", ref flightTime, 0.1d, double.Epsilon, double.MaxValue);
-                if (StateChanged("flightTime", flightTime)) ClearAllCaches();
-                double l = Math.Round(flightTime * solarDayLength);
-                GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
-
-                //Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
-                //var stopwatch = Stopwatch.StartNew();
-                double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, 0);
-                double nextLaunchETA = nextLaunchUT - currentUT;
-                //stopwatch.Stop();
-                //Log($"Window 1 Launch Time: {firstLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
-                //Log("CLAYELADDEDDLOGS SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW SECOND WINDOW");
-                //stopwatch = Stopwatch.StartNew();
-                double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, extraWindowNumber - 1);
-                double extraLaunchETA = extraLaunchUT - currentUT;
-                //stopwatch.Stop();
-                //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
-
-                bool inSpecialWarp = warpState == 2 || warpState == 3;
-                bool specialWarpActive = warpState == 1 || inSpecialWarp;
-                if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarpSelected && !inSpecialWarp) warpState = 1;
-                else if (!inSpecialWarp && !specialWarpWait) warpState = 0;
-
-                GUILayout.Space(5);
-                GUILayout.BeginHorizontal();
-                if (errorStateDV != 0) GUILayout.Label(new GUIContent("<b>!!!</b>", errorStateDV == 1
-                    ? "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."
-                    : $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius))}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."));
-                GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"), GUILayout.ExpandWidth(true));
-                ExpandCollapse(ref expandAltitude, ref mainRect, "Set parking orbit altitude");
-                GUILayout.EndHorizontal();
-
-                GUILayout.Space(5);
-                GUILayout.Box(new GUIContent($"{FormatDecimals(dV)} m/s", $"Eccentricity of {(!double.IsNaN(trajectoryEccentricity) ? (trajectoryEccentricity > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(trajectoryEccentricity)}"), GUILayout.MinWidth(100));
-
-                if (expandAltitude)
-                {
-                    GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
-                    MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : epsilon, Math.Max(targetOrbit.PeA / 1000d, mainBody.atmosphereDepth / 1000d)); // PeA updates every frame so we don't need to ask Principia
-                    if (StateChanged("parkingAltitude", parkingAltitude))
-                    {
-                        phasingCache.Clear();
-                        ClearDeltaVCache();
-                        ClearAllOrbitDisplays();
-                        ClearAngleRenderer();
-                    }
-                }
-
-                GUILayout.Space(5);
-                GUILayout.BeginHorizontal();
-                GUILayout.BeginVertical();
-                GUILayout.Space(5);
-                if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(100))) referenceTimeButton = (referenceTimeButton + 1) % (expandExtraWindow ? 3 : 2);
-                GUILayout.EndVertical();
-                GUILayout.BeginVertical();
-                GUILayout.Space(5);
-                if (GUILayout.Button(new GUIContent(showAzimuth ? "Az." : "In.", showAzimuth ? "Launch to this azimuth to get into the target parking orbit" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
-                GUILayout.EndVertical();
-                ExpandCollapse(ref expandParking0, ref mainRect, "Show Orbit Details");
-                GUILayout.EndHorizontal();
-
-                switch (referenceTimeButton)
-                {
-                    case 0:
-                        referenceTimeLabel = "Launch Now";
-                        referenceTimeTooltip = "Change reference time to Next Launch Window";
-                        referenceTime = 0d;
-                        referenceWindowNumber = null;
-                        break;
-                    case 1:
-                        referenceTimeLabel = "Next Window";
-                        referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
-                        referenceTime = nextLaunchETA;
-                        referenceWindowNumber = 0;
-                        break;
-                    case 2:
-                        referenceTimeLabel = $"Window {extraWindowNumber}";
-                        referenceTimeTooltip = "Change reference time to the Launch Now Window";
-                        referenceTime = extraLaunchETA;
-                        referenceWindowNumber = extraWindowNumber - 1;
-                        break;
-                }
-
-                OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
-                OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
-
-                double displayAz = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth : targetLaunchAzimuth;
-                double displayInc = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
-                // launchOrbit doesnt really display retrograde azimuths/inclinations, so itd be unhelpful to display them if they're misleading
-
-                GUILayout.Space(5);
-                if (showAzimuth)
-                {
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(displayAz)}\u00B0", $"Azimuth\n{FormatDecimals(displayAz * degToRad)} rads, this is {(displayAz <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
-                }
-                else
-                {
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(displayInc)}\u00B0", $"Inclination\n{FormatDecimals(displayInc * degToRad)} rads, this is {(displayAz <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
-                }
-
-                if (expandParking0)
-                {
-                    (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
-                    (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
-                    ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0);
-                }
-
-                string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(targetLaunchAzimuth - 90d) < epsilon ?
-                    "Launch Easterly at this time to get into the required parking orbit" :
-                    $"Launch at this time at this {(showAzimuth ? "azimuth" : "inclination")} to get into the required parking orbit";
-
-                GUILayout.Space(5);
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Next Window", windowTooltip), GUILayout.ExpandWidth(true));
-                ExpandCollapse(ref expandParking1, ref mainRect, "Show Orbit Details");
-                GUILayout.EndHorizontal();
-
-                GUILayout.Space(5);
-                GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
-
-                // we need this outside for alarm description and transfer orbit
-                (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchETA, 0);
-                (double launchLAN1, double launchAoP1) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, nextLaunchETA, 0);
-                if (expandParking1)
-                {
-                    ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1);
-                }
-
-                if (expandExtraWindow)
-                {
-                    GUILayout.Space(5);
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip), GUILayout.ExpandWidth(true));
-                    ExpandCollapse(ref expandParking2, ref mainRect, "Show Orbit Details");
-                    GUILayout.EndHorizontal();
-
-                    GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
-
-                    if (expandParking2)
-                    {
-                        (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchETA, extraWindowNumber - 1);
-                        (double launchLAN2, double launchAoP2) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, extraLaunchETA, extraWindowNumber - 1);
-                        ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2);
-                    }
-                }
-
-                GUILayout.Space(5);
-                GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
-                MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
-
-                bool inWarp() => TimeWarp.CurrentRate > 1d;
-
-                GUILayout.Space(10);
-                GUILayout.BeginHorizontal();
-                bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", $"Add Alarm for {(useAltAlarm && expandExtraWindow ? $"Window {extraWindowNumber}" : "Next Window")} to {(KACInstalled && useKAC ? "Kerbal Alarm Clock" : "stock Alarm Clock")}"), GUILayout.MinWidth(80));
-
-                bool toggleWarp = GUILayout.Button(new GUIContent(inWarp() || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
-                GUILayout.EndHorizontal();
-
-                if (specialWarpActive)
-                {
-                    BeginCenter(false);
-                    GUILayout.Label(new GUIContent("Special Warp", "See the settings for an in-depth explanation, this CANNOT be halted once started"));
-                    EndCenter(false);
-                }
-
-                // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of the above label for some reason (always with BeginCenter or EndCenter)
-                // its harmless as far as I can tell, but i couldnt figure out a way to actually catch it
-
-                if (StateChanged("specialWarpActive", specialWarpActive))
-                {
-                    ResetWindow(ref mainRect);
-                }
-
-                bool MapViewEnabled() => MapView.MapIsEnabled && !HighLogic.LoadedSceneIsEditor && (HighLogic.LoadedSceneIsFlight || HighLogic.LoadedScene == GameScenes.TRACKSTATION);
-
-                GUILayout.BeginHorizontal();
-
-                bool targetPressed;
-                bool focusPressed;
-                if (MapViewEnabled() && !targetManual) // if in map view, map view carries over to editor sometimes so just double-check
-                {
-                    GUI.enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && !targetManual; // targeting button will look "disabled" when the game isnt in focus or paused, but its not actually disabled. not sure how i can fix this, its just visual tho
-                    targetPressed = GUILayout.Button(new GUIContent(targetSet ? "Unset" : "Target", $"{$"Target {targetName}{(InputLockManager.IsUnlocked(ControlTypes.TARGETING) ? "" : "\nTarget Switching is Locked")}"}"), GUILayout.MinWidth(70));
-                    GUI.enabled = true;
-                    focusPressed = GUILayout.Button(new GUIContent("Focus", $"Focus {targetName}"), GUILayout.MinWidth(70));
-                }
-                else
-                {
-                    GUI.enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && !targetManual; // targeting button will look "disabled" when the game isnt in focus or paused, but its not actually disabled. not sure how i can fix this, its just visual tho
-                    targetPressed = GUILayout.Button(new GUIContent(targetManual ? "[Manual Target]" : (targetSet ? "Unset Target" : TextOverspill($"Target {targetName}", 140, GUI.skin.button)), $"{(targetManual ? "Manual Target Mode:\nTargeting Disabled" : $"Target {targetName}{(InputLockManager.IsUnlocked(ControlTypes.TARGETING) ? "" : "\nTarget Switching is Locked")}")}"), GUILayout.MinWidth(140));
-                    GUI.enabled = true;
-                    focusPressed = false; // not in map view, so cant focus
-                }
-                ShowSettings();
-                GUILayout.EndHorizontal();
-
-                if (MapViewEnabled())
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Show Parking Orbit", $"Show Parking Orbit for the Next Launch Window in Map View"));
+                    GUILayout.Label("Target an orbiting Vessel instead of an orbiting Moon");
                     GUILayout.FlexibleSpace();
                     BeginCenter();
-                    displayParking = GUILayout.Toggle(displayParking, "");
+                    targetVessel = GUILayout.Toggle(targetVessel, "");
                     EndCenter();
                     GUILayout.EndHorizontal();
 
+                    if (StateChanged("targetVessel", targetVessel))
+                    {
+                        ResetWindow(WindowState.Main);
+                        //ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
+                        target = null;
+                        targetName = "";
+                    }
+                }
+
+                if (errorStateTargets == 0)
+                {
+                    DrawLine();
+
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Show Transfer Orbit", $"Show Transfer Orbit for the Next Launch Window in Map View{(double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? "\nError: Trajectory is invalid" : "")}"));
+                    GUILayout.Label("Display raw seconds instead of time formatted into days, hours, minutes, and seconds");
                     GUILayout.FlexibleSpace();
                     BeginCenter();
-                    displayTransfer = GUILayout.Toggle(displayTransfer, "");
+                    displaySeconds = GUILayout.Toggle(displaySeconds, "");
                     EndCenter();
                     GUILayout.EndHorizontal();
 
-                    if (targetManual)
+                    DrawLine();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than {targetName} inclination ({FormatDecimals(inclination)}\u00B0)"));
+                    GUILayout.FlexibleSpace();
+                    BeginCenter();
+                    GUI.enabled = isLowLatitude;
+                    useAltBehavior = GUILayout.Toggle(useAltBehavior, "");
+                    GUI.enabled = true;
+                    EndCenter();
+                    GUILayout.EndHorizontal();
+
+                    if (StateChanged("useAltBehavior", useAltBehavior))
                     {
+                        ClearAllCaches(); // remove local mins so that we can replace them with global mins
+                        // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
+                    }
+
+                    DrawLine();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent("Use surface vessel position for latitude/longitude instead of launch site position", $"Ignored if not in a {(requireSurfaceVessel ? "surface " : "")}vessel"));
+                    GUILayout.FlexibleSpace();
+                    BeginCenter();
+                    GUI.enabled = inVessel;
+                    useVesselPosition = GUILayout.Toggle(useVesselPosition, "");
+                    GUI.enabled = true;
+                    EndCenter();
+                    GUILayout.EndHorizontal();
+
+                    if (KACInstalled)
+                    {
+                        DrawLine();
+
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Show Manual Orbit", "Show Manual Target Orbit in Map View"));
+                        GUILayout.Label("Use Kerbal Alarm Clock instead of the stock Alarm Clock");
                         GUILayout.FlexibleSpace();
                         BeginCenter();
-                        displayManual = GUILayout.Toggle(displayManual, "");
+                        useKAC = GUILayout.Toggle(useKAC, "");
                         EndCenter();
                         GUILayout.EndHorizontal();
                     }
 
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Show Phasing Angle", "Show Phasing Angle for the Next Launch Window in Map View"));
-                    GUILayout.FlexibleSpace();
-                    BeginCenter();
-                    GUI.enabled = displayParking;
-                    displayPhasing = GUILayout.Toggle(displayPhasing, new GUIContent("", displayParking ? "" : "The Parking Orbit needs to be enabled for this to be shown"));
-                    GUI.enabled = true;
-                    EndCenter();
-                    GUILayout.EndHorizontal();
-                }
-
-                if (StateChanged("RendererButtons", MapViewEnabled()))
-                {
-                    ResetWindow(ref mainRect);
-                    ClearAllOrbitDisplays();
-                    ClearAngleRenderer();
-                }
-
-                if (double.IsNaN(targetLaunchInclination)) // need to update if NaN and showSettings isnt open to update it (in case of a latitude change)
-                {
-                    ResetLaunchInclination();
-
-                    if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
-                }
-
-                if (displayParking && MapViewEnabled() && !needReset)
-                {
-                    Orbit parkingOrbit = new Orbit
+                    if (PrincipiaInstalled)
                     {
-                        inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
-                        eccentricity = epsilon, // just to make periapsis visible
-                        semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
-                        LAN = launchLAN1,
-                        argumentOfPeriapsis = launchAoP1,
-                        meanAnomalyAtEpoch = 0d,
-                        epoch = currentUT,
-                        referenceBody = mainBody,
-                    };
-
-                    //Log($"launchLAN1: {launchLAN1}, launchAoP1: {launchAoP1}");
-
-                    if (_parkingOrbitRenderer == null)
-                    {
-                        _parkingOrbitRenderer?.Cleanup(); // just in case
-
-                        _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, Color.red); // TODO, allow this color to be changed in ingame settings
-                    }
-
-                    if (displayPhasing && (_phasingAngleRenderer == null || !_phasingAngleRenderer.IsDrawing))
-                    {
-                        // we need to do both of these to access the orbit.pos and orbit.vel in Draw (we're not running them every frame, so its fine)
-                        parkingOrbit.Init();
-                        parkingOrbit.UpdateFromUT(currentUT);
-
-                        ClearAngleRenderer(); // just in case
-
-                        if (_phasingAngleRenderer == null)
-                        {
-                            _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
-                        }
-
-                        double AoPmodified = (targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP1, false) : 180d - launchAoP1;
-                        _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle1);
-
-                        //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
-                    }
-                }
-                else if (!displayParking && _parkingOrbitRenderer != null)
-                {
-                    ClearOrbitDisplay(ref _parkingOrbitRenderer);
-                }
-
-                if ((!displayParking || !displayPhasing) && _phasingAngleRenderer != null && !_phasingAngleRenderer.IsHiding)
-                {
-                    ClearAngleRenderer();
-                }
-
-                //Log($"trajectoryEccentricity: {trajectoryEccentricity}, errorStateDV: {errorStateDV}");
-
-                if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needReset)
-                {
-                    _transferOrbitRenderer?.Cleanup(); // just in case
-
-                    double AoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP1 + phaseAngle1 + 180d, false) : Util.ClampAngle(launchAoP1 + phaseAngle1, false);
-                    Orbit transferOrbit = new Orbit
-                    {
-                        inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
-                        eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
-                        semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
-                        LAN = launchLAN1,
-                        argumentOfPeriapsis = AoPmodified,
-                        meanAnomalyAtEpoch = 0d,
-                        epoch = currentUT,
-                        referenceBody = mainBody,
-                    };
-
-                    //Log($"transferOrbit.eccentricity: {transferOrbit.eccentricity}");
-
-                    _transferOrbitRenderer = OrbitRendererHack.Setup(transferOrbit, Color.green); // TODO, allow this color to be changed in ingame settings
-                }
-                else if (!displayTransfer && _transferOrbitRenderer != null)
-                {
-                    ClearOrbitDisplay(ref _transferOrbitRenderer);
-                }
-
-                if (displayManual && _manualOrbitRenderer == null && MapViewEnabled() && targetManual && !needReset)
-                {
-                    _manualOrbitRenderer?.Cleanup(); // just in case
-
-                    _manualOrbitRenderer = OrbitRendererHack.Setup(targetOrbit, Color.blue); // TODO, allow this color to be changed in ingame settings
-                }
-                else if ((!displayManual || !targetManual) && _manualOrbitRenderer != null)
-                {
-                    ClearOrbitDisplay(ref _manualOrbitRenderer);
-                }
-
-                if (addAlarm)
-                {
-                    string title = ""; // might need to check for overspill in title?
-                    string description = "";
-                    double time = double.NaN;
-
-                    void DescribeD(string identifier, string unit, double value) => description += !double.IsNaN(value) ? $"{identifier}: {FormatDecimals(value)}{unit}\n" : "";
-                    void DescribeI(string identifier, string unit, int value) => description += $"{identifier}: {value}{unit}\n";
-                    void DescribeB(string identifier, bool value) => description += $"{identifier}: {value}\n";
-
-                    if (!double.IsNaN(nextLaunchUT) && (!useAltAlarm || (useAltAlarm && expandExtraWindow && extraWindowNumber == 1)))
-                    {
-                        title = $"Next {targetName} Launch Window";
-                        time = nextLaunchUT - warpMargin;
-                        DescribeI("Window Number", "", 1);
-                    }
-                    else if (useAltAlarm && expandExtraWindow && !double.IsNaN(extraLaunchUT))
-                    {
-                        title = $"{targetName} Launch Window {extraWindowNumber}";
-                        time = extraLaunchUT - warpMargin;
-                        DescribeI("Window Number", "", extraWindowNumber);
-                    }
-
-                    DescribeD("UT", "s", time);
-                    DescribeD("Warp Margin", "s", warpMargin);
-                    DescribeD("Latitude", "\u00B0", latitude);
-                    DescribeD("Longitude", "\u00B0", longitude);
-                    DescribeD("Flight Time", $" {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days", flightTime);
-                    DescribeD("Required delta-V", "m/s", dV);
-                    DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
-                    DescribeD("Launch Inclination", "\u00B0", launchOrbit1.azimuth > 90d && launchOrbit1.azimuth < 270d ? -launchOrbit1.inclination : launchOrbit1.inclination);
-                    DescribeD("Launch Azimuth", "\u00B0", launchOrbit1.azimuth);
-                    DescribeD("Phasing Time", "s", phaseTime1);
-                    DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
-                    DescribeD("Parking Orbit LAN", "\u00B0", launchLAN1);
-                    DescribeD("Parking Orbit AoP", "\u00B0", launchAoP1);
-                    DescribeB("Special Warp Active", specialWarpActive);
-
-                    description = description.TrimEnd('\n');
-
-                    if (title != "" && time != double.NaN)
-                    {
-                        // alarm type should be raw because this isn't really a maneuver or transfer alarm, its a launch time alarm
-                        if (KACInstalled && useKAC)
-                        {
-                            string alarmId = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, title, time);
-                            if (!string.IsNullOrEmpty(alarmId))
-                            {
-                                // if the alarm was made, get the object
-                                KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.First(z => z.ID == alarmId);
-
-                                alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
-                                //alarm.AlarmMargin = warpMargin; // this doesnt seem to work, so we need to put warpMargin into the time
-                                alarm.Notes = description;
-                            }
-                        }
-                        else
-                        {
-                            AlarmTypeRaw alarm = new AlarmTypeRaw
-                            {
-                                title = title,
-                                description = description,
-                                ut = time,
-                                //eventOffset = warpMargin, // this doesnt seem to work, so we need to put warpMargin into the time
-                            };
-                            AlarmClockScenario.AddAlarm(alarm);
-                            alarm.actions.warp = AlarmActions.WarpEnum.KillWarp;
-                        }
-                    }
-                }
-
-                if (toggleWarp)
-                {
-                    if (inWarp())
-                    {
-                        TimeWarp.fetch.CancelAutoWarp();
-                        TimeWarp.SetRate(0, false);
-                    }
-                    else
-                    {
-                        if (warpState == 1)
-                        {
-                            Log("Special warp 1 in progress");
-                            TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
-                            TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
-                            warpState = 2;
-                            specialWarpWait = true;
-                        }
-                        else
-                        {
-                            TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin);
-                        }
-                    }
-                }
-
-                if (specialWarpWait && !inWarp())
-                {
-                    waitingTime = currentUT;
-                    //Log($"waitingTime: {waitingTime}");
-                    windowCache.Clear(); // make sure we have an up to date time
-                    specialWarpWait = false;
-                }
-
-                if (warpState == 2 && !inWarp() && currentUT > waitingTime + 0.5d)
-                {
-                    Log("Special warp 2 in progress");
-                    TimeWarp.fetch.CancelAutoWarp();
-                    TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
-                    TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + 3600d * dayScale)); // warp to within an hour
-                    warpState = 3;
-                    specialWarpWait = true;
-                }
-
-                if (warpState == 3 && !inWarp() && currentUT > waitingTime + 0.5d)
-                {
-                    Log("Special warp 3 in progress");
-                    TimeWarp.fetch.CancelAutoWarp();
-                    TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin); // now warp to final
-                    warpState = 0;
-                    specialWarpWait = false;
-                }
-
-                if (targetPressed)
-                {
-                    if (!targetSet)
-                    {
-                        targetSet = true;
-                        if (target is Vessel vesselTarget)
-                            FlightGlobals.fetch.SetVesselTarget(vesselTarget);
-                        else if (target is CelestialBody bodyTarget)
-                            FlightGlobals.fetch.SetVesselTarget(bodyTarget);
-                        else LogError("Unknown target type passed to targetSet: " + target.GetType().Name);
-                    }
-                    else
-                    {
-                        targetSet = false;
-                        FlightGlobals.fetch.SetVesselTarget(null);
-                    }
-                }
-
-                if (focusPressed)
-                {
-                    if (target is Vessel vesselTarget)
-                        PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
-                    else if (target is CelestialBody bodyTarget)
-                        PlanetariumCamera.fetch.SetTarget(bodyTarget.MapObject);
-                    else LogError("Unknown target type passed to focusSet: " + target.GetType().Name);
-
-                    // lol, who put Vessel as mapObject and CelestialBody as MapObject?
-                }
-            }
-
-            Tooltip.Instance?.RecordTooltip(id);
-            GUI.DragWindow();
-        }
-
-        #endregion
-        #region MakeSettingsWindow
-
-        private void MakeSettingsWindow(int id)
-        {
-            windowWidth = 500;
-
-            GUILayout.Space(5);
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - 50)); // this sets the width of the window
-            // this tooltip is really only useful when paused, it flashes too quickly to be seen otherwise
-            GUILayout.BeginVertical();
-            GUILayout.Space(5);
-            if (GUILayout.Button(new GUIContent("Reset","Reset all windows and caches"), GUILayout.Width(50)))
-            {
-                ResetWindow(ref mainRect);
-                ResetWindow(ref settingsRect);
-                if (showManualOrbit && targetManual) ResetWindow(ref manualOrbitRect);
-
-                ClearAllCaches();
-            }
-            GUILayout.EndVertical();
-            GUILayout.EndHorizontal();
-
-            DrawLine();
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("Use Unity Skin");
-            GUILayout.FlexibleSpace();
-            BeginCenter();
-            useAltSkin = GUILayout.Toggle(useAltSkin, "");
-            EndCenter();
-            GUILayout.EndHorizontal();
-
-            if (StateChanged("useAltSkin", useAltSkin))
-            {
-                ResetWindow(ref mainRect);
-                ResetWindow(ref settingsRect);
-            }
-
-            if (errorStateTargets != 4)
-            {
-                DrawLine();
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Select an orbit to target manually");
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                targetManual = GUILayout.Toggle(targetManual, "");
-                EndCenter();
-                GUILayout.EndHorizontal();
-            }
-            
-            if ((errorStateTargets == 0 || errorStateTargets == 2 || errorStateTargets == 3) && !targetManual)
-            {
-                DrawLine();
-
-                if (errorStateTargets == 2 || errorStateTargets == 3) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Target an orbiting Vessel instead of an orbiting Moon");
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                targetVessel = GUILayout.Toggle(targetVessel, "");
-                EndCenter();
-                GUILayout.EndHorizontal();
-
-                if (StateChanged("targetVessel", targetVessel))
-                {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
-                    target = null;
-                    targetName = "";
-                }
-            }
-
-            if (errorStateTargets == 0)
-            {
-                DrawLine();
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Display raw seconds instead of time formatted into days, hours, minutes, and seconds");
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                displaySeconds = GUILayout.Toggle(displaySeconds, "");
-                EndCenter();
-                GUILayout.EndHorizontal();
-
-                DrawLine();
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than {targetName} inclination ({FormatDecimals(inclination)}\u00B0)"));
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                GUI.enabled = isLowLatitude;
-                useAltBehavior = GUILayout.Toggle(useAltBehavior, "");
-                GUI.enabled = true;
-                EndCenter();
-                GUILayout.EndHorizontal();
-
-                if (StateChanged("useAltBehavior", useAltBehavior))
-                {
-                    //Log("windowCache Cleared due to useAltBehavior change");
-                    windowCache.Clear(); // remove local mins so that we can replace them with global mins
-                    // technically this only needs to be done when switching from false to true, but switching from true to false without clearing would result in some extra data in the cache, which might lead to problems if abused
-
-                    ClearAllOrbitDisplays();
-                    ClearAngleRenderer();
-                }
-
-                DrawLine();
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Use surface vessel position for latitude/longitude instead of launch site position", $"Ignored if not in a {(requireSurfaceVessel ? "surface " : "")}vessel"));
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                GUI.enabled = inVessel;
-                useVesselPosition = GUILayout.Toggle(useVesselPosition, "");
-                GUI.enabled = true;
-                EndCenter();
-                GUILayout.EndHorizontal();
-
-                if (KACInstalled)
-                {
-                    DrawLine();
-
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label("Use Kerbal Alarm Clock instead of the stock Alarm Clock");
-                    GUILayout.FlexibleSpace();
-                    BeginCenter();
-                    useKAC = GUILayout.Toggle(useKAC, "");
-                    EndCenter();
-                    GUILayout.EndHorizontal();
-                }
-
-                if (PrincipiaInstalled)
-                {
-                    DrawLine();
-
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("<b>Special Warp</b>: Change the \"Warp\" button to use 3 warps to avoid overshooting/undershooting the launch window due to perturbations of the target's orbit. It CANNOT be halted once started.", "Only visible when Principia is installed, and only activates when the next window is more than 1 sidereal day away"));
-                    GUILayout.FlexibleSpace();
-                    BeginCenter();
-                    specialWarpSelected = GUILayout.Toggle(specialWarpSelected, "");
-                    EndCenter();
-                    GUILayout.EndHorizontal();
-                }
-
-                // TODO, activate special warp if altitude of target changes significantly?
-
-                DrawLine();
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Show Extra Window");
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                expandExtraWindow = GUILayout.Toggle(expandExtraWindow, "");
-                EndCenter();
-                GUILayout.EndHorizontal();
-
-                if (StateChanged("expandExtraWindow", expandExtraWindow))
-                {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
-                }
-
-                if (expandExtraWindow)
-                {
-                    DrawLine();
-
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label("Change the \"Add Alarm\" button to set an alarm based on the extra launch window instead of the next launch window");
-                    GUILayout.FlexibleSpace();
-                    BeginCenter();
-                    useAltAlarm = GUILayout.Toggle(useAltAlarm, "");
-                    EndCenter();
-                    GUILayout.EndHorizontal();
-
-                    DrawLine();
-
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label($"Optimize for a certain {(useAngle ? "phasing angle" : "phasing time")} in orbit instead of choosing a window number manually");
-                    GUILayout.FlexibleSpace();
-                    BeginCenter();
-                    useWindowOptimizer = GUILayout.Toggle(useWindowOptimizer, "");
-                    EndCenter();
-                    GUILayout.EndHorizontal();
-
-                    if (StateChanged("useWindowOptimizer", useWindowOptimizer))
-                    {
-                        ResetWindow(ref settingsRect);
-                    }
-                }
-
-                if (expandExtraWindow)
-                {
-                    DrawLine();
-
-                    if (!useWindowOptimizer)
-                    {
-                        GUILayout.Label("Change Extra Window Number");
-                        MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 1, maxWindows);
-                        ranSearch = false; // this is to remove the label
-                    } 
-                    else
-                    {
-                        // we could set extra window number to 2, but theres really no reason to not just keep the initial value until they hit search
-                        
-                        double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
-                        double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / mainBody.gravParameter);
-
-                        if (double.IsNaN(targetPhasingTime)) targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod; // initialize value
-
-                        if (useAngle)
-                        {
-                            GUILayout.BeginHorizontal();
-                            GUILayout.Label("Target Phasing Angle (degrees)");
-                            GUILayout.BeginVertical();
-                            GUILayout.Space(5);
-                            if (GUILayout.Button(new GUIContent("Time", "Switch to phasing time"), GUILayout.Width(60))) useAngle = !useAngle;
-                            GUILayout.EndVertical();
-                            GUILayout.FlexibleSpace();
-                            GUILayout.EndHorizontal();
-
-                            MakeNumberEditField("targetPhasingAngle", ref targetPhasingAngle, 1d, 0.01, 360d, true); // min of 0.01 degrees to avoid division by zero
-
-                            targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod;
-
-                            GUILayout.BeginHorizontal();
-                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"));
-                            GUILayout.BeginVertical();
-                            GUILayout.Space(5);
-                            GUILayout.Box(new GUIContent(FormatTime(targetPhasingTime), $"{targetPhasingTime}s"), GUILayout.MaxWidth(100));
-                            GUILayout.EndVertical();
-                            GUILayout.FlexibleSpace();
-                            GUILayout.EndHorizontal();
-                        }
-                        else
-                        {
-                            GUILayout.BeginHorizontal();
-                            GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"));
-                            GUILayout.BeginVertical();
-                            GUILayout.Space(5);
-                            if (GUILayout.Button(new GUIContent("Angle", "Switch to phasing angle"), GUILayout.Width(60))) useAngle = !useAngle;
-                            GUILayout.EndVertical();
-                            GUILayout.FlexibleSpace();
-                            GUILayout.EndHorizontal();
-
-                            GUILayout.BeginHorizontal();
-                            MakeNumberEditField("targetPhasingTime", ref targetPhasingTime, 60d, 1d, orbitPeriod); // min of 1 second to avoid division by zero
-                            GUILayout.Box(new GUIContent(FormatTime(targetPhasingTime), $"{targetPhasingTime}s"), GUILayout.Width(150));
-                            GUILayout.FlexibleSpace();
-                            GUILayout.EndHorizontal();
-
-                            targetPhasingAngle = targetPhasingTime / orbitPeriod * 360d;
-
-                            GUILayout.BeginHorizontal();
-                            GUILayout.Label("Target Phasing Angle (degrees)");
-                            GUILayout.BeginVertical();
-                            GUILayout.Space(5);
-                            GUILayout.Box(new GUIContent($"{FormatDecimals(targetPhasingAngle)}\u00B0", $"{targetPhasingAngle}\u00B0"), GUILayout.MaxWidth(100));
-                            GUILayout.EndVertical();
-                            GUILayout.FlexibleSpace();
-                            GUILayout.EndHorizontal();
-                        }
+                        DrawLine();
 
                         GUILayout.BeginHorizontal();
-                        if (GUILayout.Button("Search for Closest Window", GUILayout.Width(200)))
-                        {
-                            ranSearch = true;
-                            int bestWindow = -1;
-                            double bestError = double.MaxValue;
-                            for (int candidateWindow = 0; candidateWindow <= maxWindows - 1; candidateWindow++)
-                            {
-                                double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, candidateWindow) - currentUT;
-
-                                if (double.IsNaN(candidateLaunchTime))
-                                {
-                                    Log("A Launchtime was NaN, skipping this window"); // GetCachedLaunchTime should remove NaN launchtimes, so this shouldn't happen
-                                    continue;
-                                }
-
-                                if (useAngle)
-                                {
-                                    (_, double candidatePhaseAngle) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
-                                    double errorRatio = Math.Abs(candidatePhaseAngle - targetPhasingAngle) / targetPhasingAngle;
-                                    if (errorRatio < bestError)
-                                    {
-                                        bestError = errorRatio;
-                                        bestWindow = candidateWindow;
-                                        bestAngle = candidatePhaseAngle;
-                                    }
-                                }
-                                else
-                                {
-                                    (double candidatePhaseTime, _) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
-                                    double errorRatio = Math.Abs(candidatePhaseTime - targetPhasingTime) / targetPhasingTime;
-                                    if (errorRatio < bestError)
-                                    {
-                                        bestError = errorRatio;
-                                        bestWindow = candidateWindow;
-                                        bestTime = candidatePhaseTime;
-                                    }
-                                }
-                            }
-                            if (bestWindow >= 0) extraWindowNumber = bestWindow + 1;
-                        }
-                        if (ranSearch)
-                        {
-                            GUILayout.Label(new GUIContent($"Found window {extraWindowNumber} with {(useAngle ? $"angle {FormatDecimals(bestAngle)}\u00B0" : $"time {FormatTime(bestTime)}")}!", $"Window {extraWindowNumber} is the closest window to your target phasing {(useAngle ? $"angle of {targetPhasingAngle}\u00B0" : $"time of {targetPhasingTime}s")} within the max of {maxWindows} windows"));
-                        }
+                        GUILayout.Label(new GUIContent("<b>Special Warp</b>: Change the \"Warp\" button to use 3 warps to avoid overshooting/undershooting the launch window due to perturbations of the target's orbit. It CANNOT be halted once started.", "Only visible when Principia is installed, and only activates when the next window is more than 1 sidereal day away"));
+                        GUILayout.FlexibleSpace();
+                        BeginCenter();
+                        specialWarpSelected = GUILayout.Toggle(specialWarpSelected, "");
+                        EndCenter();
                         GUILayout.EndHorizontal();
                     }
-                } else ranSearch = false; // this is to remove the label
 
-                DrawLine();
+                    // TODO, activate special warp if altitude of target changes significantly?
 
-                GUILayout.Label(new GUIContent("Change Decimal Places of Precision", "Editable text fields will not be effected"));
-                MakeNumberEditField("decimals", ref decimals, 1, 0, int.MaxValue);
-
-                if (StateChanged("decimals", decimals))
-                {
-                    ResetWindow(ref mainRect);
-                    ResetWindow(ref settingsRect);
-                }
-
-                DrawLine();
-
-                // azimuth to inclination formulas derived from https://www.astronomicalreturns.com/p/section-46-interesting-orbital.html
-                // sin(azimuth) = cos(inclination) / cos(latitude)
-                // cos(inclination) = cos(latitude) * sin(azimuth)
-
-                string azimuthTooltip = "90° is the default, which is directly east. Range is 0° to 360°, where 0° and 180° are North and South respectively.";
-                string inclinationTooltip = $"Your latitude of {FormatDecimals(latitude)}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively.";
-
-                if (showAzimuth)
-                {
-                    ResetLaunchInclination(); // continuously update value
+                    DrawLine();
 
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Change Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
-                    ResetDefault(ref targetLaunchAzimuth, 90d);
-                    GUILayout.EndHorizontal();
-                    MakeNumberEditField("targetLaunchAzimuth", ref targetLaunchAzimuth, 1d, 0d, 360d, true);
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Target Launch Inclination", inclinationTooltip));
-                    GUILayout.BeginVertical();
-                    GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(targetLaunchInclination)}\u00B0", $"{targetLaunchInclination}\u00B0"), GUILayout.MaxWidth(100));
-                    GUILayout.EndVertical();
+                    GUILayout.Label("Show Extra Window");
                     GUILayout.FlexibleSpace();
-                    GUILayout.EndHorizontal();
-                }
-                else
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Change Target Launch Inclination", inclinationTooltip + " Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
-                    ResetDefault(ref targetLaunchInclination, latitude);
+                    BeginCenter();
+                    expandExtraWindow = GUILayout.Toggle(expandExtraWindow, "");
+                    EndCenter();
                     GUILayout.EndHorizontal();
 
-                    GUILayout.BeginHorizontal();
-                    MakeNumberEditField("targetLaunchInclination", ref targetLaunchInclination, 1d, -180d, 180d, true);
-
-                    double cosInc = Math.Cos(targetLaunchInclination * degToRad);
-                    double cosLat = Math.Cos(latitude * degToRad);
-                    double sinAz = cosInc / cosLat;
-
-                    if (Math.Abs(sinAz) >= 1d - 1e-9)
+                    if (StateChanged("expandExtraWindow", expandExtraWindow))
                     {
-                        GUILayout.FlexibleSpace();
-                        GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {FormatDecimals(targetLaunchInclination)}\u00B0 is unreachable from your latitude of {FormatDecimals(latitude)}°, so it has been automatically converted to the nearest reachable inclination."));
-                        GUILayout.FlexibleSpace();
+                        ResetWindow(WindowState.Main);
+                        //ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
                     }
-                    GUILayout.EndHorizontal();
 
-                    sinAz = Util.Clamp(sinAz, -1d, 1d);
-                    double azInter = Math.Abs(Math.Asin(sinAz) * radToDeg); // intermediate value for azimuth
+                    if (expandExtraWindow)
+                    {
+                        DrawLine();
 
-                    targetLaunchAzimuth = targetLaunchInclination >= 0
-                        ? (targetLaunchInclination <= 90d ? azInter : 360d - azInter) // NE (prograde) or NW (retrograde)
-                        : (Math.Abs(targetLaunchInclination) <= 90d ? 180d - azInter : 180d + azInter); // SE (prograde) or SW (retrograde)
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label("Change the \"Add Alarm\" button to set an alarm based on the extra launch window instead of the next launch window");
+                        GUILayout.FlexibleSpace();
+                        BeginCenter();
+                        useAltAlarm = GUILayout.Toggle(useAltAlarm, "");
+                        EndCenter();
+                        GUILayout.EndHorizontal();
 
-                    targetLaunchAzimuth = Util.ClampAngle(targetLaunchAzimuth, false);
+                        DrawLine();
 
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Target Launch Azimuth", azimuthTooltip));
-                    GUILayout.BeginVertical();
-                    GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(targetLaunchAzimuth)}\u00B0", $"{targetLaunchAzimuth}\u00B0"), GUILayout.MaxWidth(100));
-                    GUILayout.EndVertical();
-                    GUILayout.FlexibleSpace();
-                    GUILayout.EndHorizontal();
-                }
-                // its not possible to have both textfields on screen at once, bugs out
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label($"Optimize for a certain {(useAngle ? "phasing angle" : "phasing time")} in orbit instead of choosing a window number manually");
+                        GUILayout.FlexibleSpace();
+                        BeginCenter();
+                        useWindowOptimizer = GUILayout.Toggle(useWindowOptimizer, "");
+                        EndCenter();
+                        GUILayout.EndHorizontal();
 
-                if (StateChanged("targetLaunchAzimuth", targetLaunchAzimuth))
-                {
-                    ClearAllCaches(); // this doesn't always result in new minimums
-                    ClearAllOrbitDisplays();
+                        //if (StateChanged("useWindowOptimizer", useWindowOptimizer))
+                        //{
+                        //    ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
+                        //}
+                    }
+
+                    if (expandExtraWindow)
+                    {
+                        DrawLine();
+
+                        if (!useWindowOptimizer)
+                        {
+                            GUILayout.Label("Change Extra Window Number");
+                            MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 1, maxWindows);
+                            ranSearch = false; // this is to remove the label
+                        }
+                        else
+                        {
+                            // we could set extra window number to 2, but theres really no reason to not just keep the initial value until they hit search
+
+                            double orbitRadius = mainBody.Radius + parkingAltitude * 1000d;
+                            double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / mainBody.gravParameter);
+
+                            if (double.IsNaN(targetPhasingTime)) targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod; // initialize value
+
+                            if (useAngle)
+                            {
+                                GUILayout.BeginHorizontal();
+                                GUILayout.Label("Target Phasing Angle (degrees)");
+                                GUILayout.BeginVertical();
+                                GUILayout.Space(5);
+                                if (GUILayout.Button(new GUIContent("Time", "Switch to phasing time"), GUILayout.Width(60))) useAngle = !useAngle;
+                                GUILayout.EndVertical();
+                                GUILayout.FlexibleSpace();
+                                GUILayout.EndHorizontal();
+
+                                MakeNumberEditField("targetPhasingAngle", ref targetPhasingAngle, 1d, 0.01, 360d, true); // min of 0.01 degrees to avoid division by zero
+
+                                targetPhasingTime = targetPhasingAngle / 360d * orbitPeriod;
+
+                                GUILayout.BeginHorizontal();
+                                GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"));
+                                GUILayout.BeginVertical();
+                                GUILayout.Space(5);
+                                GUILayout.Box(new GUIContent(FormatTime(targetPhasingTime), $"{targetPhasingTime}s"), GUILayout.MaxWidth(100));
+                                GUILayout.EndVertical();
+                                GUILayout.FlexibleSpace();
+                                GUILayout.EndHorizontal();
+                            }
+                            else
+                            {
+                                GUILayout.BeginHorizontal();
+                                GUILayout.Label(new GUIContent("Target Phasing Time (seconds)", $"Max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"));
+                                GUILayout.BeginVertical();
+                                GUILayout.Space(5);
+                                if (GUILayout.Button(new GUIContent("Angle", "Switch to phasing angle"), GUILayout.Width(60))) useAngle = !useAngle;
+                                GUILayout.EndVertical();
+                                GUILayout.FlexibleSpace();
+                                GUILayout.EndHorizontal();
+
+                                GUILayout.BeginHorizontal();
+                                MakeNumberEditField("targetPhasingTime", ref targetPhasingTime, 60d, 1d, orbitPeriod); // min of 1 second to avoid division by zero
+                                GUILayout.Box(new GUIContent(FormatTime(targetPhasingTime), $"{targetPhasingTime}s"), GUILayout.Width(150));
+                                GUILayout.FlexibleSpace();
+                                GUILayout.EndHorizontal();
+
+                                targetPhasingAngle = targetPhasingTime / orbitPeriod * 360d;
+
+                                GUILayout.BeginHorizontal();
+                                GUILayout.Label("Target Phasing Angle (degrees)");
+                                GUILayout.BeginVertical();
+                                GUILayout.Space(5);
+                                GUILayout.Box(new GUIContent($"{FormatDecimals(targetPhasingAngle)}\u00B0", $"{targetPhasingAngle}\u00B0"), GUILayout.MaxWidth(100));
+                                GUILayout.EndVertical();
+                                GUILayout.FlexibleSpace();
+                                GUILayout.EndHorizontal();
+                            }
+
+                            GUILayout.BeginHorizontal();
+                            if (GUILayout.Button("Search for Closest Window", GUILayout.Width(200)))
+                            {
+                                ranSearch = true;
+                                int bestWindow = -1;
+                                double bestError = double.MaxValue;
+                                for (int candidateWindow = 0; candidateWindow <= maxWindows - 1; candidateWindow++)
+                                {
+                                    double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, inclination, useAltBehavior, candidateWindow) - currentUT;
+
+                                    if (double.IsNaN(candidateLaunchTime))
+                                    {
+                                        Log("A Launchtime was NaN, skipping this window"); // GetCachedLaunchTime should remove NaN launchtimes, so this shouldn't happen
+                                        continue;
+                                    }
+
+                                    if (useAngle)
+                                    {
+                                        (_, double candidatePhaseAngle) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
+                                        double errorRatio = Math.Abs(candidatePhaseAngle - targetPhasingAngle) / targetPhasingAngle;
+                                        if (errorRatio < bestError)
+                                        {
+                                            bestError = errorRatio;
+                                            bestWindow = candidateWindow;
+                                            bestAngle = candidatePhaseAngle;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        (double candidatePhaseTime, _) = GetCachedPhasingTime(launchPos, candidateLaunchTime, candidateWindow);
+                                        double errorRatio = Math.Abs(candidatePhaseTime - targetPhasingTime) / targetPhasingTime;
+                                        if (errorRatio < bestError)
+                                        {
+                                            bestError = errorRatio;
+                                            bestWindow = candidateWindow;
+                                            bestTime = candidatePhaseTime;
+                                        }
+                                    }
+                                }
+                                if (bestWindow >= 0) extraWindowNumber = bestWindow + 1;
+                            }
+                            if (ranSearch)
+                            {
+                                GUILayout.Label(new GUIContent($"Found window {extraWindowNumber} with {(useAngle ? $"angle {FormatDecimals(bestAngle)}\u00B0" : $"time {FormatTime(bestTime)}")}!", $"Window {extraWindowNumber} is the closest window to your target phasing {(useAngle ? $"angle of {targetPhasingAngle}\u00B0" : $"time of {targetPhasingTime}s")} within the max of {maxWindows} windows"));
+                            }
+                            GUILayout.EndHorizontal();
+                        }
+                    }
+                    else ranSearch = false; // this is to remove the label
+
+                    DrawLine();
+
+                    GUILayout.Label(new GUIContent("Change Decimal Places of Precision", "Editable text fields will not be effected"));
+                    MakeNumberEditField("decimals", ref decimals, 1, 0, int.MaxValue);
+
+                    if (StateChanged("decimals", decimals))
+                    {
+                        ResetWindow(WindowState.Main);
+                        //ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
+                    }
+
+                    DrawLine();
+
+                    // azimuth to inclination formulas derived from https://www.astronomicalreturns.com/p/section-46-interesting-orbital.html
+                    // sin(azimuth) = cos(inclination) / cos(latitude)
+                    // cos(inclination) = cos(latitude) * sin(azimuth)
+
+                    string azimuthTooltip = "90° is the default, which is directly east. Range is 0° to 360°, where 0° and 180° are North and South respectively.";
+                    string inclinationTooltip = $"Your latitude of {FormatDecimals(latitude)}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively.";
+
+                    if (showAzimuth)
+                    {
+                        ResetLaunchInclination(); // continuously update value
+
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Change Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
+                        ResetDefault(ref targetLaunchAzimuth, 90d);
+                        GUILayout.EndHorizontal();
+                        MakeNumberEditField("targetLaunchAzimuth", ref targetLaunchAzimuth, 1d, 0d, 360d, true);
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Target Launch Inclination", inclinationTooltip));
+                        GUILayout.BeginVertical();
+                        GUILayout.Space(5);
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(targetLaunchInclination)}\u00B0", $"{targetLaunchInclination}\u00B0"), GUILayout.MaxWidth(100));
+                        GUILayout.EndVertical();
+                        GUILayout.FlexibleSpace();
+                        GUILayout.EndHorizontal();
+                    }
+                    else
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Change Target Launch Inclination", inclinationTooltip + " Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
+                        ResetDefault(ref targetLaunchInclination, latitude);
+                        GUILayout.EndHorizontal();
+
+                        GUILayout.BeginHorizontal();
+                        MakeNumberEditField("targetLaunchInclination", ref targetLaunchInclination, 1d, -180d, 180d, true);
+
+                        double cosInc = Math.Cos(targetLaunchInclination * degToRad);
+                        double cosLat = Math.Cos(latitude * degToRad);
+                        double sinAz = cosInc / cosLat;
+
+                        if (Math.Abs(sinAz) >= 1d - 1e-9)
+                        {
+                            GUILayout.FlexibleSpace();
+                            GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {FormatDecimals(targetLaunchInclination)}\u00B0 is unreachable from your latitude of {FormatDecimals(latitude)}°, so it has been automatically converted to the nearest reachable inclination."));
+                            GUILayout.FlexibleSpace();
+                        }
+                        GUILayout.EndHorizontal();
+
+                        sinAz = Util.Clamp(sinAz, -1d, 1d);
+                        double azInter = Math.Abs(Math.Asin(sinAz) * radToDeg); // intermediate value for azimuth
+
+                        targetLaunchAzimuth = targetLaunchInclination >= 0
+                            ? (targetLaunchInclination <= 90d ? azInter : 360d - azInter) // NE (prograde) or NW (retrograde)
+                            : (Math.Abs(targetLaunchInclination) <= 90d ? 180d - azInter : 180d + azInter); // SE (prograde) or SW (retrograde)
+
+                        targetLaunchAzimuth = Util.ClampAngle(targetLaunchAzimuth, false);
+
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Target Launch Azimuth", azimuthTooltip));
+                        GUILayout.BeginVertical();
+                        GUILayout.Space(5);
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(targetLaunchAzimuth)}\u00B0", $"{targetLaunchAzimuth}\u00B0"), GUILayout.MaxWidth(100));
+                        GUILayout.EndVertical();
+                        GUILayout.FlexibleSpace();
+                        GUILayout.EndHorizontal();
+                    }
+                    // its not possible to have both textfields on screen at once, bugs out
+
+                    if (StateChanged("targetLaunchAzimuth", targetLaunchAzimuth))
+                    {
+                        ClearAllCaches(); // this doesn't always result in new minimums, intentional
+                    }
                 }
             }
-
-            Tooltip.Instance?.RecordTooltip(id);
-            GUI.DragWindow();
+            finally
+            {
+                GUILayout.EndScrollView(); // prevent GUIClips error by using finally
+                Tooltip.Instance?.RecordTooltip(id);
+                GUI.DragWindow();
+                ResetWindow(ref needSettingsReset, ref settingsRect);
+            }
         }
 
         #endregion
@@ -3058,565 +3173,563 @@ namespace LunarTransferPlanner
         private void MakeManualOrbitWindow(int id)
         {
             windowWidth = 500;
+            windowState = WindowState.ManualOrbit;
             const double epsilon = 1e-9;
 
-            double radius = mainBody.Radius;
-            double radiusScaled = radius / 1000d;
-            double atmosphereDepth = mainBody.atmosphere ? mainBody.atmosphereDepth : epsilon;
-            double atmosphereDepthScaled = atmosphereDepth / 1000d;
-            double SoI = mainBody.sphereOfInfluence;
-            double gravParameter = mainBody.gravParameter;
-            CelestialBody homeBody = FlightGlobals.GetHomeBody();
-
-            GUILayout.Space(5);
-            GUILayout.Label("Hover over select text for tooltips", GUILayout.Width(windowWidth)); // this sets the width of the window
-
-            if (errorStateTargets != 4)
+            try
             {
-                DrawLine();
-                
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Use radians instead of degrees");
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                useRadians = GUILayout.Toggle(useRadians, "");
-                EndCenter();
-                GUILayout.EndHorizontal();
+                double radius = mainBody.Radius;
+                double radiusScaled = radius / 1000d;
+                double atmosphereDepth = mainBody.atmosphere ? mainBody.atmosphereDepth : epsilon;
+                double atmosphereDepthScaled = atmosphereDepth / 1000d;
+                double SoI = mainBody.sphereOfInfluence;
+                double gravParameter = mainBody.gravParameter;
+                CelestialBody homeBody = FlightGlobals.GetHomeBody();
 
-                if (StateChanged("useRadians", useRadians))
+                GUILayout.Space(5);
+                GUILayout.Label("Hover over select text for tooltips", GUILayout.Width(windowWidth)); // this sets the width of the window
+
+                if (errorStateTargets != 4)
                 {
-                    if (useRadians)
+                    DrawLine();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Use radians instead of degrees");
+                    GUILayout.FlexibleSpace();
+                    BeginCenter();
+                    useRadians = GUILayout.Toggle(useRadians, "");
+                    EndCenter();
+                    GUILayout.EndHorizontal();
+
+                    if (StateChanged("useRadians", useRadians))
                     {
-                        inclination_Adj *= degToRad;
-                        LAN_Adj *= degToRad;
-                        AoP_Adj *= degToRad;
-                        MNA_Adj *= degToRad;
-                    }
-                    else
-                    {
-                        inclination_Adj *= radToDeg;
-                        LAN_Adj *= radToDeg;
-                        AoP_Adj *= radToDeg;
-                        MNA_Adj *= radToDeg;
-                    }
-                }
-
-                DrawLine();
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent($"Define heights from the center of {mainBody.bodyName} instead of sea level", "Only used for specifying Apoapsis and Periapsis"));
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                useCenterDistance = GUILayout.Toggle(useCenterDistance, "");
-                EndCenter();
-                GUILayout.EndHorizontal();
-
-                // no one defines SMA from sea level, so we don't need to include it in here
-
-                if (StateChanged("useCenterDistance", useCenterDistance))
-                {
-                    if (useCenterDistance)
-                    {
-                        ApA_Adj += radius / 1000d;
-                        PeA_Adj += radius / 1000d;
-                    }
-                    else
-                    {
-                        ApA_Adj -= radius / 1000d;
-                        PeA_Adj -= radius / 1000d;
-                    }
-                }
-
-                DrawLine();
-
-                GUILayout.BeginHorizontal();
-                GUILayout.Label("Switch between manual target modes");
-                GUILayout.FlexibleSpace();
-                BeginCenter();
-                if (GUILayout.Button(new GUIContent(modeLabel, modeTooltip), GUILayout.Width(120))) manualTargetMode = (manualTargetMode + 1) % 9;
-                EndCenter();
-                GUILayout.EndHorizontal();
-
-                DrawLine();
-
-                GUILayout.FlexibleSpace();
-
-                double max = useRadians ? tau : 360d;
-                double step = useRadians ? Math.PI / 12d : 1d; // jump by 15 degree increments if using radians
-                double radiusAdjusted = useCenterDistance ? 0d : radius;
-                string textAdjusted = useCenterDistance ? $"the center of {mainBody.bodyName}" : "sea level";
-
-                // TODO, fix the various min/max bugs edit fields in the modes below
-
-                void EditApoapsis()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Apoapsis (km)", $"In kilometers from {textAdjusted}"));
-                    GUILayout.FlexibleSpace();
-                    if (manualTargetMode == 0) MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, parkingAltitude), SoI);
-                    else MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, (radiusScaled + atmosphereDepthScaled) * (1d + eccentricity) / (1d - eccentricity) - radiusScaled, parkingAltitude), SoI);
-                    GUILayout.EndHorizontal();
-
-                    ApR = (ApA_Adj * 1000d) + radiusAdjusted;
-                }
-
-                void DisplayApoapsis()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Apoapsis (km)", $"In kilometers from {textAdjusted}"));
-                    GUILayout.FlexibleSpace();
-                    GUILayout.Box(new GUIContent(FormatDecimals((ApR - radiusAdjusted) / 1000d) + "km", $"{ApR - radiusAdjusted}m"), GUILayout.MinWidth(150));
-                    GUILayout.EndHorizontal();
-                }
-
-                void ResetApoapsis(bool fullReset = false)
-                {
-                    if (fullReset) ApR = SMA * (1d + eccentricity);
-                    ApA_Adj = (ApR - radiusAdjusted) / 1000d;
-                }
-
-                void EditPeriapsis()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Periapsis (km)", $"In kilometers from {textAdjusted}"));
-                    GUILayout.FlexibleSpace();
-                    MakeNumberEditField("periapsis", ref PeA_Adj, 1d, Math.Max(atmosphereDepthScaled + (useCenterDistance ? radius / 1000d : 0d), parkingAltitude), (ApR - radiusAdjusted) / 1000d);
-                    GUILayout.EndHorizontal();
-
-                    PeR = (PeA_Adj * 1000d) + radiusAdjusted;
-                }
-
-                void DisplayPeriapsis()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Periapsis (km)", $"In kilometers from {textAdjusted}"));
-                    GUILayout.FlexibleSpace();
-                    GUILayout.Box(new GUIContent(FormatDecimals((PeR - radiusAdjusted) / 1000d) + "km", $"{PeR - radiusAdjusted}m"), GUILayout.MinWidth(150));
-                    GUILayout.EndHorizontal();
-                }
-
-                void ResetPeriapsis(bool fullReset = false)
-                {
-                    if (fullReset) PeR = SMA * (1d - eccentricity);
-                    PeA_Adj = (PeR - radiusAdjusted) / 1000d;
-                }
-
-                void EditPeriod()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Period (s)", $"Formatted using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days"));
-                    GUILayout.FlexibleSpace();
-                    if (manualTargetMode == 6) MakeNumberEditField("period", ref period_Adj, 1d, epsilon, tau * Math.Sqrt(Math.Pow(SoI, 3) / gravParameter));
-                    else MakeNumberEditField("period", ref period_Adj, 1d, Math.Max(epsilon, tau * Math.Sqrt(Math.Pow((radius + atmosphereDepth) / (1d - eccentricity), 3) / gravParameter)), tau * Math.Sqrt(Math.Pow(SoI, 3) / gravParameter));
-                    GUILayout.EndHorizontal();
-
-                    period = period_Adj;
-                }
-
-                void DisplayPeriod()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Period (s)", $"Formatted using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days"));
-                    GUILayout.FlexibleSpace();
-                    GUILayout.Box(new GUIContent(FormatTime(period), $"{period}s"), GUILayout.MinWidth(150));;
-                    GUILayout.EndHorizontal();
-                }
-
-                void ResetPeriod(bool fullReset = false)
-                {
-                    if (fullReset) period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-                    period_Adj = period;
-                }
-
-                void EditEccentricity()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Eccentricity", "Ranges from 0 to 1"));
-                    GUILayout.FlexibleSpace();
-                    if (manualTargetMode == 4) MakeNumberEditField("eccentricity", ref eccentricity_Adj, 0.1d, epsilon, 1d - epsilon); // eccentricity needs to be below 1
-                    else MakeNumberEditField("eccentricity", ref eccentricity_Adj, 0.1d, epsilon, Math.Min(1d - epsilon, 1d - (radius + atmosphereDepth) / SMA)); // eccentricity needs to be below 1, make sure periapsis doesnt go below body
-                    GUILayout.EndHorizontal();
-
-                    eccentricity = eccentricity_Adj;
-                }
-
-                void DisplayEccentricity()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Eccentricity", "Ranges from 0 to 1"));
-                    GUILayout.FlexibleSpace();
-                    GUILayout.Box(new GUIContent(FormatDecimals(eccentricity), $"{eccentricity}"), GUILayout.MinWidth(150));
-                    GUILayout.EndHorizontal();
-                }
-
-                void ResetEccentricity() => eccentricity_Adj = eccentricity;
-
-                void EditSMA()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Semi-major Axis (km)", $"In kilometers from the center of {mainBody.bodyName}"));
-                    GUILayout.FlexibleSpace();
-                    if (manualTargetMode == 8) MakeNumberEditField("SMA", ref SMA_Adj, 1d, radiusScaled + atmosphereDepthScaled, SoI);
-                    else MakeNumberEditField("SMA", ref SMA_Adj, 1d, Util.Max(epsilon, radiusScaled + atmosphereDepthScaled, (radiusScaled + atmosphereDepthScaled) / (1d - eccentricity)), SoI); // km, make sure periapsis doesnt go below body
-                    GUILayout.EndHorizontal();
-
-                    SMA = SMA_Adj * 1000d;
-                }
-
-                void DisplaySMA()
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Semi-major Axis (km)", $"In kilometers from the center of {mainBody.bodyName}"));
-                    GUILayout.FlexibleSpace();
-                    GUILayout.Box(new GUIContent(FormatDecimals(SMA / 1000d) + "km", $"{SMA}m"), GUILayout.MinWidth(150));
-                    GUILayout.EndHorizontal();
-                }
-
-                void ResetSMA() => SMA_Adj = SMA / 1000d;
-
-                switch (manualTargetMode)
-                {
-                    case 0:
-                        modeLabel = "Ap + Pe";
-                        modeTooltip = "Eccentricity, period, and SMA are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 0))
+                        if (useRadians)
                         {
-                            ResetApoapsis();
-                            ResetPeriapsis();
-                            //ResetWindow(ref manualOrbitRect);
+                            inclination_Adj *= degToRad;
+                            LAN_Adj *= degToRad;
+                            AoP_Adj *= degToRad;
+                            MNA_Adj *= degToRad;
                         }
-
-                        EditApoapsis();
-
-                        GUILayout.Space(5);
-
-                        EditPeriapsis();
-
-                        eccentricity = (ApR - PeR) / (ApR + PeR);
-                        SMA = (ApR + PeR) / 2d;
-                        period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-
-                        DisplayEccentricity();
-                        DisplaySMA();
-                        DisplayPeriod();
-
-                        break;
-                    case 1:
-                        modeLabel = "Ecc + SMA";
-                        modeTooltip = "Apoapsis, periapsis, and period are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 1))
+                        else
                         {
-                            ResetEccentricity();
+                            inclination_Adj *= radToDeg;
+                            LAN_Adj *= radToDeg;
+                            AoP_Adj *= radToDeg;
+                            MNA_Adj *= radToDeg;
+                        }
+                    }
+
+                    DrawLine();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent($"Define heights from the center of {mainBody.bodyName} instead of sea level", "Only used for specifying Apoapsis and Periapsis"));
+                    GUILayout.FlexibleSpace();
+                    BeginCenter();
+                    useCenterDistance = GUILayout.Toggle(useCenterDistance, "");
+                    EndCenter();
+                    GUILayout.EndHorizontal();
+
+                    // no one defines SMA from sea level, so we don't need to include it in here
+
+                    if (StateChanged("useCenterDistance", useCenterDistance))
+                    {
+                        if (useCenterDistance)
+                        {
+                            ApA_Adj += radius / 1000d;
+                            PeA_Adj += radius / 1000d;
+                        }
+                        else
+                        {
+                            ApA_Adj -= radius / 1000d;
+                            PeA_Adj -= radius / 1000d;
+                        }
+                    }
+
+                    DrawLine();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label("Switch between manual target modes");
+                    GUILayout.FlexibleSpace();
+                    BeginCenter();
+                    if (GUILayout.Button(new GUIContent(modeLabel, modeTooltip), GUILayout.Width(120))) manualTargetMode = (manualTargetMode + 1) % 9;
+                    EndCenter();
+                    GUILayout.EndHorizontal();
+
+                    DrawLine();
+
+                    GUILayout.FlexibleSpace();
+
+                    double max = useRadians ? tau : 360d;
+                    double step = useRadians ? Math.PI / 12d : 1d; // jump by 15 degree increments if using radians
+                    double radiusAdjusted = useCenterDistance ? 0d : radius;
+                    string textAdjusted = useCenterDistance ? $"the center of {mainBody.bodyName}" : "sea level";
+
+                    // TODO, fix the various min/max bugs edit fields in the modes below
+
+                    void EditApoapsis()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Apoapsis (km)", $"In kilometers from {textAdjusted}"));
+                        GUILayout.FlexibleSpace();
+                        if (manualTargetMode == 0) MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, parkingAltitude), SoI);
+                        else MakeNumberEditField("apoapsis", ref ApA_Adj, 1d, Util.Max(epsilon, (PeR - radiusAdjusted) / 1000d, (radiusScaled + atmosphereDepthScaled) * (1d + eccentricity) / (1d - eccentricity) - radiusScaled, parkingAltitude), SoI);
+                        GUILayout.EndHorizontal();
+
+                        ApR = (ApA_Adj * 1000d) + radiusAdjusted;
+                    }
+
+                    void DisplayApoapsis()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Apoapsis (km)", $"In kilometers from {textAdjusted}"));
+                        GUILayout.FlexibleSpace();
+                        GUILayout.Box(new GUIContent(FormatDecimals((ApR - radiusAdjusted) / 1000d) + "km", $"{ApR - radiusAdjusted}m"), GUILayout.MinWidth(150));
+                        GUILayout.EndHorizontal();
+                    }
+
+                    void ResetApoapsis(bool fullReset = false)
+                    {
+                        if (fullReset) ApR = SMA * (1d + eccentricity);
+                        ApA_Adj = (ApR - radiusAdjusted) / 1000d;
+                    }
+
+                    void EditPeriapsis()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Periapsis (km)", $"In kilometers from {textAdjusted}"));
+                        GUILayout.FlexibleSpace();
+                        MakeNumberEditField("periapsis", ref PeA_Adj, 1d, Math.Max(atmosphereDepthScaled + (useCenterDistance ? radius / 1000d : 0d), parkingAltitude), (ApR - radiusAdjusted) / 1000d);
+                        GUILayout.EndHorizontal();
+
+                        PeR = (PeA_Adj * 1000d) + radiusAdjusted;
+                    }
+
+                    void DisplayPeriapsis()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Periapsis (km)", $"In kilometers from {textAdjusted}"));
+                        GUILayout.FlexibleSpace();
+                        GUILayout.Box(new GUIContent(FormatDecimals((PeR - radiusAdjusted) / 1000d) + "km", $"{PeR - radiusAdjusted}m"), GUILayout.MinWidth(150));
+                        GUILayout.EndHorizontal();
+                    }
+
+                    void ResetPeriapsis(bool fullReset = false)
+                    {
+                        if (fullReset) PeR = SMA * (1d - eccentricity);
+                        PeA_Adj = (PeR - radiusAdjusted) / 1000d;
+                    }
+
+                    void EditPeriod()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Period (s)", $"Formatted using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days"));
+                        GUILayout.FlexibleSpace();
+                        if (manualTargetMode == 6) MakeNumberEditField("period", ref period_Adj, 1d, epsilon, tau * Math.Sqrt(Math.Pow(SoI, 3) / gravParameter));
+                        else MakeNumberEditField("period", ref period_Adj, 1d, Math.Max(epsilon, tau * Math.Sqrt(Math.Pow((radius + atmosphereDepth) / (1d - eccentricity), 3) / gravParameter)), tau * Math.Sqrt(Math.Pow(SoI, 3) / gravParameter));
+                        GUILayout.EndHorizontal();
+
+                        period = period_Adj;
+                    }
+
+                    void DisplayPeriod()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Period (s)", $"Formatted using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days"));
+                        GUILayout.FlexibleSpace();
+                        GUILayout.Box(new GUIContent(FormatTime(period), $"{period}s"), GUILayout.MinWidth(150)); ;
+                        GUILayout.EndHorizontal();
+                    }
+
+                    void ResetPeriod(bool fullReset = false)
+                    {
+                        if (fullReset) period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+                        period_Adj = period;
+                    }
+
+                    void EditEccentricity()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Eccentricity", "Ranges from 0 to 1"));
+                        GUILayout.FlexibleSpace();
+                        if (manualTargetMode == 4) MakeNumberEditField("eccentricity", ref eccentricity_Adj, 0.1d, epsilon, 1d - epsilon); // eccentricity needs to be below 1
+                        else MakeNumberEditField("eccentricity", ref eccentricity_Adj, 0.1d, epsilon, Math.Min(1d - epsilon, 1d - (radius + atmosphereDepth) / SMA)); // eccentricity needs to be below 1, make sure periapsis doesnt go below body
+                        GUILayout.EndHorizontal();
+
+                        eccentricity = eccentricity_Adj;
+                    }
+
+                    void DisplayEccentricity()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Eccentricity", "Ranges from 0 to 1"));
+                        GUILayout.FlexibleSpace();
+                        GUILayout.Box(new GUIContent(FormatDecimals(eccentricity), $"{eccentricity}"), GUILayout.MinWidth(150));
+                        GUILayout.EndHorizontal();
+                    }
+
+                    void ResetEccentricity() => eccentricity_Adj = eccentricity;
+
+                    void EditSMA()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Semi-major Axis (km)", $"In kilometers from the center of {mainBody.bodyName}"));
+                        GUILayout.FlexibleSpace();
+                        if (manualTargetMode == 8) MakeNumberEditField("SMA", ref SMA_Adj, 1d, radiusScaled + atmosphereDepthScaled, SoI);
+                        else MakeNumberEditField("SMA", ref SMA_Adj, 1d, Util.Max(epsilon, radiusScaled + atmosphereDepthScaled, (radiusScaled + atmosphereDepthScaled) / (1d - eccentricity)), SoI); // km, make sure periapsis doesnt go below body
+                        GUILayout.EndHorizontal();
+
+                        SMA = SMA_Adj * 1000d;
+                    }
+
+                    void DisplaySMA()
+                    {
+                        GUILayout.BeginHorizontal();
+                        GUILayout.Label(new GUIContent("Semi-major Axis (km)", $"In kilometers from the center of {mainBody.bodyName}"));
+                        GUILayout.FlexibleSpace();
+                        GUILayout.Box(new GUIContent(FormatDecimals(SMA / 1000d) + "km", $"{SMA}m"), GUILayout.MinWidth(150));
+                        GUILayout.EndHorizontal();
+                    }
+
+                    void ResetSMA() => SMA_Adj = SMA / 1000d;
+
+                    switch (manualTargetMode)
+                    {
+                        case 0:
+                            modeLabel = "Ap + Pe";
+                            modeTooltip = "Eccentricity, period, and SMA are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 0))
+                            {
+                                ResetApoapsis();
+                                ResetPeriapsis();
+                            }
+
+                            EditApoapsis();
+
+                            GUILayout.Space(5);
+
+                            EditPeriapsis();
+
+                            eccentricity = (ApR - PeR) / (ApR + PeR);
+                            SMA = (ApR + PeR) / 2d;
+                            period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+
+                            DisplayEccentricity();
+                            DisplaySMA();
+                            DisplayPeriod();
+
+                            break;
+                        case 1:
+                            modeLabel = "Ecc + SMA";
+                            modeTooltip = "Apoapsis, periapsis, and period are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 1))
+                            {
+                                ResetEccentricity();
+                                ResetSMA();
+                            }
+
+                            EditEccentricity();
+
+                            GUILayout.Space(5);
+
+                            EditSMA();
+
+                            period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+                            ApR = SMA * (1 + eccentricity);
+                            PeR = SMA * (1 - eccentricity);
+
+                            DisplayPeriod();
+                            DisplayApoapsis();
+                            DisplayPeriapsis();
+
+                            break;
+                        case 2:
+                            modeLabel = "Ecc + Period";
+                            modeTooltip = "Apoapsis, periapsis, and SMA are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 2))
+                            {
+                                ResetEccentricity();
+                                ResetPeriod();
+                            }
+
+                            EditPeriod();
+
+                            GUILayout.Space(5);
+
+                            EditEccentricity();
+
+                            SMA = Math.Pow(gravParameter * period * period / (tau * tau), 1 / 3d);
+                            ApR = SMA * (1 + eccentricity);
+                            PeR = SMA * (1 - eccentricity);
+
+                            DisplaySMA();
+                            DisplayApoapsis();
+                            DisplayPeriapsis();
+
+                            break;
+                        case 3:
+                            modeLabel = "Ap + Ecc";
+                            modeTooltip = "Periapsis, period, and SMA are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 3))
+                            {
+                                ResetApoapsis();
+                                ResetEccentricity();
+                            }
+
+                            EditApoapsis();
+
+                            GUILayout.Space(5);
+
+                            EditEccentricity();
+
+                            SMA = ApR / (1 + eccentricity);
+                            PeR = SMA * (1 - eccentricity);
+                            period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+
+                            DisplaySMA();
+                            DisplayPeriapsis();
+                            DisplayPeriod();
+
+                            break;
+                        case 4:
+                            modeLabel = "Pe + Ecc";
+                            modeTooltip = "Apoapsis, period, and SMA are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 4))
+                            {
+                                ResetPeriapsis();
+                                ResetEccentricity();
+                            }
+
+                            EditPeriapsis();
+
+                            GUILayout.Space(5);
+
+                            EditEccentricity();
+
+                            SMA = PeR / (1 - eccentricity);
+                            ApR = SMA * (1 + eccentricity);
+                            period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+
+                            DisplaySMA();
+                            DisplayApoapsis();
+                            DisplayPeriod();
+
+                            break;
+                        case 5:
+                            modeLabel = "Ap + Period";
+                            modeTooltip = "Periapsis, eccentricity, and SMA are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 5))
+                            {
+                                ResetApoapsis();
+                                ResetPeriod();
+                            }
+
+                            EditApoapsis();
+
+                            GUILayout.Space(5);
+
+                            EditPeriod();
+
+                            SMA = Math.Pow(gravParameter * period * period / (tau * tau), 1 / 3d);
+                            PeR = SMA * (1 - eccentricity);
+                            eccentricity = (ApR - PeR) / (ApR + PeR);
+
+                            DisplaySMA();
+                            DisplayPeriapsis();
+                            DisplayEccentricity();
+
+                            break;
+                        case 6:
+                            modeLabel = "Pe + Period";
+                            modeTooltip = "Apoapsis, eccentricity, and SMA are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 6))
+                            {
+                                ResetPeriapsis();
+                                ResetPeriod();
+                            }
+
+                            EditPeriapsis();
+
+                            GUILayout.Space(5);
+
+                            EditPeriod();
+
+                            SMA = Math.Pow(gravParameter * period * period / (tau * tau), 1 / 3d);
+                            ApR = SMA * (1 + eccentricity);
+                            eccentricity = (ApR - PeR) / (ApR + PeR);
+
+                            DisplaySMA();
+                            DisplayApoapsis();
+                            DisplayEccentricity();
+
+                            break;
+                        case 7:
+                            modeLabel = "Ap + SMA";
+                            modeTooltip = "Periapsis, eccentricity, and period are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 7))
+                            {
+                                ResetApoapsis();
+                                ResetSMA();
+                            }
+
+                            EditApoapsis();
+
+                            GUILayout.Space(5);
+
+                            EditSMA();
+
+                            period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+                            eccentricity = (ApR / SMA) - 1;
+                            PeR = SMA * (1 - eccentricity);
+
+                            DisplayPeriod();
+                            DisplayPeriapsis();
+                            DisplayEccentricity();
+
+                            break;
+                        case 8:
+                            modeLabel = "Pe + SMA";
+                            modeTooltip = "Apoapsis, eccentricity, and period are calculated automatically";
+
+                            if (StateChanged("manualTargetMode", 8))
+                            {
+                                ResetPeriapsis();
+                                ResetSMA();
+                            }
+
+                            EditPeriapsis();
+
+                            GUILayout.Space(5);
+
+                            EditSMA();
+
+                            period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
+                            eccentricity = 1 - (PeR / SMA);
+                            ApR = SMA * (1 + eccentricity);
+
+                            DisplayPeriod();
+                            DisplayApoapsis();
+                            DisplayEccentricity();
+
+                            break;
+                    }
+
+                    GUILayout.Space(5);
+
+                    void ResetInclination() => inclination_Adj = useRadians ? inclination * degToRad : inclination;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label($"Inclination ({(useRadians ? "radians" : "degrees")})");
+                    GUILayout.FlexibleSpace();
+                    MakeNumberEditField("inclination", ref inclination_Adj, step, 0d, max, true);
+                    GUILayout.EndHorizontal();
+                    inclination = useRadians ? inclination_Adj * radToDeg : inclination_Adj; // inclination is in degrees
+
+                    GUILayout.Space(5);
+
+                    void ResetLAN() => LAN_Adj = useRadians ? LAN : LAN * radToDeg;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent($"LAN ({(useRadians ? "radians" : "degrees")})", "Longitude of the ascending node"));
+                    GUILayout.FlexibleSpace();
+                    MakeNumberEditField("LAN", ref LAN_Adj, step, 0d, max, true);
+                    GUILayout.EndHorizontal();
+                    LAN = useRadians ? LAN_Adj * radToDeg : LAN_Adj; // LAN is in degrees
+
+                    GUILayout.Space(5);
+
+                    void ResetAoP() => AoP_Adj = useRadians ? AoP : AoP * radToDeg;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent($"AoP ({(useRadians ? "radians" : "degrees")})", "Argument of Perigee"));
+                    GUILayout.FlexibleSpace();
+                    MakeNumberEditField("AoP", ref AoP_Adj, step, 0d, max, true);
+                    GUILayout.EndHorizontal();
+                    AoP = useRadians ? AoP_Adj * radToDeg : AoP_Adj; // AoP is in degrees
+
+                    GUILayout.Space(5);
+
+                    void ResetMNA() => MNA_Adj = useRadians ? MNA : MNA * radToDeg;
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent($"MNA ({(useRadians ? "radians" : "degrees")})", "Mean anomaly at epoch"));
+                    GUILayout.FlexibleSpace();
+                    MakeNumberEditField("MNA", ref MNA_Adj, step, 0d, max, true);
+                    GUILayout.EndHorizontal();
+                    MNA = useRadians ? MNA_Adj : MNA_Adj * degToRad; // MNA is in radians
+
+                    //GUILayout.Space(5);
+                    //if (GUILayout.Button("Log")) Log($"useRadians: {useRadians}, manualTargetMode: {manualTargetMode}," +
+                    //    $" eccentricity: {eccentricity}, SMA: {SMA}, period: {period}, inclination: {inclination}, " +
+                    //    $"ApR: {ApR}, PeR: {PeR}, LAN: {LAN}, AoP: {AoP}, MNA: {MNA}, maxEccentricity: {Math.Min(1d - epsilon, 1d - (radius + atmosphereDepth) / SMA)}, minSMA: {Math.Max(radiusScaled + atmosphereDepthScaled, (radiusScaled + atmosphereDepthScaled) / (1d - eccentricity))}, mainBody: {mainBody}");
+
+                    GUILayout.Space(5);
+
+                    GUILayout.BeginHorizontal();
+                    bool needsUpdate = StateChanged(false, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // does not update cached values
+                    GUI.enabled = needsUpdate;
+                    if (GUILayout.Button(new GUIContent($"{(needsUpdate ? "Save*" : "Saved")}", $"{(needsUpdate ? "There have been changes to the inputs that have not been saved" : "The saved orbit is the same as the current inputs")}"), GUILayout.Width(250)))
+                    {
+                        targetOrbit = new Orbit
+                        {
+                            eccentricity = eccentricity,
+                            semiMajorAxis = SMA,
+                            inclination = inclination,
+                            LAN = LAN,
+                            argumentOfPeriapsis = AoP,
+                            meanAnomalyAtEpoch = MNA,
+                            epoch = currentUT,
+                            referenceBody = mainBody,
+                        };
+                        targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
+                        targetOrbit.UpdateFromUT(currentUT);
+                        _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
+                        ClearAllCaches();
+                        //Log("manual orbit changed");
+                    }
+                    if (ResetDefault("Reset to Last Saved Orbit", false))
+                    {
+                        var stateElements = GetStateElements("manualOrbitStates");
+                        if (stateElements != null && stateElements.Length == 7 && stateElements[6] is CelestialBody body && body.Equals(mainBody)) // mod gets restarted during scene changes, so this wont work between scenes
+                        {
+                            isSavedOrbitCorrect = true;
+                            eccentricity = (double)stateElements[0];
+                            SMA = (double)stateElements[1];
+                            inclination = (double)stateElements[2];
+                            LAN = (double)stateElements[3];
+                            AoP = (double)stateElements[4];
+                            MNA = (double)stateElements[5];
+
                             ResetSMA();
-                            //ResetWindow(ref manualOrbitRect);
-                        }
-
-                        EditEccentricity();
-
-                        GUILayout.Space(5);
-
-                        EditSMA();
-
-                        period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-                        ApR = SMA * (1 + eccentricity);
-                        PeR = SMA * (1 - eccentricity);
-
-                        DisplayPeriod();
-                        DisplayApoapsis();
-                        DisplayPeriapsis();
-
-                        break;
-                    case 2:
-                        modeLabel = "Ecc + Period";
-                        modeTooltip = "Apoapsis, periapsis, and SMA are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 2))
-                        {
                             ResetEccentricity();
-                            ResetPeriod();
-                            //ResetWindow(ref manualOrbitRect);
+                            ResetInclination();
+                            ResetLAN();
+                            ResetAoP();
+                            ResetMNA();
+
+                            ResetApoapsis(true);
+                            ResetPeriapsis(true);
+                            ResetPeriod(true);
+
+                            // if in a different mode than the original, needsUpdate wont switch to false due to floating point stuff, TODO (need optional tolerance check with StateChanged)
                         }
-
-                        EditPeriod();
-
-                        GUILayout.Space(5);
-
-                        EditEccentricity();
-
-                        SMA = Math.Pow(gravParameter * period * period / (tau * tau), 1 / 3d);
-                        ApR = SMA * (1 + eccentricity);
-                        PeR = SMA * (1 - eccentricity);
-
-                        DisplaySMA();
-                        DisplayApoapsis();
-                        DisplayPeriapsis();
-
-                        break;
-                    case 3:
-                        modeLabel = "Ap + Ecc";
-                        modeTooltip = "Periapsis, period, and SMA are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 3))
-                        {
-                            ResetApoapsis();
-                            ResetEccentricity();
-                            //ResetWindow(ref manualOrbitRect);
-                        }
-
-                        EditApoapsis();
-
-                        GUILayout.Space(5);
-
-                        EditEccentricity();
-
-                        SMA = ApR / (1 + eccentricity);
-                        PeR = SMA * (1 - eccentricity);
-                        period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-
-                        DisplaySMA();
-                        DisplayPeriapsis();
-                        DisplayPeriod();
-
-                        break;
-                    case 4:
-                        modeLabel = "Pe + Ecc";
-                        modeTooltip = "Apoapsis, period, and SMA are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 4))
-                        {
-                            ResetPeriapsis();
-                            ResetEccentricity();
-                            //ResetWindow(ref manualOrbitRect);
-                        }
-
-                        EditPeriapsis();
-
-                        GUILayout.Space(5);
-
-                        EditEccentricity();
-
-                        SMA = PeR / (1 - eccentricity);
-                        ApR = SMA * (1 + eccentricity);
-                        period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-
-                        DisplaySMA();
-                        DisplayApoapsis();
-                        DisplayPeriod();
-
-                        break;
-                    case 5:
-                        modeLabel = "Ap + Period";
-                        modeTooltip = "Periapsis, eccentricity, and SMA are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 5))
-                        {
-                            ResetApoapsis();
-                            ResetPeriod();
-                            //ResetWindow(ref manualOrbitRect);
-                        }
-
-                        EditApoapsis();
-
-                        GUILayout.Space(5);
-
-                        EditPeriod();
-
-                        SMA = Math.Pow(gravParameter * period * period / (tau * tau), 1 / 3d);
-                        PeR = SMA * (1 - eccentricity);
-                        eccentricity = (ApR - PeR) / (ApR + PeR);
-
-                        DisplaySMA();
-                        DisplayPeriapsis();
-                        DisplayEccentricity();
-
-                        break;
-                    case 6:
-                        modeLabel = "Pe + Period";
-                        modeTooltip = "Apoapsis, eccentricity, and SMA are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 6))
-                        {
-                            ResetPeriapsis();
-                            ResetPeriod();
-                            //ResetWindow(ref manualOrbitRect);
-                        }
-
-                        EditPeriapsis();
-
-                        GUILayout.Space(5);
-
-                        EditPeriod();
-
-                        SMA = Math.Pow(gravParameter * period * period / (tau * tau), 1 / 3d);
-                        ApR = SMA * (1 + eccentricity);
-                        eccentricity = (ApR - PeR) / (ApR + PeR);
-
-                        DisplaySMA();
-                        DisplayApoapsis();
-                        DisplayEccentricity();
-
-                        break;
-                    case 7:
-                        modeLabel = "Ap + SMA";
-                        modeTooltip = "Periapsis, eccentricity, and period are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 7))
-                        {
-                            ResetApoapsis();
-                            ResetSMA();
-                            //ResetWindow(ref manualOrbitRect);
-                        }
-
-                        EditApoapsis();
-
-                        GUILayout.Space(5);
-
-                        EditSMA();
-
-                        period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-                        eccentricity = (ApR / SMA) - 1;
-                        PeR = SMA * (1 - eccentricity);
-
-                        DisplayPeriod();
-                        DisplayPeriapsis();
-                        DisplayEccentricity();
-
-                        break;
-                    case 8:
-                        modeLabel = "Pe + SMA";
-                        modeTooltip = "Apoapsis, eccentricity, and period are calculated automatically";
-
-                        if (StateChanged("manualTargetMode", 8))
-                        {
-                            ResetPeriapsis();
-                            ResetSMA();
-                            //ResetWindow(ref manualOrbitRect);
-                        }
-
-                        EditPeriapsis();
-
-                        GUILayout.Space(5);
-
-                        EditSMA();
-
-                        period = tau * Math.Sqrt(Math.Pow(SMA, 3) / gravParameter);
-                        eccentricity = 1 - (PeR / SMA);
-                        ApR = SMA * (1 + eccentricity);
-
-                        DisplayPeriod();
-                        DisplayApoapsis();
-                        DisplayEccentricity();
-
-                        break;
-                }
-
-                GUILayout.Space(5);
-
-                void ResetInclination() => inclination_Adj = useRadians ? inclination * degToRad : inclination;
-                GUILayout.BeginHorizontal();
-                GUILayout.Label($"Inclination ({(useRadians ? "radians" : "degrees")})");
-                GUILayout.FlexibleSpace();
-                MakeNumberEditField("inclination", ref inclination_Adj, step, 0d, max, true);
-                GUILayout.EndHorizontal();
-                inclination = useRadians ? inclination_Adj * radToDeg : inclination_Adj; // inclination is in degrees
-
-                GUILayout.Space(5);
-
-                void ResetLAN() => LAN_Adj = useRadians ? LAN : LAN * radToDeg;
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent($"LAN ({(useRadians ? "radians" : "degrees")})", "Longitude of the ascending node"));
-                GUILayout.FlexibleSpace();
-                MakeNumberEditField("LAN", ref LAN_Adj, step, 0d, max, true);
-                GUILayout.EndHorizontal();
-                LAN = useRadians ? LAN_Adj * radToDeg : LAN_Adj; // LAN is in degrees
-
-                GUILayout.Space(5);
-
-                void ResetAoP() => AoP_Adj = useRadians ? AoP : AoP * radToDeg;
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent($"AoP ({(useRadians ? "radians" : "degrees")})", "Argument of Perigee"));
-                GUILayout.FlexibleSpace();
-                MakeNumberEditField("AoP", ref AoP_Adj, step, 0d, max, true);
-                GUILayout.EndHorizontal();
-                AoP = useRadians ? AoP_Adj * radToDeg : AoP_Adj; // AoP is in degrees
-
-                GUILayout.Space(5);
-
-                void ResetMNA() => MNA_Adj = useRadians ? MNA : MNA * radToDeg;
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent($"MNA ({(useRadians ? "radians" : "degrees")})", "Mean anomaly at epoch"));
-                GUILayout.FlexibleSpace();
-                MakeNumberEditField("MNA", ref MNA_Adj, step, 0d, max, true);
-                GUILayout.EndHorizontal();
-                MNA = useRadians ? MNA_Adj : MNA_Adj * degToRad; // MNA is in radians
-
-                //GUILayout.Space(5);
-                //if (GUILayout.Button("Log")) Log($"useRadians: {useRadians}, manualTargetMode: {manualTargetMode}," +
-                //    $" eccentricity: {eccentricity}, SMA: {SMA}, period: {period}, inclination: {inclination}, " +
-                //    $"ApR: {ApR}, PeR: {PeR}, LAN: {LAN}, AoP: {AoP}, MNA: {MNA}, maxEccentricity: {Math.Min(1d - epsilon, 1d - (radius + atmosphereDepth) / SMA)}, minSMA: {Math.Max(radiusScaled + atmosphereDepthScaled, (radiusScaled + atmosphereDepthScaled) / (1d - eccentricity))}, mainBody: {mainBody}");
-
-                GUILayout.Space(5);
-
-                GUILayout.BeginHorizontal();
-                bool needsUpdate = StateChanged(false, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // does not update cached values
-                GUI.enabled = needsUpdate;
-                if (GUILayout.Button(new GUIContent($"{(needsUpdate ? "Save*" : "Saved")}", $"{(needsUpdate ? "There have been changes to the inputs that have not been saved" : "The saved orbit is the same as the current inputs")}"), GUILayout.Width(250)))
-                {
-                    targetOrbit = new Orbit
-                    {
-                        eccentricity = eccentricity,
-                        semiMajorAxis = SMA,
-                        inclination = inclination,
-                        LAN = LAN,
-                        argumentOfPeriapsis = AoP,
-                        meanAnomalyAtEpoch = MNA,
-                        epoch = currentUT,
-                        referenceBody = mainBody,
-                    };
-                    targetOrbit.Init(); // do NOT use SetOrbit, it causes the previous target's orbit to be changed
-                    targetOrbit.UpdateFromUT(currentUT);
-                    _ = StateChanged(true, "manualOrbitStates", eccentricity, SMA, inclination, LAN, AoP, MNA, mainBody); // update cached values to current
-                    ClearAllCaches();
-                    //Log("manual orbit changed");
-                }
-                if (ResetDefault("Reset to Last Saved Orbit", false))
-                {
-                    var stateElements = GetStateElements("manualOrbitStates");
-                    if (stateElements != null && stateElements.Length == 7 && stateElements[6] is CelestialBody body && body.Equals(mainBody)) // mod gets restarted during scene changes, so this wont work between scenes
-                    {
-                        isSavedOrbitCorrect = true;
-                        eccentricity = (double)stateElements[0];
-                        SMA = (double)stateElements[1];
-                        inclination = (double)stateElements[2];
-                        LAN = (double)stateElements[3];
-                        AoP = (double)stateElements[4];
-                        MNA = (double)stateElements[5];
-
-                        ResetSMA();
-                        ResetEccentricity();
-                        ResetInclination();
-                        ResetLAN();
-                        ResetAoP();
-                        ResetMNA();
-
-                        ResetApoapsis(true);
-                        ResetPeriapsis(true);
-                        ResetPeriod(true);
-
-                        // if in a different mode than the original, needsUpdate wont switch to false due to floating point stuff, TODO (need optional tolerance check with StateChanged)
+                        else isSavedOrbitCorrect = false;
                     }
-                    else isSavedOrbitCorrect = false;
+                    GUI.enabled = true;
+                    GUILayout.FlexibleSpace();
+                    if (isSavedOrbitCorrect == false) GUILayout.Label(new GUIContent("Error!", "Saved orbit is not valid for this celestial body! A new saved orbit must be set."));
+                    GUILayout.EndHorizontal();
                 }
-                GUI.enabled = true;
-                GUILayout.FlexibleSpace();
-                if (isSavedOrbitCorrect == false) GUILayout.Label(new GUIContent("Error!", "Saved orbit is not valid! A new saved orbit must be set."));
-                GUILayout.EndHorizontal();
             }
-
-            Tooltip.Instance?.RecordTooltip(id);
-            GUI.DragWindow();
+            finally
+            {
+                Tooltip.Instance?.RecordTooltip(id);
+                GUI.DragWindow();
+                ResetWindow(ref needManualOrbitReset, ref manualOrbitRect);
+            }
         }
 
         #endregion

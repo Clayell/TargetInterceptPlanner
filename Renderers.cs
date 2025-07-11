@@ -125,9 +125,9 @@ namespace LunarTransferPlanner
             Material orbitLines = ((MapView)FindObjectOfType(typeof(MapView))).orbitLinesMaterial;
 
             //init all the lines
-            _lineStart = RenderUtils.InitLine(_objLineStart, Color.red, 2, 10, orbitLines); // TODO, allow all of these colors to be changed
-            _lineEnd = RenderUtils.InitLine(_objLineEnd, Color.green, 2, 10, orbitLines);
-            _lineArc = RenderUtils.InitLine(_objLineArc, Color.yellow, ArcPoints, 10, orbitLines);
+            _lineStart = RenderUtils.InitLine(_objLineStart, LunarTransferPlanner.startLineColor, 2, 10, orbitLines);
+            _lineEnd = RenderUtils.InitLine(_objLineEnd, LunarTransferPlanner.endLineColor, 2, 10, orbitLines);
+            _lineArc = RenderUtils.InitLine(_objLineArc, LunarTransferPlanner.arcLineColor, ArcPoints, 10, orbitLines);
 
             _styleLabel = new GUIStyle
             {

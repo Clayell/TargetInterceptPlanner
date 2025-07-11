@@ -289,7 +289,7 @@ namespace LunarTransferPlanner
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 
-            if (arcPoint.z > 0) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{AoPDiff:F2}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
+            if (arcPoint.z > 0) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{LunarTransferPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
             
             Tooltip.Instance?.RecordTooltip(this.GetHashCode());
             Tooltip.Instance?.ShowTooltip(this.GetHashCode());

@@ -250,7 +250,7 @@ namespace LunarTransferPlanner
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
         double maxDeltaVScaled = 100000d; // Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body
         bool ranSearch = false; // If we've ran the targetPhasingAngle/Time search
-        int decimals = 2; // Amount of decimal precision to display
+        internal static int decimals = 2; // Amount of decimal precision to display
         bool useAngle = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
         bool useLAN = true; // Show the LAN of the parking orbit instead of the AoP of the parking orbit, applies to all boxes
         int maxWindows = 100; // Maximum amount of extra windows that can be calculated
@@ -1737,7 +1737,7 @@ namespace LunarTransferPlanner
             }
         }
 
-        private string FormatDecimals(double value, int extra = 0)
+        internal static string FormatDecimals(double value, int extra = 0)
         {
             return $"{value.ToString($"F{Math.Max(0, decimals + extra)}", CultureInfo.InvariantCulture)}";
         }
@@ -2956,7 +2956,7 @@ namespace LunarTransferPlanner
 
                         if (!useWindowOptimizer)
                         {
-                            GUILayout.Label("Change Extra Window Number");
+                            GUILayout.Label("Extra Window Number");
                             MakeNumberEditField("extraWindowNumber", ref extraWindowNumber, 1, 1, maxWindows);
                             ranSearch = false; // this is to remove the label
                         }
@@ -3074,7 +3074,7 @@ namespace LunarTransferPlanner
 
                     DrawLine();
 
-                    GUILayout.Label(new GUIContent("Change Decimal Places of Precision", "Editable text fields will not be effected"));
+                    GUILayout.Label(new GUIContent("Shown Decimal Places of Precision", "This is only visual, and editable text fields will not be effected"));
                     MakeNumberEditField("decimals", ref decimals, 1, 0, int.MaxValue);
 
                     if (StateChanged("decimals", decimals))
@@ -3097,7 +3097,7 @@ namespace LunarTransferPlanner
                         ResetLaunchInclination(); // continuously update value
 
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Change Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
+                        GUILayout.Label(new GUIContent("Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
                         ResetDefault(ref targetLaunchAzimuth, 90d);
                         GUILayout.EndHorizontal();
                         MakeNumberEditField("targetLaunchAzimuth", ref targetLaunchAzimuth, 1d, 0d, 360d, true);
@@ -3113,7 +3113,7 @@ namespace LunarTransferPlanner
                     else
                     {
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Change Target Launch Inclination", inclinationTooltip + " Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
+                        GUILayout.Label(new GUIContent("Target Launch Inclination", inclinationTooltip + " Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
                         ResetDefault(ref targetLaunchInclination, latitude);
                         GUILayout.EndHorizontal();
 

@@ -181,19 +181,19 @@ namespace LunarTransferPlanner
         double eccentricity = double.NaN; // eccentricity of manual target
         double eccentricity_Adj;
         double SMA = double.NaN; // semi major axis of manual target, in meters
-        double SMA_Adj; // in km, converted to meters later
+        double SMA_Adj;
         double LAN = double.NaN; // longitude of the ascending node of manual target, in degrees
         double LAN_Adj;
         double AoP = double.NaN; // argument of periapsis of manual target, in degrees
         double AoP_Adj;
         double MNA = double.NaN; // mean anonaly at epoch of manual target, in radians
         double MNA_Adj;
-        double ApR = double.NaN;
-        double ApA_Adj; // apoapsis from sea level in km, converted to radius in meters later
-        double PeR = double.NaN;
-        double PeA_Adj; // apoapsis from sea level in km, converted to radius in meters later
-        double period = double.NaN;
-        double period_Adj;
+        double ApR = double.NaN; // apoapsis from center in meters
+        double ApA_Adj = double.NaN;
+        double PeR = double.NaN; // periapsis from center in meters
+        double PeA_Adj = double.NaN;
+        double period = double.NaN; // period in seconds
+        double period_Adj = double.NaN;
         bool useRadians = false;
         bool useCenterDistance = false; // for apoapsis and periapsis, define from sea level instead of from center
         bool? isSavedOrbitCorrect = null;
@@ -211,7 +211,13 @@ namespace LunarTransferPlanner
         bool showManualOrbit = false; // Show manual orbit setting UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
         double tickSpeed = 0.2;
-        double flightTime = 4.0d; // Desired flight time after maneuver, in solar days of homeBody or mainBody (depending on useHomeSolarDay)
+
+        double flightTime = double.NaN; // Desired flight time after maneuver, in seconds (this gets initialized to 4d * solarDayLength later)
+        double flightTime_Adj = double.NaN; // Desired flight time after maneuver, in whatever unit the user has selected
+        int flightTimeMode = 0; // 0, 1, 2, 3 (default to days)
+        string flightTimeLabel;
+        string flightTimeTooltip;
+
         double parkingAltitude = 200d; // Parking orbit altitude (circular orbit)
         bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
@@ -463,6 +469,7 @@ namespace LunarTransferPlanner
                 { "tickSpeed", tickSpeed },
                 { "useHomeSolarDay", useHomeSolarDay },
                 { "flightTime", flightTime },
+                { "flightTimeMode", flightTimeMode },
                 { "parkingAltitude", parkingAltitude },
                 { "useAltBehavior", useAltBehavior },
                 { "altBehaviorTimeLimit", altBehaviorTimeLimit },
@@ -523,7 +530,7 @@ namespace LunarTransferPlanner
 
             settings.AddNode(colorNode);
 
-            root.Save(SettingsPath);
+            root.Save(SettingsPath); // this makes a new file if settings.cfg didnt exist already
 
             Dictionary<string, string> comments = new Dictionary<string, string>
             {
@@ -602,6 +609,7 @@ namespace LunarTransferPlanner
                     Read(ref useAltSkin, "useAltSkin");
                     Read(ref tickSpeed, "tickSpeed");
                     Read(ref flightTime, "flightTime");
+                    Read(ref flightTimeMode, "flightTimeMode");
                     Read(ref useHomeSolarDay, "useHomeSolarDay");
                     Read(ref parkingAltitude, "parkingAltitude");
                     Read(ref useAltBehavior, "useAltBehavior");
@@ -690,7 +698,7 @@ namespace LunarTransferPlanner
 
         private void LogError(string message) => Util.LogError(message);
 
-        private bool StateChanged<T>(string key, T state)
+        private bool StateChanged<T>(string key, T state, bool detectFirstAccess = true)
         {
             if (stateBuffer.TryGetValue(key, out var existing))
             {
@@ -704,7 +712,8 @@ namespace LunarTransferPlanner
             else
             {
                 stateBuffer[key] = state;
-                return true; // first access
+                if (detectFirstAccess) return true; // first access
+                else return false;
             }
         }
 
@@ -906,7 +915,7 @@ namespace LunarTransferPlanner
             Vector3d MainPos = mainBody.position;
             Vector3d MainAxis = mainBody.angularVelocity.normalized;
 
-            double targetTime = currentUT + flightTime * solarDayLength + startTime;
+            double targetTime = currentUT + flightTime + startTime;
             Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime); // this doesn't take into account changing target inclination due to principia
             //CelestialGetPosition is the corresponding method for Principia, but it doesn't work for a future time. TODO
 
@@ -1153,7 +1162,7 @@ namespace LunarTransferPlanner
             Vector3d MainPos = mainBody.position;
             Vector3d MainAxis = mainBody.angularVelocity.normalized;
 
-            double targetTime = currentUT + flightTime * solarDayLength + startTime;
+            double targetTime = currentUT + flightTime + startTime;
             Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime);
 
             Vector3d upVector = QuaternionD.AngleAxis(startTime * 360d / mainBody.rotationPeriod, MainAxis) * ((launchPos - MainPos).normalized * orbitRadius).normalized; // use rotationPeriod for sidereal time
@@ -1262,7 +1271,7 @@ namespace LunarTransferPlanner
             //double minPossibleDV = 2500 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
             //const double minPossibleDV = double.Epsilon; // no need to have an actual min for dV
             double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
-            double expectedFlightTime = flightTime * solarDayLength;
+            double expectedFlightTime = flightTime;
             const double epsilon = 1e-9;
             const double tolerance = 0.01;
             int errorStateDV = 0; // no errors
@@ -1575,7 +1584,7 @@ namespace LunarTransferPlanner
             GUILayout.BeginHorizontal();
 
             string newLabel = GUILayout.TextField(textValue, GUILayout.Width(Mathf.Clamp(GUI.skin.textField.CalcSize(new GUIContent(textValue)).x + 10, 60, windowWidth - (40 * 2)))); // change width based on text length
-            // if are other elements on the same line the width detection wont really work, TODO
+            // if are other things on the same line (like labels), the width detection wont really work and will increase the width of the window past the windowWidth, TODO
 
             // if text changed, update buffer and try to parse value
             if (newLabel != textValue)
@@ -2212,18 +2221,100 @@ namespace LunarTransferPlanner
 
                     //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
+                    if (double.IsNaN(flightTime)) flightTime = 4d * solarDayLength;
+
                     GUILayout.Space(5);
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Flight Time (days)", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"));
+                    GUILayout.Label(new GUIContent("Flight Time", $"Coast duration to {targetName} after the maneuver (in {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days)"));
+                    GUILayout.BeginVertical();
+                    GUILayout.Space(5);
+                    if (GUILayout.Button(new GUIContent($"({flightTimeLabel})", flightTimeTooltip), GUILayout.Width(25))) flightTimeMode = (flightTimeMode + 1) % 4;
+                    GUILayout.EndVertical();
+
+                    switch (flightTimeMode)
+                    {
+                        case 0:
+                            flightTimeLabel = "d";
+                            flightTimeTooltip = $"Currently using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days\nClick to change flight time unit to hours";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime / solarDayLength;
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj /= solarDayLength;
+                            }
+                            flightTime = flightTime_Adj * solarDayLength;
+                            break;
+                        case 1:
+                            flightTimeLabel = "h";
+                            flightTimeTooltip = "Currently using hours\nClick to change flight time unit to minutes";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime / (60d * 60d);
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj *= solarDayLength / (60d * 60d);
+                            }
+                            flightTime = flightTime_Adj * 60d * 60d;
+                            break;
+                        case 2:
+                            flightTimeLabel = "m";
+                            flightTimeTooltip = "Currently using minutes\nClick to change flight time unit to seconds";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime / 60d;
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj *= 60d;
+                            }
+                            flightTime = flightTime_Adj * 60d;
+                            break;
+                        case 3:
+                            flightTimeLabel = "s";
+                            flightTimeTooltip = $"Currently using seconds\nClick to change flight time unit to {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime;
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj *= 60d;
+                            }
+                            flightTime = flightTime_Adj;
+                            break;
+                    }
+
                     if (ResetDefault($"Reset to Maximum Flight Time{(targetOrbit.eccentricity >= epsilon ? "\n(not exactly maximum due to the eccentricity of the target's orbit)" : "")}"))
-                        flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time / solarDayLength;
-                    // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
-                    // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
+                    {
+                        flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time;
+                        // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
+                        // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
+
+                        switch (flightTimeMode)
+                        {
+                            case 0:
+                                flightTime_Adj = flightTime / solarDayLength;
+                                break;
+                            case 1:
+                                flightTime_Adj = flightTime / (60d * 60d);
+                                break;
+                            case 2:
+                                flightTime_Adj = flightTime / 60d;
+                                break;
+                            case 3:
+                                flightTime_Adj = flightTime;
+                                break;
+                        }
+                    }
+
                     GUILayout.EndHorizontal();
-                    MakeNumberEditField("flightTime", ref flightTime, 0.1d, double.Epsilon, double.MaxValue);
+
+                    MakeNumberEditField("flightTime_Adj", ref flightTime_Adj, 0.1d, double.Epsilon, double.MaxValue);
                     if (StateChanged("flightTime", flightTime)) ClearAllCaches();
-                    double l = Math.Round(flightTime * solarDayLength);
-                    GUILayout.Box(new GUIContent(FormatTime(l), $"{l:0}s"), GUILayout.MinWidth(100)); // tooltips in Box have a problem with width, use {0:0}
+                    GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s"), GUILayout.MinWidth(100));
 
                     //Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
                     //var stopwatch = Stopwatch.StartNew();
@@ -2590,7 +2681,7 @@ namespace LunarTransferPlanner
                         DescribeD("Warp Margin", "s", warpMargin);
                         DescribeD("Latitude", "\u00B0", latitude);
                         DescribeD("Longitude", "\u00B0", longitude);
-                        DescribeD("Flight Time", $" {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days", flightTime);
+                        DescribeD("Flight Time", "s", flightTime);
                         DescribeD("Required delta-V", "m/s", dV);
                         DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
                         DescribeD("Launch Inclination", "\u00B0", launchOrbit1.azimuth > 90d && launchOrbit1.azimuth < 270d ? -launchOrbit1.inclination : launchOrbit1.inclination);

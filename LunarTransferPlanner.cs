@@ -2684,8 +2684,8 @@ namespace LunarTransferPlanner
                         DescribeD("Flight Time", "s", flightTime);
                         DescribeD("Required delta-V", "m/s", dV);
                         DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
-                        DescribeD("Launch Inclination", "\u00B0", launchOrbit1.azimuth > 90d && launchOrbit1.azimuth < 270d ? -launchOrbit1.inclination : launchOrbit1.inclination);
-                        DescribeD("Launch Azimuth", "\u00B0", launchOrbit1.azimuth);
+                        DescribeD("Launch Inclination", "\u00B0", (isLowLatitude && !useAltBehavior) ? launchOrbit1.azimuth > 90d && launchOrbit1.azimuth < 270d ? -launchOrbit1.inclination : launchOrbit1.inclination : targetLaunchInclination);
+                        DescribeD("Launch Azimuth", "\u00B0", (isLowLatitude && !useAltBehavior) ? launchOrbit1.azimuth : targetLaunchAzimuth);
                         DescribeD("Phasing Time", "s", phaseTime1);
                         DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
                         DescribeD("Parking Orbit LAN", "\u00B0", launchLAN1);

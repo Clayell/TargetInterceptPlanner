@@ -12,7 +12,7 @@ using UnityEngine;
 
 namespace LunarTransferPlanner
 {
-    public static class Util
+    internal static class Util
     {
         internal static void Log(string message, string prefix = "[LunarTransferPlanner]")
         {
@@ -29,7 +29,7 @@ namespace LunarTransferPlanner
             UnityEngine.Debug.LogError($"{prefix}: {message}");
         }
 
-        public static void TryReadValue<T>(ref T target, ConfigNode node, string name)
+        internal static void TryReadValue<T>(ref T target, ConfigNode node, string name)
         {
             if (node.HasValue(name))
             {
@@ -46,7 +46,7 @@ namespace LunarTransferPlanner
         }
 
         // Math.Acosh does not seem to work in .NET 4
-        public static double Acosh(double x)
+        internal static double Acosh(double x)
         {
             if (x >= 1)
             {
@@ -60,14 +60,14 @@ namespace LunarTransferPlanner
         }
 
         // Unity only has Clamp for floats
-        public static double Clamp(double value, double min, double max)
+        internal static double Clamp(double value, double min, double max)
         {
             if (value < min) return min;
             if (value > max) return max;
             return value;
         }
 
-        public static (double value, bool changed) ClampChanged(double value, double min, double max)
+        internal static (double value, bool changed) ClampChanged(double value, double min, double max)
         {
             bool changed;
             double initialValue = value;
@@ -78,7 +78,7 @@ namespace LunarTransferPlanner
             return (value, changed);
         }
 
-        public static double ClampAngle(double value, bool useRads)
+        internal static double ClampAngle(double value, bool useRads)
         {
             const double tau = 2 * Math.PI;
             if (useRads) return ((value % tau) + tau) % tau;
@@ -86,7 +86,7 @@ namespace LunarTransferPlanner
         }
 
         // max with unlimited values
-        public static double Max(params double[] values)
+        internal static double Max(params double[] values)
         {
             if (values == null || values.Length == 0)
                 throw new ArgumentException("At least one value is required for Max.");
@@ -100,7 +100,7 @@ namespace LunarTransferPlanner
         }
 
         // min with unlimited values
-        public static double Min(params double[] values)
+        internal static double Min(params double[] values)
         {
             if (values == null || values.Length == 0)
                 throw new ArgumentException("At least one value is required for Min.");

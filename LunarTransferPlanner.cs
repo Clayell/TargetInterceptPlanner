@@ -126,6 +126,8 @@ namespace LunarTransferPlanner
     [KSPAddon(KSPAddon.Startup.AllGameScenes, false)] // TODO, stop it from appearing in R&D, Admininistration, Astronaut Complex, during Loading
     public class LunarTransferPlanner : MonoBehaviour
     {
+        #region Fields
+
         const double EarthSiderealDay = 86164.098903691;
         const double EarthRadius = 6371000; // meters
         const double EarthMass = 3.9860043543609598e+14 / 6.67408e-11; // API docs say 6.673e-11 for the grav constant, which is wrong
@@ -302,6 +304,7 @@ namespace LunarTransferPlanner
 
         ToolbarControl toolbarControl = null;
 
+        #endregion
         #region GUI Setup
 
         void Awake()

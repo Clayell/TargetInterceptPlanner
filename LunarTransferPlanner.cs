@@ -1138,7 +1138,7 @@ namespace LunarTransferPlanner
 
             double LAN = Util.ClampAngle(Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right)), true);
 
-            if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make surwhate LAN is in the correct quadrant
+            if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make sure LAN is in the correct quadrant
 
             if ((azimuth > 90d && azimuth <= 180d) || (azimuth >= 270d && azimuth < 360d)) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing south-east or north-west
 
@@ -1273,8 +1273,6 @@ namespace LunarTransferPlanner
             //CelestialBody mainBody = target.referenceBody;
 
             // Search in this range
-            //double minPossibleDV = 2500 * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
-            //const double minPossibleDV = double.Epsilon; // no need to have an actual min for dV
             double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
             double expectedFlightTime = flightTime;
             const double epsilon = 1e-9;
@@ -2740,8 +2738,6 @@ namespace LunarTransferPlanner
 
                         if (_parkingOrbitRenderer == null)
                         {
-                            _parkingOrbitRenderer?.Cleanup(); // just in case
-
                             _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, parkingColor);
                         }
 
@@ -2751,7 +2747,7 @@ namespace LunarTransferPlanner
                             parkingOrbit.Init();
                             parkingOrbit.UpdateFromUT(currentUT);
 
-                            ClearAngleRenderer(); // just in case
+                            ClearAngleRenderer();
 
                             if (_phasingAngleRenderer == null)
                             {
@@ -2778,16 +2774,14 @@ namespace LunarTransferPlanner
 
                     if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needCacheClear)
                     {
-                        _transferOrbitRenderer?.Cleanup(); // just in case
-
-                        double AoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP1 + phaseAngle1 + 180d, false) : Util.ClampAngle(launchAoP1 + phaseAngle1, false);
+                        double phaseAoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP1 + phaseAngle1 + 180d, false) : Util.ClampAngle(launchAoP1 + phaseAngle1, false);
                         Orbit transferOrbit = new Orbit
                         {
                             inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
                             eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
                             semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
                             LAN = launchLAN1,
-                            argumentOfPeriapsis = AoPmodified,
+                            argumentOfPeriapsis = phaseAoPmodified,
                             meanAnomalyAtEpoch = 0d,
                             epoch = currentUT,
                             referenceBody = mainBody,
@@ -2804,8 +2798,6 @@ namespace LunarTransferPlanner
 
                     if (displayManual && _manualOrbitRenderer == null && MapViewEnabled() && targetManual && !needCacheClear)
                     {
-                        _manualOrbitRenderer?.Cleanup(); // just in case
-
                         _manualOrbitRenderer = OrbitRendererHack.Setup(targetOrbit, manualColor);
                     }
                     else if ((!displayManual || !targetManual) && _manualOrbitRenderer != null)

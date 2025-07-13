@@ -293,7 +293,7 @@ namespace LunarTransferPlanner
         List<CelestialBody> moons;
         List<Vessel> vessels;
         double lastLaunchTime = double.NaN;
-        readonly List<(object target, double targetAltitude, double latitude, double longitude, double inclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double, double)>();
+        readonly List<(object target, double targetAltitude, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
         readonly List<(double phasingTime, double phasingAngle, int windowNumber)> phasingCache = new List<(double, double, int)>();
         readonly List<(double LAN, double AoP, int windowNumber)> LANCache = new List<(double, double, int)>();
@@ -1347,7 +1347,7 @@ namespace LunarTransferPlanner
             needCacheClear = true;
         }
 
-        private void CheckWindowCache(double latitude, double longitude, double inclination, double targetAltitude)
+        private void CheckWindowCache(double latitude, double longitude, double targetInclination, double targetAltitude)
         {
             const double tolerance = 0.01;
 
@@ -1358,7 +1358,7 @@ namespace LunarTransferPlanner
                 bool targetMismatch = StateChanged("targetManualWindowCache", targetManual) || (!targetManual && entry.target != target); // this will also trigger when changing mainBody, assuming we dont get restarted due to a scene switch
                 bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
                 bool altitudeMismatch = StateChanged("targetAltitudeNaN", targetAltitude == double.NaN) || Math.Abs(entry.targetAltitude - targetAltitude) / targetAltitude >= tolerance; // 1%
-                bool inclinationMismatch = Math.Abs(entry.inclination - inclination) >= tolerance * 2;
+                bool inclinationMismatch = Math.Abs(entry.targetInclination - targetInclination) >= tolerance * 2;
 
                 if (expired || targetMismatch || posMismatch || inclinationMismatch || altitudeMismatch)
                 {
@@ -1381,7 +1381,7 @@ namespace LunarTransferPlanner
             }
         }
 
-        private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double inclination, bool useAltBehavior, int windowNumber)
+        private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double targetInclination, bool useAltBehavior, int windowNumber)
         {
             // bad caches already removed by CheckWindowCache
 
@@ -1424,7 +1424,7 @@ namespace LunarTransferPlanner
                 else
                 {
                     absoluteLaunchTime = currentUT + newLaunchTime;
-                    windowCache.Add((target, targetAltitude, latitude, longitude, inclination, absoluteLaunchTime));
+                    windowCache.Add((target, targetAltitude, latitude, longitude, targetInclination, absoluteLaunchTime));
                 }
 
                 if (double.IsNaN(newLaunchTime)) // this needs to be done after we set the cache, otherwise itll go into an endless loop of returning NaN

@@ -1,3 +1,4 @@
+using KSP.Localization;
 using System;
 using System.Reflection;
 
@@ -21,7 +22,7 @@ namespace LunarTransferPlanner
             // Search for Principia's type
             AssemblyLoader.loadedAssemblies.TypeOperation(type =>
             {
-                if (type.FullName == "principia.ksp_plugin_adapter.ExternalInterface")
+                if (type.FullName == Localizer.Format("#LOC_LTP_193"))
                     _principiaType = type;
             });
 
@@ -35,7 +36,7 @@ namespace LunarTransferPlanner
 
             try
             {
-                Principia = _principiaType.GetMethod("Get", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
+                Principia = _principiaType.GetMethod(Localizer.Format("#LOC_LTP_194"), BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
             }
             catch (Exception ex)
             {
@@ -73,12 +74,12 @@ namespace LunarTransferPlanner
                     if (value is T typedValue)
                         return typedValue;
 
-                    throw new InvalidCastException($"Cannot cast '{name}' to {typeof(T)}.");
+                    throw new InvalidCastException($"Cannot cast '{name}' to {typeof(T)}.");  // NO_LOCALIZATION
                 }
                 catch (Exception ex)
                 {
-                    LogWarning($"[PrincipiaWrapper] Error getting member '{name}' from type '{obj.GetType()}': {ex.Message}");
-                    throw new InvalidOperationException($"Failed to get member '{name}' from Principia object.", ex);
+                    LogWarning($"[PrincipiaWrapper] Error getting member '{name}' from type '{obj.GetType()}': {ex.Message}"); // NO_LOCALIZATION
+                    throw new InvalidOperationException($"Failed to get member '{name}' from Principia object.", ex); // NO_LOCALIZATION
                 }
             }
 
@@ -89,13 +90,13 @@ namespace LunarTransferPlanner
                 if (obj == null) throw new ArgumentNullException(nameof(obj));
 
                 var method = obj.GetType().GetMethod(methodName, Flags)
-                          ?? throw new MissingMethodException($"Method '{methodName}' not found on type {obj.GetType()}.");
+                          ?? throw new MissingMethodException($"Method '{methodName}' not found on type {obj.GetType()}.");  // NO_LOCALIZATION
 
                 return args =>
                 {
                     var result = method.Invoke(obj, args);
                     return result is T typedResult ? typedResult :
-                        throw new InvalidCastException($"Cannot cast result of '{methodName}' to {typeof(T)}.");
+                        throw new InvalidCastException($"Cannot cast result of '{methodName}' to {typeof(T)}."); // NO_LOCALIZATION
                 };
             }
         }

@@ -11,6 +11,7 @@
 
 // TODO, don't regenerate every frame if the size of the box doesnt actually need to be changed (especially with the currentUT tooltip in settings)
 
+using KSP.Localization;
 using System;
 using System.Collections.Generic;
 using UnityEngine;
@@ -20,7 +21,7 @@ public class Tooltip
     private const float TooltipMaxWidth = 200f;
     private const double TooltipShowDelay = 500;
 
-    private static readonly int _tooltipWindowId = "LTPTooltip".GetHashCode();
+    private static readonly int _tooltipWindowId = Localizer.Format("#LOC_LTP_199").GetHashCode();
     private static GUIStyle _tooltipStyle;
     private static Tooltip _instance;
 

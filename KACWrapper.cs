@@ -1,7 +1,8 @@
-﻿// this was originally copied from linuxgurugamer's KCT (https://github.com/linuxgurugamer/KCT/blob/master/Kerbal_Construction_Time/KACWrapper.cs),
+// this was originally copied from linuxgurugamer's KCT (https://github.com/linuxgurugamer/KCT/blob/master/Kerbal_Construction_Time/KACWrapper.cs),
 // but that code is not original and seems to be used in 30 projects
 // it originates from TriggerAu's KAC Wrapper example code (https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock_APITester/KACWrapper.cs)
 
+using KSP.Localization;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -74,7 +75,7 @@ namespace LunarTransferPlanner
             KACType = null;
 			AssemblyLoader.loadedAssemblies.TypeOperation(t =>
 			{
-				if (t.FullName == "KerbalAlarmClock.KerbalAlarmClock")
+				if (t.FullName == Localizer.Format("#LOC_LTP_1"))
 				{
 					KACType = t;
 				}
@@ -96,7 +97,7 @@ namespace LunarTransferPlanner
 			KACAlarmType = null;
 			AssemblyLoader.loadedAssemblies.TypeOperation(t =>
 			{
-				if (t.FullName == "KerbalAlarmClock.KACAlarm")
+				if (t.FullName == Localizer.Format("#LOC_LTP_2"))
 				{
 					KACAlarmType = t;
 				}
@@ -148,33 +149,33 @@ namespace LunarTransferPlanner
                 //these sections get and store the reflection info and actual objects where required. Later in the properties we then read the values from the actual objects
                 //for events we also add a handler
                 LogFormatted("Getting APIReady Object");
-                APIReadyField = KACType.GetField("APIReady", BindingFlags.Public | BindingFlags.Static);
+                APIReadyField = KACType.GetField(Localizer.Format("#LOC_LTP_3"), BindingFlags.Public | BindingFlags.Static);
                 LogFormatted("Success: " + (APIReadyField != null).ToString());
 
                 //WORK OUT THE STUFF WE NEED TO HOOK FOR PEOPEL HERE
                 LogFormatted("Getting Alarms Object");
-                AlarmsField = KACType.GetField("alarms", BindingFlags.Public | BindingFlags.Static);
+                AlarmsField = KACType.GetField(Localizer.Format("#LOC_LTP_4"), BindingFlags.Public | BindingFlags.Static);
                 actualAlarms = AlarmsField.GetValue(actualKAC);
                 LogFormatted("Success: " + (actualAlarms != null).ToString());
 
                 //Events
                 LogFormatted("Getting Alarm State Change Event");
-                onAlarmStateChangedEvent = KACType.GetEvent("onAlarmStateChanged", BindingFlags.Public | BindingFlags.Instance);
+                onAlarmStateChangedEvent = KACType.GetEvent(Localizer.Format("#LOC_LTP_5"), BindingFlags.Public | BindingFlags.Instance);
                 LogFormatted_DebugOnly("Success: " + (onAlarmStateChangedEvent != null).ToString());
                 LogFormatted_DebugOnly("Adding Handler");
                 AddHandler(onAlarmStateChangedEvent, actualKAC, AlarmStateChanged);
 
                 //Methods
                 LogFormatted("Getting Create Method");
-                CreateAlarmMethod = KACType.GetMethod("CreateAlarm", BindingFlags.Public | BindingFlags.Instance);
+                CreateAlarmMethod = KACType.GetMethod(Localizer.Format("#LOC_LTP_6"), BindingFlags.Public | BindingFlags.Instance);
                 LogFormatted_DebugOnly("Success: " + (CreateAlarmMethod != null).ToString());
 
                 LogFormatted("Getting Delete Method");
-                DeleteAlarmMethod = KACType.GetMethod("DeleteAlarm", BindingFlags.Public | BindingFlags.Instance);
+                DeleteAlarmMethod = KACType.GetMethod(Localizer.Format("#LOC_LTP_7"), BindingFlags.Public | BindingFlags.Instance);
                 LogFormatted_DebugOnly("Success: " + (DeleteAlarmMethod != null).ToString());
 
                 LogFormatted("Getting DrawAlarmAction");
-                DrawAlarmActionChoiceMethod = KACType.GetMethod("DrawAlarmActionChoiceAPI", BindingFlags.Public | BindingFlags.Instance);
+                DrawAlarmActionChoiceMethod = KACType.GetMethod(Localizer.Format("#LOC_LTP_8"), BindingFlags.Public | BindingFlags.Instance);
                 LogFormatted_DebugOnly("Success: " + (DrawAlarmActionChoiceMethod != null).ToString());
 
                 //LogFormatted("Getting DrawTimeEntry");
@@ -388,22 +389,22 @@ namespace LunarTransferPlanner
                 internal KACAlarm(object a)
                 {
                     actualAlarm = a;
-                    VesselIDField = KACAlarmType.GetField("VesselID");
-                    IDField = KACAlarmType.GetField("ID");
-                    NameField = KACAlarmType.GetField("Name");
-                    NotesField = KACAlarmType.GetField("Notes");
-                    AlarmTypeField = KACAlarmType.GetField("TypeOfAlarm");
-                    AlarmTimeProperty = KACAlarmType.GetProperty("AlarmTimeUT");
-                    AlarmMarginField = KACAlarmType.GetField("AlarmMarginSecs");
-                    AlarmActionField = KACAlarmType.GetField("AlarmAction");
-                    RemainingField = KACAlarmType.GetField("Remaining");
+                    VesselIDField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_9"));
+                    IDField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_10"));
+                    NameField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_11"));
+                    NotesField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_12"));
+                    AlarmTypeField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_13"));
+                    AlarmTimeProperty = KACAlarmType.GetProperty(Localizer.Format("#LOC_LTP_14"));
+                    AlarmMarginField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_15"));
+                    AlarmActionField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_16"));
+                    RemainingField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_17"));
 
-                    XferOriginBodyNameField = KACAlarmType.GetField("XferOriginBodyName");
+                    XferOriginBodyNameField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_18"));
                     //LogFormatted("XFEROrigin:{0}", XferOriginBodyNameField == null);
-                    XferTargetBodyNameField = KACAlarmType.GetField("XferTargetBodyName");
+                    XferTargetBodyNameField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_19"));
 
-                    RepeatAlarmField = KACAlarmType.GetField("RepeatAlarm");
-                    RepeatAlarmPeriodProperty = KACAlarmType.GetProperty("RepeatAlarmPeriodUT");
+                    RepeatAlarmField = KACAlarmType.GetField(Localizer.Format("#LOC_LTP_20"));
+                    RepeatAlarmPeriodProperty = KACAlarmType.GetProperty(Localizer.Format("#LOC_LTP_21"));
 
                     //PropertyInfo[] pis = KACAlarmType.GetProperties();
                     //foreach (PropertyInfo pi in pis)
@@ -624,7 +625,7 @@ namespace LunarTransferPlanner
         internal static void LogFormatted(string Message, params object[] strParams)
         {
             Message = string.Format(Message, strParams);
-            string strMessageLine = string.Format("{0},{2}-{3},{1}",
+            string strMessageLine = string.Format("{0}" + "," + "{2}" + "-" + "{3}" + "," + "{1}",
                 DateTime.Now, Message, System.Reflection.Assembly.GetExecutingAssembly().GetName().Name,
                 System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Name);
             UnityEngine.Debug.Log(strMessageLine);

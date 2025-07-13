@@ -1,6 +1,7 @@
-﻿// Adapted from TWP2 (https://github.com/Nazfib/TransferWindowPlanner2/tree/main/TransferWindowPlanner2/UI/Rendering), thanks Nazfib!
+// Adapted from TWP2 (https://github.com/Nazfib/TransferWindowPlanner2/tree/main/TransferWindowPlanner2/UI/Rendering), thanks Nazfib!
 
 
+using KSP.Localization;
 using System;
 using UnityEngine;
 
@@ -281,16 +282,16 @@ namespace LunarTransferPlanner
             Vector3 dir2 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point2Direction.normalized));
 
             // checking z coordinate hides labels when they're behind the camera
-            if (dir1.z > 0) GUI.Label(new Rect(dir1.x - 50, Screen.height - dir1.y - 15, 100, 30), new GUIContent("Parking Orbit Insertion", "This is the point directly above the launch site"), _styleLabel);
-            if (dir2.z > 0) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
+            if (dir1.z > 0) GUI.Label(new Rect(dir1.x - 50, Screen.height - dir1.y - 15, 100, 30), new GUIContent(Localizer.Format("#LOC_LTP_195"), Localizer.Format("#LOC_LTP_196")), _styleLabel);
+            if (dir2.z > 0) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent(Localizer.Format("#LOC_LTP_197"), Localizer.Format("#LOC_LTP_198")), _styleLabel);
 
             Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction.normalized;
             double arcRadius = 2.5 * parkingOrbit.semiMajorAxis; // arc uses 2
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 
-            if (arcPoint.z > 0) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{LunarTransferPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
-            
+            if (arcPoint.z > 0) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{LunarTransferPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);  // NO_LOCALIZATION
+
             Tooltip.Instance?.RecordTooltip(this.GetHashCode());
             Tooltip.Instance?.ShowTooltip(this.GetHashCode());
         }

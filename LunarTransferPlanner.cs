@@ -1129,6 +1129,8 @@ namespace LunarTransferPlanner
             Vector3d launchDir = Math.Sin(aziRad) * east + Math.Cos(aziRad) * north;
             Vector3d orbitNormal = Vector3d.Cross(launchDir, pos).normalized;
 
+            //Log($"Vector3d.Dot(orbitNormal, Vector3d.up): {Vector3d.Dot(orbitNormal, Vector3d.up)}");
+
             if (Vector3d.Dot(orbitNormal, Vector3d.up) < 0d)
             {
                 orbitNormal *= -1; // make sure orbitNorm always points roughly northwards
@@ -1136,7 +1138,11 @@ namespace LunarTransferPlanner
 
             Vector3d nodeVector = Vector3d.Cross(orbitNormal, equatorNormal).normalized; // line of nodes pointing towards ascending node
 
+            //Log($"Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right): {Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right))}");
+
             double LAN = Util.ClampAngle(Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right)), true);
+
+            //Log($"nodeVector.z: {nodeVector.z}");
 
             if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make sure LAN is in the correct quadrant
 
@@ -1146,6 +1152,8 @@ namespace LunarTransferPlanner
             Vector3d periapsisVector = (pos - (Vector3d.Dot(pos, orbitNormal) * orbitNormal)).normalized; // bring pos into orbit, consider it the periapsis of the parking orbit
 
             double AoP = Util.ClampAngle(Math.PI - Math.Acos(Vector3d.Dot(nodeVector, periapsisVector)), true); // im not entirely sure why Math.PI is needed
+
+            //Log($"Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal): {Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal)}");
 
             if (Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal) < 0d) AoP = Util.ClampAngle(tau - AoP, true);
 
@@ -1552,7 +1560,7 @@ namespace LunarTransferPlanner
             if (Math.Abs(testValue - valueDouble) < epsilon) valueDouble = testValue; // this works for stuff like 3.99999999, but not for stuff like 4.0999999999. oh well
 
             stepDouble = Math.Max(epsilon, stepDouble);
-            minValueDouble = Math.Abs(minValueDouble) < epsilon ? epsilon : minValueDouble;
+            if (!wrapAround) minValueDouble = Math.Abs(minValueDouble) < epsilon ? epsilon : minValueDouble;
             maxValueDouble = Math.Abs(maxValueDouble) < epsilon ? epsilon : maxValueDouble;
 
             // retrieve tick time buffer

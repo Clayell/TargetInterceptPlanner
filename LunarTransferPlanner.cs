@@ -1550,21 +1550,16 @@ namespace LunarTransferPlanner
             //valueDouble = Math.Max(epsilon, valueDouble);
             if (double.IsNaN(valueDouble)) valueDouble = minValueDouble;
             valueDouble = Util.Clamp(valueDouble, minValueDouble, maxValueDouble);
+            double testValue = Math.Round(valueDouble);
+            if (Math.Abs(testValue - valueDouble) < epsilon) valueDouble = testValue; // this works for stuff like 3.99999999, but not for stuff like 4.0999999999. oh well
+
             stepDouble = Math.Max(epsilon, stepDouble);
-            //minValueDouble = Math.Max(epsilon, minValueDouble);
-            //maxValueDouble = Math.Max(epsilon, maxValueDouble);
+            minValueDouble = Math.Abs(minValueDouble) < epsilon ? epsilon : minValueDouble;
+            maxValueDouble = Math.Abs(maxValueDouble) < epsilon ? epsilon : maxValueDouble;
 
             // retrieve tick time buffer
             if (!nextTickMap.TryGetValue(controlId, out double nextTick))
                 nextTick = 0d;
-
-            //if (StateChanged("opened" + controlId, true)) // if this is the first time this edit field is being opened
-            //{
-            //    int decimals = Math.Max(0, (int)Math.Ceiling(-Math.Log10(stepDouble)));
-            //    valueDouble = Math.Round(valueDouble, decimals);
-            //    textBuffer[controlId] = valueDouble.ToString($"F{decimals}", CultureInfo.InvariantCulture);
-            //}
-            // this leads to changes when the mod is restarted, not advised
 
             // retrieve text buffer
             if (!textBuffer.TryGetValue(controlId, out string textValue))
@@ -1628,7 +1623,7 @@ namespace LunarTransferPlanner
                         // probably the best solution would be to switch to decimal, but thats a lot of work
 
                         int index = str.IndexOf('.');
-                        if (index < 0) decimals = 0;
+                        if (index == -1) decimals = 0;
                         else decimals = str.Length - index - 1;
                     }
 
@@ -2238,7 +2233,7 @@ namespace LunarTransferPlanner
                     if (GUILayout.Button(new GUIContent($"({flightTimeLabel})", flightTimeTooltip), GUILayout.Width(25))) flightTimeMode = (flightTimeMode + 1) % 4;
                     GUILayout.EndVertical();
 
-                    switch (flightTimeMode)
+                    switch (flightTimeMode) // TODO, round solarDayLength to prevent excessive decimals?
                     {
                         case 0:
                             flightTimeLabel = "d";
@@ -2319,7 +2314,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.EndHorizontal();
 
-                    MakeNumberEditField("flightTime", ref flightTime_Adj, 0.1d, double.Epsilon, double.MaxValue);
+                    MakeNumberEditField("flightTime", ref flightTime_Adj, 0.1d, epsilon, double.MaxValue);
                     if (StateChanged("flightTime", flightTime)) ClearAllCaches();
                     GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s"), GUILayout.MinWidth(100));
 

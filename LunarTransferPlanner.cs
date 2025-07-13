@@ -1129,6 +1129,8 @@ namespace LunarTransferPlanner
             Vector3d launchDir = Math.Sin(aziRad) * east + Math.Cos(aziRad) * north;
             Vector3d orbitNormal = Vector3d.Cross(launchDir, pos).normalized;
 
+            //Log("----------------------------------");
+
             //Log($"Vector3d.Dot(orbitNormal, Vector3d.up): {Vector3d.Dot(orbitNormal, Vector3d.up)}");
 
             if (Vector3d.Dot(orbitNormal, Vector3d.up) < 0d)

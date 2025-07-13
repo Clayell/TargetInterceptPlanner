@@ -93,6 +93,10 @@
     <Compile Include="Tooltip.cs" />
   </ItemGroup>
   <ItemGroup>
+	<Content Include="GameData\LunarTransferPlanner\Localization\en-us.cfg" />
+	<Content Include="GameData\LunarTransferPlanner\Localization\en-us.csv" />
+  </ItemGroup>
+  <ItemGroup>
     <None Include="LICENSE.md" />
     <None Include="README.md" />
 	<None Include="GameData\LunarTransferPlanner\LunarTransferPlanner.version" />

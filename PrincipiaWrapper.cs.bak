@@ -1,4 +1,3 @@
-using KSP.Localization;
 using System;
 using System.Reflection;
 
@@ -17,46 +16,46 @@ namespace LunarTransferPlanner
             _principiaType = null;
             Principia = null;
 
-            Log(Localizer.Format("#LTP_Attempting_to_grab_Princi"));
+            Log("Attempting to grab Principia types...");
 
             // Search for Principia's type
             AssemblyLoader.loadedAssemblies.TypeOperation(type =>
             {
-                if (type.FullName == Localizer.Format("#LTP_principia_ksp_plugin_adap"))
+                if (type.FullName == "principia.ksp_plugin_adapter.ExternalInterface")
                     _principiaType = type;
             });
 
             if (_principiaType == null)
             {
-                Log(Localizer.Format("#LTP_Principia_type_not_found"));
+                Log("Principia type not found.");
                 return false;
             }
 
-            Log($ "Found Principia version:" + " {_}" + "rincipiaType.Assembly.GetName().Version" + "}");
+            Log($"Found Principia version: {_principiaType.Assembly.GetName().Version}");
 
             try
             {
-                Principia = _principiaType.GetMethod(Localizer.Format("#LTP_Get"), BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
+                Principia = _principiaType.GetMethod("Get", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
             }
             catch (Exception ex)
             {
-                Log($ "Error accessing Principia API:" + " {e}" + ".Message" + "}");
+                Log($"Error accessing Principia API: {ex.Message}");
                 return false;
             }
 
             if (Principia == null)
             {
-                Log(Localizer.Format("#LTP_Failed_to_retrieve_Princi"));
+                Log("Failed to retrieve Principia instance.");
                 return false;
             }
 
-            Log(Localizer.Format("#LTP_Successfully_initialized_"));
+            Log("Successfully initialized Principia wrapper.");
             return true;
         }
 
-        private static void Log(string message) => Util.Log(message, Localizer.Format("#LTP_LTP_PrincipiaWrapper"));
+        private static void Log(string message) => Util.Log(message, "[LTP-PrincipiaWrapper]");
 
-        private static void LogWarning(string message) => Util.LogWarning(message, Localizer.Format("#LTP_LTP_PrincipiaWrapper"));
+        private static void LogWarning(string message) => Util.LogWarning(message, "[LTP-PrincipiaWrapper]");
 
         public static class Reflection
         {
@@ -74,12 +73,12 @@ namespace LunarTransferPlanner
                     if (value is T typedValue)
                         return typedValue;
 
-                    throw new InvalidCastException($ "Cannot cast '" + "{n}" + "me" + "}" +  " to" + " {t}" + "peof(T)" + "}");
+                    throw new InvalidCastException($"Cannot cast '{name}' to {typeof(T)}.");
                 }
                 catch (Exception ex)
                 {
-                    LogWarning($ "[PrincipiaWrapper] Error getting member '" + "{n}" + "me" + "}" +  " from type '" + "{o}" + "j.GetType()" + "}" +  ":" + " {e}" + ".Message" + "}");
-                    throw new InvalidOperationException($ "Failed to get member '" + "{n}" + "me" + "}" + " from Principia object.", ex);
+                    LogWarning($"[PrincipiaWrapper] Error getting member '{name}' from type '{obj.GetType()}': {ex.Message}");
+                    throw new InvalidOperationException($"Failed to get member '{name}' from Principia object.", ex);
                 }
             }
 
@@ -90,13 +89,13 @@ namespace LunarTransferPlanner
                 if (obj == null) throw new ArgumentNullException(nameof(obj));
 
                 var method = obj.GetType().GetMethod(methodName, Flags)
-                          ?? throw new MissingMethodException($ "Method '" + "{m}" + "thodName" + "}" +  " not found on type" + " {o}" + "j.GetType()" + "}");
+                          ?? throw new MissingMethodException($"Method '{methodName}' not found on type {obj.GetType()}.");
 
                 return args =>
                 {
                     var result = method.Invoke(obj, args);
                     return result is T typedResult ? typedResult :
-                        throw new InvalidCastException($ "Cannot cast result of '" + "{m}" + "thodName" + "}" +  " to" + " {t}" + "peof(T)" + "}");
+                        throw new InvalidCastException($"Cannot cast result of '{methodName}' to {typeof(T)}.");
                 };
             }
         }

@@ -1,4 +1,5 @@
 using ClickThroughFix;
+using ToolbarControl_NS;
 using KSP.UI.Screens;
 using System;
 using System.Collections.Generic;
@@ -7,9 +8,7 @@ using System.Diagnostics; // use this for stopwatch
 using System.Globalization; // stick to CultureInfo.InvariantCulture
 using System.IO;
 using System.Linq;
-using ToolbarControl_NS;
 using UnityEngine;
-using static GameEvents;
 
 namespace LunarTransferPlanner
 {

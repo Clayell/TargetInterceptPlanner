@@ -2303,30 +2303,29 @@ namespace LunarTransferPlanner
                             break;
                     }
 
-                    // commenting this out for now until i can figure out the recursive stuff
+                    if (ResetDefault())
+                    {
+                        flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d, currentUT).time;
+                        // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
+                        // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
+                        // this gives a time that is likely to be viable, but not the maximum. the best way would be to use nextLaunchUT + phaseTime1, but changing the flightTime changes the nextLaunchUT, so its an annoying recursive behavior
 
-                    //if (ResetDefault($"Reset to Maximum Flight Time{(targetOrbit.eccentricity >= epsilon ? "\n(not exactly maximum due to the eccentricity of the target's orbit)" : "")}"))
-                    //{
-                    //    flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time;
-                    //    // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
-                    //    // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
-
-                    //    switch (flightTimeMode)
-                    //    {
-                    //        case 0:
-                    //            flightTime_Adj = flightTime / solarDayLength;
-                    //            break;
-                    //        case 1:
-                    //            flightTime_Adj = flightTime / (60d * 60d);
-                    //            break;
-                    //        case 2:
-                    //            flightTime_Adj = flightTime / 60d;
-                    //            break;
-                    //        case 3:
-                    //            flightTime_Adj = flightTime;
-                    //            break;
-                    //    }
-                    //}
+                        switch (flightTimeMode)
+                        {
+                            case 0:
+                                flightTime_Adj = flightTime / solarDayLength;
+                                break;
+                            case 1:
+                                flightTime_Adj = flightTime / (60d * 60d);
+                                break;
+                            case 2:
+                                flightTime_Adj = flightTime / 60d;
+                                break;
+                            case 3:
+                                flightTime_Adj = flightTime;
+                                break;
+                        }
+                    }
 
                     GUILayout.EndHorizontal();
 

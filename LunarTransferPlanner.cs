@@ -1,5 +1,4 @@
 using ClickThroughFix;
-using ToolbarControl_NS;
 using KSP.UI.Screens;
 using System;
 using System.Collections.Generic;
@@ -8,7 +7,9 @@ using System.Diagnostics; // use this for stopwatch
 using System.Globalization; // stick to CultureInfo.InvariantCulture
 using System.IO;
 using System.Linq;
+using ToolbarControl_NS;
 using UnityEngine;
+using static GameEvents;
 
 namespace LunarTransferPlanner
 {
@@ -204,7 +205,6 @@ namespace LunarTransferPlanner
         string manualModeTooltip;
 
         double targetInclination;
-        double targetAltitude;
         double currentUT;
         double dayScale;
         double solarDayLength;
@@ -293,11 +293,11 @@ namespace LunarTransferPlanner
         List<CelestialBody> moons;
         List<Vessel> vessels;
         double lastLaunchTime = double.NaN;
-        readonly List<(object target, double targetAltitude, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double, double)>();
+        readonly List<(object target, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
         readonly List<(double phasingTime, double phasingAngle, int windowNumber)> phasingCache = new List<(double, double, int)>();
         readonly List<(double LAN, double AoP, int windowNumber)> LANCache = new List<(double, double, int)>();
-        (object target, double targetAltitude, double deltaV, double eccentricity, int errorStateDV)? deltaVCache = null;
+        readonly List<(double deltaV, double eccentricity, int errorStateDV, int windowNumber)> deltaVCache = new List<(double, double, int, int)>();
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
@@ -702,6 +702,25 @@ namespace LunarTransferPlanner
         private void Log(string message) => Util.Log(message);
 
         private void LogError(string message) => Util.LogError(message);
+
+        private bool ValueChanged(string key, double value, double tolerance, bool detectFirstAccess = true)
+        {
+            if (stateBuffer.TryGetValue(key, out var existing) && double.TryParse(existing.ToString(), out double existingDouble))
+            {
+                if (Math.Abs(existingDouble - value) > tolerance)
+                {
+                    stateBuffer[key] = value;
+                    return true;
+                }
+                return false;
+            }
+            else
+            {
+                stateBuffer[key] = value;
+                if (detectFirstAccess) return true; // first access
+                else return false;
+            }
+        }
 
         private bool StateChanged<T>(string key, T state, bool detectFirstAccess = true)
         {
@@ -1204,14 +1223,14 @@ namespace LunarTransferPlanner
             return (phasingTime, phasingAngle);
         }
 
-        private (double time, double eccentricity) EstimateTimeAfterManeuver(double dV)
+        private (double time, double eccentricity) EstimateTimeAfterManeuver(double dV, double startUT)
         { // The formulas are from http://www.braeunig.us/space/orbmech.htm
             if (targetOrbit == null) return (double.NaN, double.NaN);
 
             const double tolerance = 0.01;
             double gravParameter = mainBody.gravParameter;
             double r0 = mainBody.Radius + parkingAltitude * 1000d; // Radius of the circular orbit, including the radius of the mainBody
-            double r1 = targetOrbit.GetRadiusAtUT(currentUT); // Initial guess for the altitude of the target
+            double r1 = targetOrbit.GetRadiusAtUT(startUT); // Initial guess for the altitude of the target
             double t1 = double.MaxValue;
             double previousT1 = 0d;
             double v0 = Math.Sqrt(gravParameter / r0) + dV;
@@ -1254,7 +1273,7 @@ namespace LunarTransferPlanner
                 }
 
                 // Update r1 using new estimate of flight time
-                r1 = targetOrbit.GetRadiusAtUT(currentUT + t1);
+                r1 = targetOrbit.GetRadiusAtUT(startUT + t1);
 
                 //Log($"new r1: {r1}");
 
@@ -1278,7 +1297,7 @@ namespace LunarTransferPlanner
             return (t1, e);
         }
 
-        (double dV, double eccentricity, int errorStateDV) EstimateDV()
+        (double dV, double eccentricity, int errorStateDV) EstimateDV(double startUT)
         {
             //CelestialBody mainBody = target.referenceBody;
 
@@ -1297,7 +1316,7 @@ namespace LunarTransferPlanner
 
             double FlightTimeError(double candidateDV)
             {
-                (double estimatedFlightTime, _) = EstimateTimeAfterManeuver(candidateDV);
+                (double estimatedFlightTime, _) = EstimateTimeAfterManeuver(candidateDV, startUT);
 
                 //Log($"estimatedFlightTime: {estimatedFlightTime}, candidateDV: {candidateDV}");
 
@@ -1309,7 +1328,7 @@ namespace LunarTransferPlanner
 
             double dV = GoldenSectionSearch(lowerBound, upperBound, epsilon, FlightTimeError);
 
-            (double finalTime, double eccentricity) = EstimateTimeAfterManeuver(dV);
+            (double finalTime, double eccentricity) = EstimateTimeAfterManeuver(dV, startUT);
 
             //Log($"Final Time: {finalTime}, expectedFlightTime: {expectedFlightTime}, maxPossibleDV: {maxPossibleDV}, eccentricity: {eccentricity}");
 
@@ -1347,7 +1366,7 @@ namespace LunarTransferPlanner
             launchOrbitCache.Clear();
             phasingCache.Clear();
             LANCache.Clear();
-            ClearDeltaVCache();
+            deltaVCache.Clear();
             ClearAllOrbitDisplays();
             ClearAngleRenderer();
             ResetLaunchInclination();
@@ -1355,7 +1374,7 @@ namespace LunarTransferPlanner
             needCacheClear = true;
         }
 
-        private void CheckWindowCache(double latitude, double longitude, double targetInclination, double targetAltitude)
+        private void CheckWindowCache(double latitude, double longitude, double targetInclination)
         {
             const double tolerance = 0.01;
 
@@ -1365,13 +1384,13 @@ namespace LunarTransferPlanner
                 bool expired = currentUT > entry.absoluteLaunchTime;
                 bool targetMismatch = StateChanged("targetManualWindowCache", targetManual) || (!targetManual && entry.target != target); // this will also trigger when changing mainBody, assuming we dont get restarted due to a scene switch
                 bool posMismatch = Math.Abs(entry.latitude - latitude) >= tolerance || Math.Abs(entry.longitude - longitude) >= tolerance; // add altitude if necessary, also, we restart when changing launch sites, so posMismatch only triggers when changing position by vessel or manually
-                bool altitudeMismatch = StateChanged("targetAltitudeNaN", targetAltitude == double.NaN) || Math.Abs(entry.targetAltitude - targetAltitude) / targetAltitude >= tolerance; // 1%
+                //bool altitudeMismatch = StateChanged("targetAltitudeNaN", targetAltitude == double.NaN) || Math.Abs(entry.targetAltitude - targetAltitude) / targetAltitude >= tolerance; // 1%
                 bool inclinationMismatch = Math.Abs(entry.targetInclination - targetInclination) >= tolerance * 2;
 
-                if (expired || targetMismatch || posMismatch || inclinationMismatch || altitudeMismatch)
+                if (expired || targetMismatch || posMismatch || inclinationMismatch)
                 {
                     if (expired) lastLaunchTime = windowCache[0].absoluteLaunchTime;
-                    //Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, altitude: {entry.targetAltitude}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
+                    //Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
                     if (targetMismatch) // this will only trigger if the mainBody actually has targets(s)
                     {
                         Log($"Now targeting {(targetManual ? "[Manual Target]" : target)}");
@@ -1380,10 +1399,10 @@ namespace LunarTransferPlanner
                     launchOrbitCache.Clear();
                     phasingCache.Clear();
                     LANCache.Clear();
+                    deltaVCache.Clear();
                     ClearAllOrbitDisplays();
                     ClearAngleRenderer();
                     ResetLaunchInclination();
-                    // leave deltaVCache alone
                     break;
                 }
             }
@@ -1432,7 +1451,7 @@ namespace LunarTransferPlanner
                 else
                 {
                     absoluteLaunchTime = currentUT + newLaunchTime;
-                    windowCache.Add((target, targetAltitude, latitude, longitude, targetInclination, absoluteLaunchTime));
+                    windowCache.Add((target, latitude, longitude, targetInclination, absoluteLaunchTime));
                 }
 
                 if (double.IsNaN(newLaunchTime)) // this needs to be done after we set the cache, otherwise itll go into an endless loop of returning NaN
@@ -1512,32 +1531,23 @@ namespace LunarTransferPlanner
             }
         }
 
-        private (double dV, double eccentricity, int errorStateDV) GetCachedDeltaV()
+        private (double dV, double eccentricity, int errorStateDV) GetCachedDeltaV(double startUT, int? windowNumber = null)
         {
-            const double tolerance = 0.01;
-
-            if (!deltaVCache.HasValue)
+            if (windowNumber.HasValue)
             {
-                (double dV, double eccentricity, int errorStateDV) = EstimateDV();
-                deltaVCache = (target, targetAltitude, dV, eccentricity, errorStateDV);
+                int index = deltaVCache.FindIndex(item => item.windowNumber == windowNumber.Value);
+                if (index != -1) return (deltaVCache[index].deltaV, deltaVCache[index].eccentricity, deltaVCache[index].errorStateDV); // return if exists
+                else
+                {
+                    (double dV, double eccentricity, int errorStateDV) = EstimateDV(startUT);
+                    deltaVCache.Add((dV, eccentricity, errorStateDV, windowNumber.Value));
+                    return (dV, eccentricity, errorStateDV);
+                }
             }
             else
             {
-                bool targetMismatch = deltaVCache.Value.target != target;
-                bool altitudeMismatch = Math.Abs(deltaVCache.Value.targetAltitude - targetAltitude) / targetAltitude >= tolerance; // 1%
-
-                if (targetMismatch || altitudeMismatch)
-                {
-                    //Log($"Resetting DeltaV Cache due to change of cache. Old values: target: {deltaVCache.Value.target}, targetAltitude: {deltaVCache.Value.targetAltitude}, deltaV: {deltaVCache.Value.deltaV}, eccentricity: {deltaVCache.Value.eccentricity}, errorStateDV: {deltaVCache.Value.errorStateDV} due to {(targetMismatch ? "target mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
-
-                    (double dV, double eccentricity, int errorStateDV) = EstimateDV(); // dont check if NaN
-                    deltaVCache = (target, targetAltitude, dV, eccentricity, errorStateDV);
-                }
+                return EstimateDV(startUT);
             }
-
-            // if nothing is wrong, then just return the cached values
-
-            return (deltaVCache.Value.deltaV, deltaVCache.Value.eccentricity, deltaVCache.Value.errorStateDV);
         }
 
         #endregion
@@ -1809,8 +1819,6 @@ namespace LunarTransferPlanner
 
             return pressed;
         }
-
-        private void ClearDeltaVCache() => deltaVCache = null;
 
         private void ClearAllOrbitDisplays()
         {
@@ -2150,16 +2158,15 @@ namespace LunarTransferPlanner
                         targetName = "[Manual Target]";
                     }
 
+                    const double epsilon = 1e-9;
                     targetInclination = GetTargetInclination(targetOrbit); // this works regardless of manual or non-manual target
                     isLowLatitude = Math.Abs(latitude) <= targetInclination;
-                    (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV();
                     dayScale = mainBody.rotationPeriod / EarthSiderealDay;
                     CelestialBody homeBody = FlightGlobals.GetHomeBody();
                     solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
-                    targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
-                    const double epsilon = 1e-9;
+                    //targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
 
-                    CheckWindowCache(latitude, longitude, targetInclination, targetAltitude);
+                    CheckWindowCache(latitude, longitude, targetInclination);
 
                     if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
                     else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
@@ -2297,28 +2304,30 @@ namespace LunarTransferPlanner
                             break;
                     }
 
-                    if (ResetDefault($"Reset to Maximum Flight Time{(targetOrbit.eccentricity >= epsilon ? "\n(not exactly maximum due to the eccentricity of the target's orbit)" : "")}"))
-                    {
-                        flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time;
-                        // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
-                        // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
+                    // commenting this out for now until i can figure out the recursive stuff
 
-                        switch (flightTimeMode)
-                        {
-                            case 0:
-                                flightTime_Adj = flightTime / solarDayLength;
-                                break;
-                            case 1:
-                                flightTime_Adj = flightTime / (60d * 60d);
-                                break;
-                            case 2:
-                                flightTime_Adj = flightTime / 60d;
-                                break;
-                            case 3:
-                                flightTime_Adj = flightTime;
-                                break;
-                        }
-                    }
+                    //if (ResetDefault($"Reset to Maximum Flight Time{(targetOrbit.eccentricity >= epsilon ? "\n(not exactly maximum due to the eccentricity of the target's orbit)" : "")}"))
+                    //{
+                    //    flightTime = EstimateTimeAfterManeuver(Math.Sqrt(mainBody.gravParameter / (parkingAltitude * 1000d + mainBody.Radius)) * (Math.Sqrt(2d * targetOrbit.ApR / (parkingAltitude * 1000d + mainBody.Radius + targetOrbit.ApR)) - 1d) + .01d).time;
+                    //    // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
+                    //    // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
+
+                    //    switch (flightTimeMode)
+                    //    {
+                    //        case 0:
+                    //            flightTime_Adj = flightTime / solarDayLength;
+                    //            break;
+                    //        case 1:
+                    //            flightTime_Adj = flightTime / (60d * 60d);
+                    //            break;
+                    //        case 2:
+                    //            flightTime_Adj = flightTime / 60d;
+                    //            break;
+                    //        case 3:
+                    //            flightTime_Adj = flightTime;
+                    //            break;
+                    //    }
+                    //}
 
                     GUILayout.EndHorizontal();
 
@@ -2338,6 +2347,13 @@ namespace LunarTransferPlanner
                     double extraLaunchETA = extraLaunchUT - currentUT;
                     //stopwatch.Stop();
                     //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
+
+                    (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
+
+                    (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV(referenceTime + currentUT + phaseTime0, referenceWindowNumber);
+
+                    if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5) || StateChanged("referenceTimeButton", referenceTimeButton)) ClearOrbitDisplay(ref _transferOrbitRenderer);
+                    // 1e-5 resets it about every minute or so when using Launch Now
 
                     bool inSpecialWarp = warpState == 2 || warpState == 3;
                     bool specialWarpActive = warpState == 1 || inSpecialWarp;
@@ -2364,7 +2380,7 @@ namespace LunarTransferPlanner
                         if (StateChanged("parkingAltitude", parkingAltitude))
                         {
                             phasingCache.Clear();
-                            ClearDeltaVCache();
+                            deltaVCache.Clear();
                             ClearAllOrbitDisplays();
                             ClearAngleRenderer();
                         }
@@ -2428,7 +2444,6 @@ namespace LunarTransferPlanner
 
                     if (expandParking0)
                     {
-                        (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
                         (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
                         ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0);
                     }

@@ -2347,10 +2347,16 @@ namespace LunarTransferPlanner
                     //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
                     (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
+                    (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
 
                     (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV(referenceTime + currentUT + phaseTime0, referenceWindowNumber);
 
-                    if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5) || StateChanged("referenceTimeButton", referenceTimeButton)) ClearOrbitDisplay(ref _transferOrbitRenderer);
+                    if (StateChanged("referenceTimeButton", referenceTimeButton))
+                    {
+                        ClearAllOrbitDisplays();
+                        ClearAngleRenderer();
+                    }
+                    else if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer);
                     // 1e-5 resets it about every minute or so when using Launch Now
 
                     bool inSpecialWarp = warpState == 2 || warpState == 3;
@@ -2390,7 +2396,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.BeginVertical();
                     GUILayout.Space(5);
-                    if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(100))) referenceTimeButton = (referenceTimeButton + 1) % (expandExtraWindow ? 3 : 2);
+                    if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(105))) referenceTimeButton = (referenceTimeButton + 1) % (expandExtraWindow ? 3 : 2);
                     GUILayout.EndVertical();
 
                     GUILayout.BeginVertical();
@@ -2442,7 +2448,6 @@ namespace LunarTransferPlanner
 
                     if (expandParking0)
                     {
-                        (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
                         ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0);
                     }
 
@@ -2747,11 +2752,11 @@ namespace LunarTransferPlanner
                     {
                         Orbit parkingOrbit = new Orbit
                         {
-                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
+                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination,
                             eccentricity = epsilon, // just to make periapsis visible
                             semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
-                            LAN = launchLAN1,
-                            argumentOfPeriapsis = launchAoP1,
+                            LAN = launchLAN0,
+                            argumentOfPeriapsis = launchAoP0,
                             meanAnomalyAtEpoch = 0d,
                             epoch = currentUT,
                             referenceBody = mainBody,
@@ -2777,8 +2782,8 @@ namespace LunarTransferPlanner
                                 _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
                             }
 
-                            double AoPmodified = (targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP1, false) : 180d - launchAoP1;
-                            _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle1);
+                            double AoPmodified = (targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP0, false) : 180d - launchAoP0;
+                            _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle0);
 
                             //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
                         }
@@ -2797,13 +2802,13 @@ namespace LunarTransferPlanner
 
                     if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needCacheClear)
                     {
-                        double phaseAoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP1 + phaseAngle1 + 180d, false) : Util.ClampAngle(launchAoP1 + phaseAngle1, false);
+                        double phaseAoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP0 + phaseAngle0 + 180d, false) : Util.ClampAngle(launchAoP0 + phaseAngle0, false);
                         Orbit transferOrbit = new Orbit
                         {
-                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit1.inclination : targetLaunchInclination,
+                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination,
                             eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
                             semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
-                            LAN = launchLAN1,
+                            LAN = launchLAN0,
                             argumentOfPeriapsis = phaseAoPmodified,
                             meanAnomalyAtEpoch = 0d,
                             epoch = currentUT,

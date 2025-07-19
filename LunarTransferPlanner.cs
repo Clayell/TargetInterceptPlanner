@@ -1299,8 +1299,6 @@ namespace LunarTransferPlanner
         {
             //CelestialBody mainBody = target.referenceBody;
 
-            Log($"startUT: {startUT}, referenceTime: {referenceTime}, flightTime: {flightTime}");
-
             // Search in this range
             double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
             double expectedFlightTime = flightTime;
@@ -1362,8 +1360,6 @@ namespace LunarTransferPlanner
 
         private void ClearAllCaches() // TODO, just replace all cache clears with this?
         {
-            Log("resetting caches");
-            
             windowCache.Clear();
             launchOrbitCache.Clear();
             phasingCache.Clear();
@@ -2795,8 +2791,6 @@ namespace LunarTransferPlanner
                     {
                         ClearAngleRenderer();
                     }
-
-                    if (GUILayout.Button("Log")) Log($"trajectoryEccentricity: {trajectoryEccentricity}, errorStateDV: {errorStateDV}, dV: {dV}, needCacheClear: {needCacheClear}");
 
                     if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needCacheClear)
                     {

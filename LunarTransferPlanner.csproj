@@ -118,7 +118,13 @@
 		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "C:\Users\Clayel\KSP Instances\KSP 1\Kerbal Space Program (1.12.5 STOCKALIKE)\GameData\LunarTransferPlanner\Plugins\"
 	  </PostBuildEvent>
   </PropertyGroup>
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+  <Target Name="CheckKSPStatus" BeforeTargets="CoreCompile">
+    <Exec Command="tasklist /FI &quot;IMAGENAME eq KSP_x64.exe&quot;" ConsoleToMSBuild="true">
+	    <Output TaskParameter="ConsoleOutput" PropertyName="KSPProcessList"/>
+	</Exec>
+	<Error Condition=" $(KSPProcessList.Contains('KSP_x64.exe')) " Text="Build failed: KSP_x64.exe is running. Please close KSP before building." />
+  </Target>
+	<!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
   </Target>

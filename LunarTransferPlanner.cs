@@ -16,7 +16,7 @@ namespace LunarTransferPlanner
     {
         internal static void Log(string message, string prefix = "[LunarTransferPlanner]")
         {
-            UnityEngine.Debug.Log($"{prefix}: {message}"); // could also do KSPLog.print
+            UnityEngine.Debug.Log($"{prefix}: {message}"); // KSPLog.print does the same thing
         }
 
         internal static void LogWarning(string message, string prefix = "[LunarTransferPlanner]")
@@ -331,7 +331,8 @@ namespace LunarTransferPlanner
             resetGreen = LoadImage("resetGreen");
 
             LoadSettings();
-
+            
+            // GameEvents should be kept in Awake()
             GameEvents.onShowUI.Add(KSPShowGUI);
             GameEvents.onHideUI.Add(KSPHideGUI);
             GameEvents.onGameSceneLoadRequested.Add(OnSceneChange);
@@ -423,8 +424,6 @@ namespace LunarTransferPlanner
                     ClampToScreen(ref manualOrbitRect);
                     Tooltip.Instance?.ShowTooltip(id2);
                 }
-
-                needCacheClear = false; // reset this at the end of every frame
             }
         }
 
@@ -1300,6 +1299,8 @@ namespace LunarTransferPlanner
         {
             //CelestialBody mainBody = target.referenceBody;
 
+            Log($"startUT: {startUT}, referenceTime: {referenceTime}, flightTime: {flightTime}");
+
             // Search in this range
             double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by Earth sqrt(mass/radius)
             double expectedFlightTime = flightTime;
@@ -1361,6 +1362,8 @@ namespace LunarTransferPlanner
 
         private void ClearAllCaches() // TODO, just replace all cache clears with this?
         {
+            Log("resetting caches");
+            
             windowCache.Clear();
             launchOrbitCache.Clear();
             phasingCache.Clear();
@@ -1371,6 +1374,37 @@ namespace LunarTransferPlanner
             ResetLaunchInclination();
 
             needCacheClear = true;
+        }
+
+        private void ClearAllOrbitDisplays()
+        {
+            ClearOrbitDisplay(ref _parkingOrbitRenderer);
+            ClearOrbitDisplay(ref _transferOrbitRenderer);
+            ClearOrbitDisplay(ref _manualOrbitRenderer);
+        }
+
+        private void ClearOrbitDisplay(ref OrbitRendererHack renderer)
+        {
+            renderer?.Cleanup();
+            renderer = null;
+        }
+
+        private void ClearAngleRenderer()
+        {
+            _phasingAngleRenderer?.Hide();
+            Destroy(_phasingAngleRenderer);
+            _phasingAngleRenderer = null;
+
+        }
+
+        private void ResetLaunchInclination()
+        {
+            double azRad = targetLaunchAzimuth * degToRad;
+            double latRad = latitude * degToRad;
+
+            targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
+            ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
+            : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg;
         }
 
         private void CheckWindowCache(double latitude, double longitude, double targetInclination)
@@ -1394,14 +1428,7 @@ namespace LunarTransferPlanner
                     {
                         Log($"Now targeting {(targetManual ? "[Manual Target]" : target)}");
                     }
-                    windowCache.Clear(); // dont use windowCache.RemoveAt(i), it leads to compounding errors with the other remaining launch times
-                    launchOrbitCache.Clear();
-                    phasingCache.Clear();
-                    LANCache.Clear();
-                    deltaVCache.Clear();
-                    ClearAllOrbitDisplays();
-                    ClearAngleRenderer();
-                    ResetLaunchInclination();
+                    ClearAllCaches(); // we need to clear all caches even if one window is wrong
                     break;
                 }
             }
@@ -1795,7 +1822,7 @@ namespace LunarTransferPlanner
 
         private void ResetWindow() => ResetWindow(windowState); // This resets the current window
 
-        private void ResetDefault(ref double value, double defaultValue, string tooltip = "Reset to Default", bool pushDown = true) => value = ResetDefault(tooltip, pushDown) ? defaultValue : value;
+        private void ResetDefault<T>(ref T value, T defaultValue, string tooltip = "Reset to Default", bool pushDown = true) => value = ResetDefault(tooltip, pushDown) ? defaultValue : value;
 
         private bool ResetDefault(string tooltip = "Reset to Default", bool pushDown = true)
         { // this is for really expensive calculations so that we dont execute them every frame
@@ -1817,37 +1844,6 @@ namespace LunarTransferPlanner
             GUILayout.EndHorizontal();
 
             return pressed;
-        }
-
-        private void ClearAllOrbitDisplays()
-        {
-            ClearOrbitDisplay(ref _parkingOrbitRenderer);
-            ClearOrbitDisplay(ref _transferOrbitRenderer);
-            ClearOrbitDisplay(ref _manualOrbitRenderer);
-        }
-
-        private void ClearOrbitDisplay(ref OrbitRendererHack renderer)
-        {
-            renderer?.Cleanup();
-            renderer = null;
-        }
-
-        private void ClearAngleRenderer() 
-        {
-            _phasingAngleRenderer?.Hide();
-            Destroy(_phasingAngleRenderer);
-            _phasingAngleRenderer = null;
-            
-        }
-
-        private void ResetLaunchInclination()
-        {
-            double azRad = targetLaunchAzimuth * degToRad;
-            double latRad = latitude * degToRad;
-
-            targetLaunchInclination = targetLaunchAzimuth <= 90d || targetLaunchAzimuth >= 270d
-            ? Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg
-            : -Math.Acos(Math.Cos(latRad) * Math.Sin(azRad)) * radToDeg;
         }
 
         private void DrawLine() // use this in the main window? TODO
@@ -2333,6 +2329,8 @@ namespace LunarTransferPlanner
                     if (StateChanged("flightTime", flightTime)) ClearAllCaches();
                     GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s"), GUILayout.MinWidth(100));
 
+                    // make sure to call GetCachedLaunchTime after resetting flightTime and clearing caches
+
                     //Log("CLAYELADDEDDLOGS FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW FIRST WINDOW");
                     //var stopwatch = Stopwatch.StartNew();
                     double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, targetInclination, useAltBehavior, 0);
@@ -2345,6 +2343,28 @@ namespace LunarTransferPlanner
                     double extraLaunchETA = extraLaunchUT - currentUT;
                     //stopwatch.Stop();
                     //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
+
+                    switch (referenceTimeButton) // need to set referenceTime before we use it
+                    {
+                        case 0:
+                            referenceTimeLabel = "Launch Now";
+                            referenceTimeTooltip = "Change reference time to Next Launch Window";
+                            referenceTime = 0d;
+                            referenceWindowNumber = null;
+                            break;
+                        case 1:
+                            referenceTimeLabel = "Next Window";
+                            referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
+                            referenceTime = nextLaunchETA;
+                            referenceWindowNumber = 0;
+                            break;
+                        case 2:
+                            referenceTimeLabel = $"Window {extraWindowNumber}";
+                            referenceTimeTooltip = "Change reference time to the Launch Now Window";
+                            referenceTime = extraLaunchETA;
+                            referenceWindowNumber = extraWindowNumber - 1;
+                            break;
+                    }
 
                     (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
                     (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
@@ -2406,28 +2426,6 @@ namespace LunarTransferPlanner
 
                     ExpandCollapse(ref expandParking0, "Show Orbit Details");
                     GUILayout.EndHorizontal();
-
-                    switch (referenceTimeButton)
-                    {
-                        case 0:
-                            referenceTimeLabel = "Launch Now";
-                            referenceTimeTooltip = "Change reference time to Next Launch Window";
-                            referenceTime = 0d;
-                            referenceWindowNumber = null;
-                            break;
-                        case 1:
-                            referenceTimeLabel = "Next Window";
-                            referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
-                            referenceTime = nextLaunchETA;
-                            referenceWindowNumber = 0;
-                            break;
-                        case 2:
-                            referenceTimeLabel = $"Window {extraWindowNumber}";
-                            referenceTimeTooltip = "Change reference time to the Launch Now Window";
-                            referenceTime = extraLaunchETA;
-                            referenceWindowNumber = extraWindowNumber - 1;
-                            break;
-                    }
 
                     OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
                     OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
@@ -2798,7 +2796,7 @@ namespace LunarTransferPlanner
                         ClearAngleRenderer();
                     }
 
-                    //Log($"trajectoryEccentricity: {trajectoryEccentricity}, errorStateDV: {errorStateDV}");
+                    if (GUILayout.Button("Log")) Log($"trajectoryEccentricity: {trajectoryEccentricity}, errorStateDV: {errorStateDV}, dV: {dV}, needCacheClear: {needCacheClear}");
 
                     if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needCacheClear)
                     {
@@ -2838,6 +2836,7 @@ namespace LunarTransferPlanner
             {
                 Tooltip.Instance?.RecordTooltip(id);
                 GUI.DragWindow();
+                needCacheClear = false;
                 ResetWindow(ref needMainReset, ref mainRect);
             }
         }
@@ -3192,8 +3191,11 @@ namespace LunarTransferPlanner
 
                     DrawLine();
 
+                    GUILayout.BeginHorizontal();
                     GUILayout.Label(new GUIContent("Shown Decimal Places of Precision", "This is only visual, and editable text fields will not be effected"));
-                    MakeNumberEditField("decimals", ref decimals, 1, 0, int.MaxValue);
+                    ResetDefault(ref decimals, 2);
+                    GUILayout.EndHorizontal();
+                    MakeNumberEditField("decimals", ref decimals, 1, 0, 64);
 
                     if (StateChanged("decimals", decimals))
                     {

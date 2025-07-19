@@ -53,8 +53,7 @@ namespace LunarTransferPlanner
 
             line.SetPosition(0, startPos);
             line.SetPosition(1, endPos);
-            line.startWidth = 5f / 1000f * Vector3.Distance(camPos, startPos);
-            line.endWidth = 5f / 1000f * Vector3.Distance(camPos, startPos);
+            line.startWidth = line.endWidth = 5f / 1000f * Vector3.Distance(camPos, startPos);
             line.enabled = true;
         }
 
@@ -280,16 +279,18 @@ namespace LunarTransferPlanner
             Vector3 dir1 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point1Direction.normalized));
             Vector3 dir2 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point2Direction.normalized));
 
+            bool cameraNear = PlanetariumCamera.fetch.Distance < 100000d * (parkingOrbit.semiMajorAxis / 6571000d); // 6571000 is a 200km parking orbit for earth
+
             // checking z coordinate hides labels when they're behind the camera
-            if (dir1.z > 0) GUI.Label(new Rect(dir1.x - 50, Screen.height - dir1.y - 15, 100, 30), new GUIContent("Parking Orbit Insertion", "This is the point directly above the launch site"), _styleLabel);
-            if (dir2.z > 0) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
+            if (dir1.z > 0 && cameraNear) GUI.Label(new Rect(dir1.x - 50, Screen.height - dir1.y - 15, 100, 30), new GUIContent("Parking Orbit Insertion", "This is the point directly above the launch site"), _styleLabel);
+            if (dir2.z > 0 && cameraNear) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
 
             Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction.normalized;
             double arcRadius = 2.5 * parkingOrbit.semiMajorAxis; // arc uses 2
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 
-            if (arcPoint.z > 0) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{LunarTransferPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
+            if (arcPoint.z > 0 && cameraNear) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{LunarTransferPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
             
             Tooltip.Instance?.RecordTooltip(this.GetHashCode());
             Tooltip.Instance?.ShowTooltip(this.GetHashCode());

@@ -208,7 +208,7 @@ namespace LunarTransferPlanner
         double dayScale;
         double solarDayLength;
         bool useHomeSolarDay = true;
-        int errorStateTargets = 0;
+        int errorStateTargets = 0; // TODO, change this to an enum, same with errorStateDV
         bool showSettings = false; // Show settings UI
         bool showManualOrbit = false; // Show manual orbit setting UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
@@ -216,7 +216,7 @@ namespace LunarTransferPlanner
 
         double flightTime = double.NaN; // Desired flight time after maneuver, in seconds (this gets initialized to 4d * solarDayLength later)
         double flightTime_Adj = double.NaN; // Desired flight time after maneuver, in whatever unit the user has selected
-        int flightTimeMode = 0; // 0, 1, 2, 3 (default to days)
+        int flightTimeMode = 0; // 0, 1, 2, 3 (default to days), TODO change this to enum
         string flightTimeLabel;
         string flightTimeTooltip;
 
@@ -235,7 +235,7 @@ namespace LunarTransferPlanner
         double longitude = 0d;
         //double altitude = 0d; // height above sea level in meters // currently, this has no effect on the calculations, because the vectors are always normalized
 
-        int referenceTimeButton = 1; // 0, 1, 2 (default to Next Window)
+        int referenceTimeMode = 1; // 0, 1, 2 (default to Next Window), TODO change this to enum
         string referenceTimeLabel;
         string referenceTimeTooltip;
         double referenceTime = 0d;
@@ -267,7 +267,7 @@ namespace LunarTransferPlanner
         double warpMargin = 60d; // Time difference from the launch window that the warp will stop at
 
         bool specialWarpSelected = true;
-        int warpState = 0;
+        int warpState = 0; // TODO, change this to enum
         bool specialWarpWait = false;
         double waitingTime;
 
@@ -486,7 +486,7 @@ namespace LunarTransferPlanner
                 { "longitude", longitude },
                 { "showAzimuth", showAzimuth },
                 { "expandExtraWindow", expandExtraWindow },
-                { "referenceTimeButton", referenceTimeButton },
+                { "referenceTimeMode", referenceTimeMode },
                 { "extraWindowNumber", extraWindowNumber },
                 { "useWindowOptimizer", useWindowOptimizer },
                 { "expandLatLong", expandLatLong },
@@ -534,7 +534,7 @@ namespace LunarTransferPlanner
 
             root.Save(SettingsPath); // this makes a new file if settings.cfg didnt exist already
 
-            Dictionary<string, string> comments = new Dictionary<string, string>
+            Dictionary<string, string> comments = new Dictionary<string, string> // this works for any line in the file, not just the settings
             {
                 { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser (or considered in the phasing angle/time optimizer), default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
@@ -563,10 +563,11 @@ namespace LunarTransferPlanner
             foreach (KeyValuePair<string, string> kvp in comments)
             {
                 int index = lines.FindIndex(line => line.Contains(kvp.Key));
-                if (index != -1) lines[index] += $" // {kvp.Value}";
+                if (index != -1) lines[index] += $" // {kvp.Value}"; // attach it to the end of the line
+                else Log($"A line with key \"{kvp.Key}\" could not be found to attach a comment to");
             }
 
-            File.WriteAllLines(SettingsPath, lines);
+            File.WriteAllLines(SettingsPath, lines); // save all lines, including those with comments, back to file
         }
 
 
@@ -628,7 +629,7 @@ namespace LunarTransferPlanner
                     Read(ref longitude, "longitude");
                     Read(ref showAzimuth, "showAzimuth");
                     Read(ref expandExtraWindow, "expandExtraWindow");
-                    Read(ref referenceTimeButton, "referenceTimeButton");
+                    Read(ref referenceTimeMode, "referenceTimeMode");
                     Read(ref extraWindowNumber, "extraWindowNumber");
                     Read(ref useWindowOptimizer, "useWindowOptimizer");
                     Read(ref expandLatLong, "expandLatLong");
@@ -2340,7 +2341,7 @@ namespace LunarTransferPlanner
                     //stopwatch.Stop();
                     //Log($"Window 2 Launch Time: {secondLaunchETA}. Completed in {stopwatch.Elapsed.TotalSeconds}s");
 
-                    switch (referenceTimeButton) // need to set referenceTime before we use it
+                    switch (referenceTimeMode) // need to set referenceTime before we use it
                     {
                         case 0:
                             referenceTimeLabel = "Launch Now";
@@ -2367,7 +2368,7 @@ namespace LunarTransferPlanner
 
                     (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV(referenceTime + currentUT + phaseTime0, referenceWindowNumber);
 
-                    if (StateChanged("referenceTimeButton", referenceTimeButton))
+                    if (StateChanged("referenceTimeMode", referenceTimeMode))
                     {
                         ClearAllOrbitDisplays();
                         ClearAngleRenderer();
@@ -2412,7 +2413,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.BeginVertical();
                     GUILayout.Space(5);
-                    if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(105))) referenceTimeButton = (referenceTimeButton + 1) % (expandExtraWindow ? 3 : 2);
+                    if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(105))) referenceTimeMode = (referenceTimeMode + 1) % (expandExtraWindow ? 3 : 2);
                     GUILayout.EndVertical();
 
                     GUILayout.BeginVertical();
@@ -2426,8 +2427,8 @@ namespace LunarTransferPlanner
                     OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
                     OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
 
-                    double displayAz = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth : targetLaunchAzimuth;
-                    double displayInc = referenceTimeButton == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
+                    double displayAz = referenceTimeMode == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth : targetLaunchAzimuth;
+                    double displayInc = referenceTimeMode == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
                     // launchOrbit doesnt really display retrograde azimuths/inclinations, so itd be unhelpful to display them if they're misleading
 
                     GUILayout.Space(5);
@@ -2741,6 +2742,11 @@ namespace LunarTransferPlanner
 
                         if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
                     }
+
+                    //if (GUILayout.Button("Set Orbit") && FlightGlobals.ActiveVessel != null && HighLogic.LoadedSceneIsFlight)
+                    //{
+                    //    FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination, launchLAN0, 0d, launchAoP0, 0d);
+                    //}
 
                     if (displayParking && MapViewEnabled() && !needCacheClear)
                     {

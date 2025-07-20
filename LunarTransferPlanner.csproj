@@ -119,10 +119,11 @@
 	  </PostBuildEvent>
   </PropertyGroup>
   <Target Name="CheckKSPStatus" BeforeTargets="CoreCompile">
-    <Exec Command="tasklist /FI &quot;IMAGENAME eq KSP_x64.exe&quot;" ConsoleToMSBuild="true">
+	<Message Importance="High" Text="Checking if KSP is running..." />
+	<Exec Command="tasklist /FI &quot;IMAGENAME eq KSP_x64.exe&quot;" ConsoleToMSBuild="true">
 	    <Output TaskParameter="ConsoleOutput" PropertyName="KSPProcessList"/>
 	</Exec>
-	<Error Condition=" $(KSPProcessList.Contains('KSP_x64.exe')) " Text="Build failed: KSP_x64.exe is running. Please close KSP before building." />
+	<Error Condition="$(KSPProcessList.Contains('KSP_x64.exe'))" Text="Build failed: KSP_x64.exe is running. Please close KSP before building." />
   </Target>
 	<!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

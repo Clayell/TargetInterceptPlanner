@@ -128,6 +128,8 @@ namespace LunarTransferPlanner
     {
         #region Fields
 
+        // use attribute [KSPField(isPersistant = true)] if necessary for any of these fields
+
         const double EarthSiderealDay = 86164.098903691;
         const double EarthRadius = 6371000; // meters
         const double EarthMass = 3.9860043543609598e+14 / 6.67408e-11; // API docs say 6.673e-11 for the grav constant, which is wrong
@@ -279,6 +281,8 @@ namespace LunarTransferPlanner
         OrbitRendererHack _transferOrbitRenderer = null;
         OrbitRendererHack _manualOrbitRenderer = null;
         MapAngleRenderer _phasingAngleRenderer = null;
+
+        bool debugMode = false;
 
         // colors use r,g,b,a floats from 0 to 1
         // XKCDColors has an impressively large color list, but displaying it in-game would be a nightmare. better for it to be .cfg only
@@ -506,6 +510,7 @@ namespace LunarTransferPlanner
                 { "displayPhasing", displayPhasing },
                 { "targetLaunchAzimuth", targetLaunchAzimuth },
                 { "targetPhasingAngle", targetPhasingAngle },
+                { "debugMode", debugMode },
             };
 
             foreach (KeyValuePair<string, object> kvp in settingValues) settings.AddValue(kvp.Key, kvp.Value);
@@ -649,6 +654,7 @@ namespace LunarTransferPlanner
                     Read(ref displayPhasing, "displayPhasing");
                     Read(ref targetLaunchAzimuth, "targetLaunchAzimuth");
                     Read(ref targetPhasingAngle, "targetPhasingAngle");
+                    Read(ref debugMode, "debugMode");
 
                     mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
@@ -1126,9 +1132,11 @@ namespace LunarTransferPlanner
             return finalResult;
         }
 
-        private (double LAN, double AoP) CalculateLAN(double latitude, double longitude, double azimuth, double startTime)
+        private (double LAN, double AoP) CalculateLAN(OrbitData launchOrbit, double latitude, double longitude, double azimuth, double startTime)
         {
             // Remember that Unity (and KSP) use a left-handed coordinate system; therefore, the cross product follows the left-hand rule.
+
+            azimuth = (isLowLatitude && !useAltBehavior) ? launchOrbit.azimuth : azimuth; // this only changes the parameter
 
             // rotation angle of the body at target time (in UT) to get longitude of launch location
             double bodyRotationAngle = Util.ClampAngle(mainBody.initialRotation + ((startTime + currentUT) * 360d / mainBody.rotationPeriod) - 180d, false); // im not entirely sure why -180 is needed
@@ -1516,7 +1524,7 @@ namespace LunarTransferPlanner
             }
         }
 
-        private (double LAN, double AoP) GetCachedLAN(double latitude, double longitude, double azimuth, double startTime, int? windowNumber = null)
+        private (double LAN, double AoP) GetCachedLAN(OrbitData launchOrbit, double latitude, double longitude, double azimuth, double startTime, int? windowNumber = null)
         {
             if (windowNumber.HasValue)
             {
@@ -1524,14 +1532,14 @@ namespace LunarTransferPlanner
                 if (index != -1) return (LANCache[index].LAN, LANCache[index].AoP); // return if exists
                 else
                 {
-                    (double LAN, double AoP) = CalculateLAN(latitude, longitude, azimuth, startTime);
+                    (double LAN, double AoP) = CalculateLAN(launchOrbit, latitude, longitude, azimuth, startTime);
                     LANCache.Add((LAN, AoP, windowNumber.Value));
                     return (LAN, AoP);
                 }
             }
             else
             {
-                return CalculateLAN(latitude, longitude, azimuth, startTime);
+                return CalculateLAN(launchOrbit, latitude, longitude, azimuth, startTime);
             }
         }
 
@@ -2363,8 +2371,12 @@ namespace LunarTransferPlanner
                             break;
                     }
 
+                    OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
+                    OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
+                    OrbitData launchOrbit2 = GetCachedLaunchOrbit(launchPos, extraLaunchETA, extraWindowNumber - 1);
+
                     (double phaseTime0, double phaseAngle0) = GetCachedPhasingTime(launchPos, referenceTime, referenceWindowNumber);
-                    (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
+                    (double launchLAN0, double launchAoP0) = GetCachedLAN(launchOrbit0, latitude, longitude, targetLaunchAzimuth, referenceTime, referenceWindowNumber);
 
                     (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV(referenceTime + currentUT + phaseTime0, referenceWindowNumber);
 
@@ -2424,9 +2436,6 @@ namespace LunarTransferPlanner
                     ExpandCollapse(ref expandParking0, "Show Orbit Details");
                     GUILayout.EndHorizontal();
 
-                    OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, referenceTime, referenceWindowNumber);
-                    OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
-
                     double displayAz = referenceTimeMode == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth : targetLaunchAzimuth;
                     double displayInc = referenceTimeMode == 0 || (isLowLatitude && !useAltBehavior) ? launchOrbit0.azimuth > 90d && launchOrbit0.azimuth < 270d ? -launchOrbit0.inclination : launchOrbit0.inclination : targetLaunchInclination;
                     // launchOrbit doesnt really display retrograde azimuths/inclinations, so itd be unhelpful to display them if they're misleading
@@ -2461,7 +2470,7 @@ namespace LunarTransferPlanner
 
                     // we need this outside for alarm description and transfer orbit
                     (double phaseTime1, double phaseAngle1) = GetCachedPhasingTime(launchPos, nextLaunchETA, 0);
-                    (double launchLAN1, double launchAoP1) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, nextLaunchETA, 0);
+                    (double launchLAN1, double launchAoP1) = GetCachedLAN(launchOrbit1, latitude, longitude, targetLaunchAzimuth, nextLaunchETA, 0);
                     if (expandParking1)
                     {
                         ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1);
@@ -2481,7 +2490,7 @@ namespace LunarTransferPlanner
                         if (expandParking2)
                         {
                             (double phaseTime2, double phaseAngle2) = GetCachedPhasingTime(launchPos, extraLaunchETA, extraWindowNumber - 1);
-                            (double launchLAN2, double launchAoP2) = GetCachedLAN(latitude, longitude, targetLaunchAzimuth, extraLaunchETA, extraWindowNumber - 1);
+                            (double launchLAN2, double launchAoP2) = GetCachedLAN(launchOrbit2, latitude, longitude, targetLaunchAzimuth, extraLaunchETA, extraWindowNumber - 1);
                             ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2);
                         }
                     }
@@ -2743,10 +2752,13 @@ namespace LunarTransferPlanner
                         if (StateChanged("targetLaunchInclination", targetLaunchInclination)) ClearAllCaches();
                     }
 
-                    //if (GUILayout.Button("Set Orbit") && FlightGlobals.ActiveVessel != null && HighLogic.LoadedSceneIsFlight)
-                    //{
-                    //    FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination, launchLAN0, 0d, launchAoP0, 0d);
-                    //}
+                    if (debugMode)
+                    {
+                        if (GUILayout.Button("Set Orbit") && FlightGlobals.ActiveVessel != null && HighLogic.LoadedSceneIsFlight)
+                        {
+                            FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination, launchLAN0, 0d, launchAoP0, 0d);
+                        }
+                    }
 
                     if (displayParking && MapViewEnabled() && !needCacheClear)
                     {

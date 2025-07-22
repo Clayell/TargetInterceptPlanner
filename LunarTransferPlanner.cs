@@ -2416,18 +2416,21 @@ namespace LunarTransferPlanner
 
                     (double launchLAN0, double launchAoP0) = GetCachedLAN(latitude, longitude, displayAz0, referenceTime, referenceWindowNumber);
                     (double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedDeltaV(referenceTime + currentUT + phaseTime0, referenceWindowNumber);
-
-                    if (StateChanged("referenceTimeMode", referenceTimeMode))
+                    
+                    if (Util.MapViewEnabled())
                     {
-                        ClearAllOrbitDisplays();
-                        ClearAngleRenderer();
+                        if (StateChanged("referenceTimeMode", referenceTimeMode))
+                        {
+                            ClearAllOrbitDisplays();
+                            ClearAngleRenderer();
+                        }
+                        else if (ValueChanged("launchLAN0", launchLAN0, 1e-1)) // 1e-1 resets it about every minute or so when using Launch Now
+                        { // resetting the angle renderer every frame (if using launchNow) is ridiculously laggy, but this is probably unfixable? TODO
+                            ClearAllOrbitDisplays();
+                            ClearAngleRenderer();
+                        }
+                        else if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer); // 1e-5 resets it about every minute or so when using Launch Now
                     }
-                    else if (ValueChanged("launchLAN0", launchLAN0, 1e-1)) // 1e-1 resets it about every minute or so when using Launch Now
-                    { // resetting the angle renderer every frame (if using launchNow) is ridiculously laggy, but this is probably unfixable? TODO
-                        ClearAllOrbitDisplays();
-                        ClearAngleRenderer();
-                    }
-                    else if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer); // 1e-5 resets it about every minute or so when using Launch Now
 
                     bool inSpecialWarp = warpState == 2 || warpState == 3;
                     bool specialWarpActive = warpState == 1 || inSpecialWarp;

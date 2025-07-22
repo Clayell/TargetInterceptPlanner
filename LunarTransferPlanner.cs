@@ -150,12 +150,7 @@ namespace LunarTransferPlanner
         bool needMainReset = true;
         bool needSettingsReset = true;
         bool needManualOrbitReset = true;
-        enum WindowState
-        {
-            Main,
-            Settings,
-            ManualOrbit
-        }
+        enum WindowState { Main, Settings, ManualOrbit }
         WindowState windowState;
         float windowWidth;
         //float UIScale; // TODO, can't think of a great way to make this look good right now

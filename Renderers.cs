@@ -32,7 +32,7 @@ namespace LunarTransferPlanner
 
             for (int i = 0; i < arcPoints; i++)
             {
-                double t = i / (arcPoints - 1);
+                double t = (double)i / (arcPoints - 1);
                 QuaternionD rot = QuaternionD.AngleAxis(angle * t, -orbitNormal);
                 Vector3d arcDir = rot * fromDir;
                 Vector3d worldPos = ScaledSpace.LocalToScaledSpace(center + arcDir.normalized * radius);

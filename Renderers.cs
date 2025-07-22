@@ -32,7 +32,7 @@ namespace LunarTransferPlanner
 
             for (int i = 0; i < arcPoints; i++)
             {
-                float t = (float)i / (arcPoints - 1);
+                double t = i / (arcPoints - 1);
                 QuaternionD rot = QuaternionD.AngleAxis(angle * t, -orbitNormal);
                 Vector3d arcDir = rot * fromDir;
                 Vector3d worldPos = ScaledSpace.LocalToScaledSpace(center + arcDir.normalized * radius);
@@ -171,7 +171,7 @@ namespace LunarTransferPlanner
 
             if (orbit.pos.z < 1e-5 || orbit.vel.z < 1e-5)
             {
-                Quaternion tilt = Quaternion.AngleAxis((float)1e-5, Vector3.right); // tilt by .00001 degrees to make it not equatorial
+                QuaternionD tilt = QuaternionD.AngleAxis(1e-5, Vector3.right); // tilt by .00001 degrees to make it not equatorial
                 orbitNormal = Vector3d.Cross(tilt * orbit.pos, tilt * orbit.vel).xzy.normalized;
             }
 
@@ -179,7 +179,6 @@ namespace LunarTransferPlanner
             Point2Direction = AoPToWorldVector(Util.ClampAngle(launchAoP - phasingAngle, false) * LunarTransferPlanner.degToRad);
 
             _startDrawing = DateTime.Now;
-            //_currentDrawingState = DrawingState.DrawingLinesAppearing;
             if (visibilityChanged) _currentDrawingState = DrawingState.DrawingLinesAppearing;
             else _currentDrawingState = DrawingState.DrawingFullPicture;
         }

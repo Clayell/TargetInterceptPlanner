@@ -265,7 +265,7 @@ namespace LunarTransferPlanner
         internal void OnGUI()
         {
             if (BodyOrigin == null || parkingOrbit == null || Point1Direction == null || Point2Direction == null || !Util.MapViewEnabled() || _currentDrawingState != DrawingState.DrawingFullPicture)
-            { return; } // this causes the text to flash while resetting the renderer, TODO fix
+            { return; } // this causes the text to flash while resetting the renderer (but without changing the visibility), TODO fix
 
             Vector3 center = BodyOrigin.transform.position;
             double length = 4d * parkingOrbit.semiMajorAxis; // line uses 4

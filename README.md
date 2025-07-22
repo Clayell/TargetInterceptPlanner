@@ -37,6 +37,8 @@ Forum Thread: N/A
 
 Source Code: https://github.com/Clayell/LunarTransferPlanner
 
+Wiki: https://github.com/Clayell/LunarTransferPlanner/wiki
+
 ## Mod Relationships (using [CKAN](https://github.com/KSP-CKAN/CKAN) is highly recommended)
 
 #### Required:
@@ -61,4 +63,4 @@ Source Code: https://github.com/Clayell/LunarTransferPlanner
 * [TriggerAu](https://github.com/TriggerAu) ([KAC Wrapper](https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock_APITester/KACWrapper.cs))
 
 ## License
-The code is subject to the MIT license (see [LICENSE.md](https://github.com/Clayell/LunarTransferPlanner/blob/2.0.0/LICENSE.md)). 
+The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/LunarTransferPlanner/blob/2.0.0/LICENSE.md))

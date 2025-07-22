@@ -1,4 +1,4 @@
-﻿// Adapted from TWP2 (https://github.com/Nazfib/TransferWindowPlanner2/tree/main/TransferWindowPlanner2/UI/Rendering), thanks Nazfib!
+﻿// Adapted from TWP2 with permission (https://github.com/Nazfib/TransferWindowPlanner2/tree/main/TransferWindowPlanner2/UI/Rendering), thanks Nazfib!
 
 
 using System;
@@ -6,9 +6,9 @@ using UnityEngine;
 
 namespace LunarTransferPlanner
 {
-    public static class RenderUtils
+    internal static class RenderUtils
     {
-        public static LineRenderer InitLine(GameObject objToAttach, Color lineColor, int vertexCount, int initialWidth, Material linesMaterial)
+        internal static LineRenderer InitLine(GameObject objToAttach, Color lineColor, int vertexCount, int initialWidth, Material linesMaterial)
         {
             objToAttach.layer = 9;
             LineRenderer lineReturn = objToAttach.AddComponent<LineRenderer>();
@@ -26,7 +26,7 @@ namespace LunarTransferPlanner
             return lineReturn;
         }
 
-        public static void DrawArc(LineRenderer line, Vector3d center, Vector3d fromDir, Vector3d orbitNormal, double angle, double radius, int arcPoints)
+        internal static void DrawArc(LineRenderer line, Vector3d center, Vector3d fromDir, Vector3d orbitNormal, double angle, double radius, int arcPoints)
         {
             if (line == null) return;
 
@@ -43,7 +43,7 @@ namespace LunarTransferPlanner
             line.enabled = true;
         }
 
-        public static void DrawLine(LineRenderer line, Vector3d center, Vector3d start, Vector3d end)
+        internal static void DrawLine(LineRenderer line, Vector3d center, Vector3d start, Vector3d end)
         {
             if (line == null) return;
 
@@ -56,22 +56,19 @@ namespace LunarTransferPlanner
             line.startWidth = line.endWidth = 5f / 1000f * Vector3.Distance(camPos, startPos);
             line.enabled = true;
         }
-
-        public static bool CurrentSceneHasMapView() =>
-            HighLogic.LoadedScene is GameScenes.FLIGHT
-            || HighLogic.LoadedScene is GameScenes.TRACKSTATION;
     }
 
     public class MapAngleRenderer : MonoBehaviour
     {
-        public bool IsDrawing => !(_currentDrawingState is DrawingState.Hidden);
+        internal bool IsDrawing => _currentDrawingState != DrawingState.Hidden;
 
-        public bool IsHiding => _currentDrawingState is DrawingState.Hiding
-                                || _currentDrawingState is DrawingState.Hidden;
+        internal bool IsHidden => _currentDrawingState == DrawingState.Hidden;
+
+        internal bool IsHiding => _currentDrawingState == DrawingState.Hiding || _currentDrawingState == DrawingState.Hidden;
 
         private DateTime _startDrawing;
 
-        public CelestialBody BodyOrigin { get; set; }
+        private CelestialBody BodyOrigin;
 
         // Nullability: initialized in Start(), de-initialized in OnDestroy()
         private GameObject _objLineStart = null;
@@ -109,7 +106,7 @@ namespace LunarTransferPlanner
 
         private void Start()
         {
-            if (!RenderUtils.CurrentSceneHasMapView())
+            if (!Util.MapViewEnabled())
             {
                 enabled = false;
                 return;
@@ -156,54 +153,51 @@ namespace LunarTransferPlanner
 
         private void Log(string message) => Util.Log(message);
 
-        public void Draw(Orbit orbit, double launchAoP, double phasingAngle)
+        internal void Draw(Orbit orbit, double launchAoP, double phasingAngle, bool visibilityChanged)
         {
+            Vector3d AoPToWorldVector(double AoPRad)
+            {
+                Vector3d nodeLine = Vector3d.Cross(Vector3d.up, orbitNormal).normalized;
+
+                return Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(orbitNormal, nodeLine);
+            }
+
             BodyOrigin = orbit.referenceBody;
             parkingOrbit = orbit;
             AoPDiff = phasingAngle;
-            orbitNormal = ToWorld(Vector3d.Cross(orbit.pos, orbit.vel)).normalized;
+            orbitNormal = Vector3d.Cross(orbit.pos, orbit.vel).xzy.normalized;
 
             //Log($"orbit.pos: {orbit.pos}, orbit.vel: {orbit.vel}");
 
             if (orbit.pos.z < 1e-5 || orbit.vel.z < 1e-5)
             {
                 Quaternion tilt = Quaternion.AngleAxis((float)1e-5, Vector3.right); // tilt by .00001 degrees to make it not equatorial
-                orbitNormal = ToWorld(Vector3d.Cross(tilt * orbit.pos, tilt * orbit.vel)).normalized;
+                orbitNormal = Vector3d.Cross(tilt * orbit.pos, tilt * orbit.vel).xzy.normalized;
             }
 
             Point1Direction = AoPToWorldVector(launchAoP * LunarTransferPlanner.degToRad);
             Point2Direction = AoPToWorldVector(Util.ClampAngle(launchAoP - phasingAngle, false) * LunarTransferPlanner.degToRad);
 
             _startDrawing = DateTime.Now;
-            _currentDrawingState = DrawingState.DrawingLinesAppearing;
+            //_currentDrawingState = DrawingState.DrawingLinesAppearing;
+            if (visibilityChanged) _currentDrawingState = DrawingState.DrawingLinesAppearing;
+            else _currentDrawingState = DrawingState.DrawingFullPicture;
         }
 
-        public void Hide()
+        internal void Hide(bool visibilityChanged)
         {
             _startDrawing = DateTime.Now;
-            _currentDrawingState = DrawingState.Hiding;
-        }
-
-        private Vector3d ToWorld(Vector3d v) => new Vector3d(v.x, v.z, v.y);
-
-        private Vector3d AoPToWorldVector(double AoPRad)
-        {
-            Vector3d nodeLine = Vector3d.Cross(Vector3d.up, orbitNormal).normalized;
-
-            return Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(orbitNormal, nodeLine);
+            if (visibilityChanged) _currentDrawingState = DrawingState.Hiding;
+            else _currentDrawingState = DrawingState.Hidden;
         }
 
         internal void OnPreCull()
         {
-            if (!RenderUtils.CurrentSceneHasMapView()) { return; }
-
-            if (BodyOrigin == null) { return; }
-
-            if (!MapView.MapIsEnabled || !IsDrawing)
+            if (!Util.MapViewEnabled() || BodyOrigin == null || parkingOrbit == null || Point1Direction == null || Point2Direction == null || _currentDrawingState == DrawingState.Hidden)
             {
-                _lineStart.enabled = false;
-                _lineEnd.enabled = false;
-                _lineArc.enabled = false;
+                if (_lineStart != null) _lineStart.enabled = false;
+                if (_lineEnd != null) _lineEnd.enabled = false;
+                if (_lineArc != null) _lineArc.enabled = false;
                 return;
             }
 
@@ -218,7 +212,7 @@ namespace LunarTransferPlanner
             Vector3d center = BodyOrigin.transform.position;
             switch (_currentDrawingState)
             {
-                case DrawingState.Hidden:
+                case DrawingState.Hidden: // this shouldnt be possible
                     break;
 
                 case DrawingState.DrawingLinesAppearing:
@@ -271,8 +265,8 @@ namespace LunarTransferPlanner
 
         internal void OnGUI()
         {
-            if (BodyOrigin == null) { return; }
-            if (!MapView.MapIsEnabled || !(_currentDrawingState is DrawingState.DrawingFullPicture)) { return; }
+            if (BodyOrigin == null || parkingOrbit == null || Point1Direction == null || Point2Direction == null || !Util.MapViewEnabled() || _currentDrawingState != DrawingState.DrawingFullPicture)
+            { return; } // this causes the text to flash while resetting the renderer, TODO fix
 
             Vector3 center = BodyOrigin.transform.position;
             double length = 4d * parkingOrbit.semiMajorAxis; // line uses 4
@@ -291,13 +285,13 @@ namespace LunarTransferPlanner
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 
             if (arcPoint.z > 0 && cameraNear) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{LunarTransferPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
-            
+
             Tooltip.Instance?.RecordTooltip(this.GetHashCode());
             Tooltip.Instance?.ShowTooltip(this.GetHashCode());
         }
     }
 
-    public class OrbitRendererHack
+    internal class OrbitRendererHack
     {
         // Ugly hack: Creating a new class derived from OrbitTargetRenderer does not work - the orbit lags behind the camera
         // movement when panning. Therefore, we need to use one of the built-in classes designed for rendering orbits: those
@@ -309,9 +303,8 @@ namespace LunarTransferPlanner
             _renderer = renderer;
         }
 
-        public static OrbitRendererHack Setup(Orbit orbit, Color color, bool activedraw = true)
+        internal static OrbitRendererHack Setup(Orbit orbit, Color color, bool activedraw = true)
         {
-            //Orbit orbit
             // The ContractOrbitRenderer.Setup method requires a non-null contract; we provide a default-initialized one,
             // because anything else is really annoying to setup.
             // However, the *_onUpdateCaption methods don't work with a default-initialized Contract: they need a valid
@@ -324,7 +317,7 @@ namespace LunarTransferPlanner
             return new OrbitRendererHack(renderer);
         }
 
-        public void Cleanup()
+        internal void Cleanup()
         {
             _renderer.Cleanup();
         }

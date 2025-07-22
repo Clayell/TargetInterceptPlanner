@@ -112,6 +112,8 @@ namespace LunarTransferPlanner
             }
             return min;
         }
+
+        internal static bool MapViewEnabled() => MapView.MapIsEnabled && !HighLogic.LoadedSceneIsEditor && (HighLogic.LoadedSceneIsFlight || HighLogic.LoadedScene == GameScenes.TRACKSTATION);
     }
 
     [KSPAddon(KSPAddon.Startup.MainMenu, true)] // startup on main menu according to https://github.com/linuxgurugamer/ToolbarControl/wiki/Registration
@@ -277,6 +279,7 @@ namespace LunarTransferPlanner
         bool displayTransfer = false; // Show transfer orbit in map view
         bool displayManual = false; // Show manual orbit in map view, if applicable
         bool displayPhasing = false; // Show phasing angle in map view
+        bool justResetAngle = true;
         OrbitRendererHack _parkingOrbitRenderer = null;
         OrbitRendererHack _transferOrbitRenderer = null;
         OrbitRendererHack _manualOrbitRenderer = null;
@@ -335,7 +338,7 @@ namespace LunarTransferPlanner
             resetGreen = LoadImage("resetGreen");
 
             LoadSettings();
-            
+
             // GameEvents should be kept in Awake()
             GameEvents.onShowUI.Add(KSPShowGUI);
             GameEvents.onHideUI.Add(KSPHideGUI);
@@ -392,14 +395,20 @@ namespace LunarTransferPlanner
             GameEvents.onHideUI.Remove(KSPHideGUI);
             GameEvents.onGameSceneLoadRequested.Remove(OnSceneChange);
 
-            ClearAllCaches(); // mostly needed for clearing orbits and angle displays
+            ClearAllCaches(); // mostly needed for clearing orbits
+
+            Destroy(_phasingAngleRenderer);
+            _phasingAngleRenderer = null;
         }
 
         private void OnSceneChange(GameScenes s) // thanks Nazfib
         { // we could call ToggleWindow here to make it closed during loading, but that would leave it closed during the next scene until the user opens it again
             SaveSettings();
 
-            ClearAllCaches(); // mostly needed for clearing orbits and angle displays
+            ClearAllCaches(); // mostly needed for clearing orbits
+
+            Destroy(_phasingAngleRenderer);
+            _phasingAngleRenderer = null;
         }
 
         void OnGUI()
@@ -1042,7 +1051,7 @@ namespace LunarTransferPlanner
                                 Log($"No time found with error of 0 within time limit, returning time {bestTime} with error closest to 0.");
                                 return bestTime;
                             }
-                        } 
+                        }
                     }
                 }
             }
@@ -1136,7 +1145,7 @@ namespace LunarTransferPlanner
         {
             // Remember that Unity (and KSP) use a left-handed coordinate system; therefore, the cross product follows the left-hand rule.
 
-            azimuth = (isLowLatitude && !useAltBehavior) ? launchOrbit.azimuth : azimuth; // this only changes the parameter
+            azimuth = (isLowLatitude && !useAltBehavior) || referenceTimeMode == 0 ? launchOrbit.azimuth : azimuth; // this only changes the parameter
 
             // rotation angle of the body at target time (in UT) to get longitude of launch location
             double bodyRotationAngle = Util.ClampAngle(mainBody.initialRotation + ((startTime + currentUT) * 360d / mainBody.rotationPeriod) - 180d, false); // im not entirely sure why -180 is needed
@@ -1223,8 +1232,6 @@ namespace LunarTransferPlanner
 
             // Convert angle to time in orbit
             double orbitPeriod = tau * Math.Sqrt(Math.Pow(orbitRadius, 3) / gravParameter);
-            //double offset = 180; // for some reason it just constantly underestimates by ~3 minutes, no idea why
-            //phasingAngle = (phasingAngle + (offset / orbitPeriod) * 360d) % 360d;
             double phasingTime = phasingAngle / 360d * orbitPeriod;
 
             return (phasingTime, phasingAngle);
@@ -1367,7 +1374,7 @@ namespace LunarTransferPlanner
         // if the factor can be changed by the game itself, or can be changed by the user in multiple ways (in the case of the target), then put the value in the cache and check in the method if its crossed the tolerance
         // (the reset in special warp is a unique case and should be kept as such)
 
-        private void ClearAllCaches() // TODO, just replace all cache clears with this?
+        private void ClearAllCaches(bool visibilityChanged = false) // TODO, just replace all cache clears with this?
         {
             windowCache.Clear();
             launchOrbitCache.Clear();
@@ -1375,7 +1382,7 @@ namespace LunarTransferPlanner
             LANCache.Clear();
             deltaVCache.Clear();
             ClearAllOrbitDisplays();
-            ClearAngleRenderer();
+            ClearAngleRenderer(visibilityChanged);
             ResetLaunchInclination();
 
             needCacheClear = true;
@@ -1394,12 +1401,10 @@ namespace LunarTransferPlanner
             renderer = null;
         }
 
-        private void ClearAngleRenderer()
+        private void ClearAngleRenderer(bool visibilityChanged = false)
         {
-            _phasingAngleRenderer?.Hide();
-            Destroy(_phasingAngleRenderer);
-            _phasingAngleRenderer = null;
-
+            _phasingAngleRenderer?.Hide(visibilityChanged);
+            justResetAngle = true;
         }
 
         private void ResetLaunchInclination()
@@ -1433,7 +1438,7 @@ namespace LunarTransferPlanner
                     {
                         Log($"Now targeting {(targetManual ? "[Manual Target]" : target)}");
                     }
-                    ClearAllCaches(); // we need to clear all caches even if one window is wrong
+                    ClearAllCaches(true); // we need to clear all caches even if one window is wrong, set visibilityChanged to true to have phase angle animate again
                     break;
                 }
             }
@@ -1778,8 +1783,8 @@ namespace LunarTransferPlanner
             if (displaySeconds) return $"{FormatDecimals(t)}s";
             else
             {
-                // TODO, add years? would have to be similar to useHomeSolarDay
-                int days = (int)Math.Floor(t / Math.Round(solarDayLength)); // round to avoid stuff like 3d 24h 0m 0s
+                // TODO, add years? would have to be similar to useHomeSolarDay (try KSPUtil.dateTimeFormatter.Year?)
+                int days = (int)Math.Floor(t / Math.Round(solarDayLength)); // round to avoid stuff like 3d 24h 0m 0s, TODO this isnt working
                 t -= days * Math.Round(solarDayLength);
                 int hours = (int)Math.Floor(t / (60d * 60d));
                 t -= hours * 60d * 60d;
@@ -2311,6 +2316,8 @@ namespace LunarTransferPlanner
                         // it wont always find the actual maximum flight time because we're using ApR instead of targetAltitude, but using targetAltitude can lead to situations where it gives you a flight time that is too high and results in a NaN delta-V
                         // this gives a time that is likely to be viable, but not the maximum. the best way would be to use nextLaunchUT + phaseTime1, but changing the flightTime changes the nextLaunchUT, so its an annoying recursive behavior
 
+                        // TODO, this can sometimes give flight times that are too high
+
                         switch (flightTimeMode)
                         {
                             case 0:
@@ -2385,8 +2392,12 @@ namespace LunarTransferPlanner
                         ClearAllOrbitDisplays();
                         ClearAngleRenderer();
                     }
-                    else if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer);
-                    // 1e-5 resets it about every minute or so when using Launch Now
+                    else if (ValueChanged("launchLAN0", launchLAN0, 1e-1)) // 1e-1 resets it about every minute or so when using Launch Now
+                    {
+                        ClearAllOrbitDisplays();
+                        ClearAngleRenderer();
+                    }
+                    else if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer); // 1e-5 resets it about every minute or so when using Launch Now
 
                     bool inSpecialWarp = warpState == 2 || warpState == 3;
                     bool specialWarpActive = warpState == 1 || inSpecialWarp;
@@ -2645,12 +2656,10 @@ namespace LunarTransferPlanner
                         specialWarpWait = false;
                     }
 
-                    bool MapViewEnabled() => MapView.MapIsEnabled && !HighLogic.LoadedSceneIsEditor && (HighLogic.LoadedSceneIsFlight || HighLogic.LoadedScene == GameScenes.TRACKSTATION);
-
                     GUILayout.BeginHorizontal();
                     bool targetPressed;
                     bool focusPressed;
-                    if (MapViewEnabled() && !targetManual) // if in map view, map view carries over to editor sometimes so just double-check
+                    if (Util.MapViewEnabled() && !targetManual) // if in map view, map view carries over to editor sometimes so just double-check
                     {
                         bool enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && HighLogic.LoadedSceneIsFlight; // ControlTypes.TARGETING will be 'locked' when the game isnt in focus or paused, but its not actually locked. not sure how i can fix this, its just visual tho
                         GUI.enabled = enabled;
@@ -2698,7 +2707,7 @@ namespace LunarTransferPlanner
                         // lol, who put Vessel as mapObject and CelestialBody as MapObject?
                     }
 
-                    if (MapViewEnabled())
+                    if (Util.MapViewEnabled())
                     {
                         GUILayout.BeginHorizontal();
                         GUILayout.Label(new GUIContent("Show Parking Orbit", $"Show Parking Orbit for the Next Launch Window in Map View"));
@@ -2738,7 +2747,7 @@ namespace LunarTransferPlanner
                         GUILayout.EndHorizontal();
                     }
 
-                    if (StateChanged("RendererButtons", MapViewEnabled()))
+                    if (StateChanged("RendererButtons", Util.MapViewEnabled()))
                     {
                         ResetWindow();
                         ClearAllOrbitDisplays();
@@ -2756,15 +2765,15 @@ namespace LunarTransferPlanner
                     {
                         if (GUILayout.Button("Set Orbit") && FlightGlobals.ActiveVessel != null && HighLogic.LoadedSceneIsFlight)
                         {
-                            FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination, launchLAN0, 0d, launchAoP0, 0d);
+                            FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), (isLowLatitude && !useAltBehavior) || referenceTimeMode == 0 ? launchOrbit0.inclination : targetLaunchInclination, launchLAN0, 0d, launchAoP0, 0d);
                         }
                     }
 
-                    if (displayParking && MapViewEnabled() && !needCacheClear)
+                    if (displayParking && Util.MapViewEnabled() && !needCacheClear)
                     {
                         Orbit parkingOrbit = new Orbit
                         {
-                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination,
+                            inclination = (isLowLatitude && !useAltBehavior) || referenceTimeMode == 0 ? launchOrbit0.inclination : targetLaunchInclination,
                             eccentricity = epsilon, // just to make periapsis visible
                             semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
                             LAN = launchLAN0,
@@ -2781,21 +2790,19 @@ namespace LunarTransferPlanner
                             _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, parkingColor);
                         }
 
-                        if (displayPhasing && (_phasingAngleRenderer == null || !_phasingAngleRenderer.IsDrawing))
+                        if (displayPhasing && (_phasingAngleRenderer == null || _phasingAngleRenderer.IsHidden))
                         {
                             // we need to do both of these to access the orbit.pos and orbit.vel in Draw (we're not running them every frame, so its fine)
                             parkingOrbit.Init();
                             parkingOrbit.UpdateFromUT(currentUT);
 
-                            ClearAngleRenderer();
+                            _phasingAngleRenderer?.Hide(false);
+                            _phasingAngleRenderer = null;
 
-                            if (_phasingAngleRenderer == null)
-                            {
-                                _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
-                            }
+                            _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
 
                             double AoPmodified = (targetLaunchAzimuth > 90d && targetLaunchAzimuth < 180d) ? Util.ClampAngle(360d - launchAoP0, false) : 180d - launchAoP0;
-                            _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle0);
+                            _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle0, !justResetAngle);
 
                             //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
                         }
@@ -2807,15 +2814,15 @@ namespace LunarTransferPlanner
 
                     if ((!displayParking || !displayPhasing) && _phasingAngleRenderer != null && !_phasingAngleRenderer.IsHiding)
                     {
-                        ClearAngleRenderer();
+                        ClearAngleRenderer(true);
                     }
 
-                    if (displayTransfer && _transferOrbitRenderer == null && MapViewEnabled() && !needCacheClear)
+                    if (displayTransfer && _transferOrbitRenderer == null && Util.MapViewEnabled() && !needCacheClear)
                     {
                         double phaseAoPmodified = targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 270d ? Util.ClampAngle(launchAoP0 + phaseAngle0 + 180d, false) : Util.ClampAngle(launchAoP0 + phaseAngle0, false);
                         Orbit transferOrbit = new Orbit
                         {
-                            inclination = (isLowLatitude && !useAltBehavior) ? launchOrbit0.inclination : targetLaunchInclination,
+                            inclination = (isLowLatitude && !useAltBehavior) || referenceTimeMode == 0 ? launchOrbit0.inclination : targetLaunchInclination,
                             eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
                             semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
                             LAN = launchLAN0,
@@ -2834,7 +2841,7 @@ namespace LunarTransferPlanner
                         ClearOrbitDisplay(ref _transferOrbitRenderer);
                     }
 
-                    if (displayManual && _manualOrbitRenderer == null && MapViewEnabled() && targetManual && !needCacheClear)
+                    if (displayManual && _manualOrbitRenderer == null && Util.MapViewEnabled() && targetManual && !needCacheClear)
                     {
                         _manualOrbitRenderer = OrbitRendererHack.Setup(targetOrbit, manualColor);
                     }
@@ -2849,6 +2856,7 @@ namespace LunarTransferPlanner
                 Tooltip.Instance?.RecordTooltip(id);
                 GUI.DragWindow();
                 needCacheClear = false;
+                justResetAngle = false;
                 ResetWindow(ref needMainReset, ref mainRect);
             }
         }
@@ -2898,7 +2906,7 @@ namespace LunarTransferPlanner
             // this tooltip is really only useful when paused, it flashes too quickly to be seen otherwise
             GUILayout.BeginVertical();
             GUILayout.Space(5);
-            if (GUILayout.Button(new GUIContent("Reset","Reset all windows and caches"), GUILayout.Width(50)))
+            if (GUILayout.Button(new GUIContent("Reset", "Reset all windows and caches"), GUILayout.Width(50)))
             {
                 ResetWindow(WindowState.Main);
                 ResetWindow();

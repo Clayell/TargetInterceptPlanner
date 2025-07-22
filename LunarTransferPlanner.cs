@@ -970,7 +970,8 @@ namespace LunarTransferPlanner
             Vector3d launchVec = Vector3d.Cross(upVector, orbitNorm).normalized;
 
             //double azimuth = Math.Acos(Vector3d.Dot(launchVec, northVec)); // this only allows azimuths between 0 and 180
-            double azimuth = Math.Atan2(Vector3d.Dot(launchVec, eastVec), Vector3d.Dot(launchVec, northVec)); // this allows azimuths between 0 and 360
+            double azimuth = Math.Atan2(Vector3d.Dot(launchVec, eastVec), Vector3d.Dot(launchVec, northVec)); // this allows azimuths between 0 and 360?
+            // TODO, it doesnt seem like it does, but there should be an option to switch between prograde and retrograde, since theres technically 2 azimuths for extra launch window
             azimuth = Util.ClampAngle(azimuth, true);
 
             return new OrbitData(orbitNorm, inclination * radToDeg, azimuth * radToDeg);
@@ -2249,7 +2250,7 @@ namespace LunarTransferPlanner
                     GUILayout.Label(new GUIContent("Flight Time", $"Coast duration to {targetName} after the maneuver\nClick the button to the right to change the unit"));
                     GUILayout.BeginVertical();
                     GUILayout.Space(5);
-                    if (GUILayout.Button(new GUIContent($"({flightTimeLabel})", flightTimeTooltip), GUILayout.Width(25))) flightTimeMode = (flightTimeMode + 1) % 4;
+                    if (GUILayout.Button(new GUIContent($"{flightTimeLabel}", flightTimeTooltip), GUILayout.Width(20))) flightTimeMode = (flightTimeMode + 1) % 4;
                     GUILayout.EndVertical();
 
                     switch (flightTimeMode) // TODO, round solarDayLength to prevent excessive decimals?
@@ -2281,7 +2282,7 @@ namespace LunarTransferPlanner
                             flightTime = flightTime_Adj * 60d * 60d;
                             break;
                         case 2:
-                            flightTimeLabel = "m";
+                            flightTimeLabel = " m";
                             flightTimeTooltip = "Currently using minutes\nClick to change flight time unit to seconds";
                             if (double.IsNaN(flightTime_Adj))
                             {

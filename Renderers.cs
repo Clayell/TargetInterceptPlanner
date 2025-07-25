@@ -30,6 +30,8 @@ namespace LunarTransferPlanner
         {
             if (line == null) return;
 
+            Vector3 halfwayWorldPos = Vector3.zero;
+
             for (int i = 0; i < arcPoints; i++)
             {
                 double t = (double)i / (arcPoints - 1);
@@ -37,9 +39,16 @@ namespace LunarTransferPlanner
                 Vector3d arcDir = rot * fromDir;
                 Vector3d worldPos = ScaledSpace.LocalToScaledSpace(center + arcDir.normalized * radius);
                 line.SetPosition(i, worldPos);
+
+                if (i == arcPoints / 2) // rounds down if arcPoints is odd
+                {
+                    halfwayWorldPos = worldPos;
+                }
             }
 
-            line.startWidth = line.endWidth = 10f / 1000f * PlanetariumCamera.fetch.Distance;
+            Vector3 camPos = PlanetariumCamera.Camera.transform.position;
+
+            line.startWidth = line.endWidth = 0.01f * Vector3.Distance(camPos, halfwayWorldPos);
             line.enabled = true;
         }
 
@@ -49,11 +58,11 @@ namespace LunarTransferPlanner
 
             Vector3d startPos = ScaledSpace.LocalToScaledSpace(center + start);
             Vector3d endPos = ScaledSpace.LocalToScaledSpace(center + end);
-            Vector3d camPos = PlanetariumCamera.Camera.transform.position;
+            Vector3 camPos = PlanetariumCamera.Camera.transform.position;
 
             line.SetPosition(0, startPos);
             line.SetPosition(1, endPos);
-            line.startWidth = line.endWidth = 5f / 1000f * Vector3.Distance(camPos, startPos);
+            line.startWidth = line.endWidth = 0.005f * Vector3.Distance(camPos, startPos);
             line.enabled = true;
         }
     }
@@ -90,6 +99,7 @@ namespace LunarTransferPlanner
         private Vector3d Point2Direction;
 
         private Vector3d orbitNormal;
+        private double initialAoP;
         private double AoPDiff;
         private Orbit parkingOrbit;
 
@@ -153,8 +163,10 @@ namespace LunarTransferPlanner
 
         private void Log(string message) => Util.Log(message);
 
-        internal void Draw(Orbit orbit, double launchAoP, double phasingAngle, bool visibilityChanged)
+        private void UpdateVectors()
         {
+            orbitNormal = parkingOrbit.GetOrbitNormal().xzy; // GetOrbitNormal is weird, it changes constantly in flight, but not in the tracking station. works tho
+
             Vector3d AoPToWorldVector(double AoPRad)
             {
                 Vector3d nodeLine = Vector3d.Cross(Vector3d.up, orbitNormal).normalized;
@@ -162,23 +174,20 @@ namespace LunarTransferPlanner
                 return Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(orbitNormal, nodeLine);
             }
 
+            Point1Direction = AoPToWorldVector(initialAoP * LunarTransferPlanner.degToRad);
+            Point2Direction = AoPToWorldVector(Util.ClampAngle(initialAoP - AoPDiff, false) * LunarTransferPlanner.degToRad);
+        }
+
+        internal void Draw(Orbit orbit, double launchAoP, double phasingAngle, bool visibilityChanged)
+        {
             BodyOrigin = orbit.referenceBody;
             parkingOrbit = orbit;
+            initialAoP = launchAoP;
             AoPDiff = phasingAngle;
-            orbitNormal = Vector3d.Cross(orbit.pos, orbit.vel).xzy.normalized;
 
-            //Log($"orbit.pos: {orbit.pos}, orbit.vel: {orbit.vel}");
+            UpdateVectors();
 
-            if (orbit.pos.z < 1e-5 || orbit.vel.z < 1e-5)
-            {
-                QuaternionD tilt = QuaternionD.AngleAxis(1e-5, Vector3.right); // tilt by .00001 degrees to make it not equatorial
-                orbitNormal = Vector3d.Cross(tilt * orbit.pos, tilt * orbit.vel).xzy.normalized;
-            }
-
-            Point1Direction = AoPToWorldVector(launchAoP * LunarTransferPlanner.degToRad);
-            Point2Direction = AoPToWorldVector(Util.ClampAngle(launchAoP - phasingAngle, false) * LunarTransferPlanner.degToRad);
-
-            _startDrawing = DateTime.Now;
+            _startDrawing = DateTime.Now; // TODO, base this on currentUT instead, so it draws quicker with time warp?
             if (visibilityChanged) _currentDrawingState = DrawingState.DrawingLinesAppearing;
             else _currentDrawingState = DrawingState.DrawingFullPicture;
         }
@@ -190,7 +199,7 @@ namespace LunarTransferPlanner
             else _currentDrawingState = DrawingState.Hidden;
         }
 
-        internal void OnPreCull()
+        void OnPreCull()
         {
             if (!Util.MapViewEnabled() || BodyOrigin == null || parkingOrbit == null || Point1Direction == null || Point2Direction == null || _currentDrawingState == DrawingState.Hidden)
             {
@@ -199,6 +208,8 @@ namespace LunarTransferPlanner
                 if (_lineArc != null) _lineArc.enabled = false;
                 return;
             }
+
+            UpdateVectors(); // technically we only need to call this when in flight... TODO optimization?
 
             double lineLength = parkingOrbit.semiMajorAxis * 4d;
             double arcRadius = parkingOrbit.semiMajorAxis * 2d;
@@ -262,7 +273,7 @@ namespace LunarTransferPlanner
             }
         }
 
-        internal void OnGUI()
+        void OnGUI()
         {
             if (BodyOrigin == null || parkingOrbit == null || Point1Direction == null || Point2Direction == null || !Util.MapViewEnabled() || _currentDrawingState != DrawingState.DrawingFullPicture)
             { return; } // this causes the text to flash while resetting the renderer (but without changing the visibility), TODO fix
@@ -302,7 +313,7 @@ namespace LunarTransferPlanner
             _renderer = renderer;
         }
 
-        internal static OrbitRendererHack Setup(Orbit orbit, Color color, bool activedraw = true)
+        internal static OrbitRendererHack Setup(Orbit orbit, Color color)
         {
             // The ContractOrbitRenderer.Setup method requires a non-null contract; we provide a default-initialized one,
             // because anything else is really annoying to setup.
@@ -310,7 +321,7 @@ namespace LunarTransferPlanner
             // Agent, which we can't provide (it's a protected field of the Contract class).
             // So, the full workaround is this: provide a default-initialized Contract to the Setup method, then immediately
             // set it to null before the caption update methods can make use of it.
-            ContractOrbitRenderer renderer = ContractOrbitRenderer.Setup(new Contracts.Contract(), orbit, activedraw);
+            ContractOrbitRenderer renderer = ContractOrbitRenderer.Setup(new Contracts.Contract(), orbit); // activedraw seems to be not used at all
             renderer.SetColor(color);
             renderer.contract = null;
             return new OrbitRendererHack(renderer);

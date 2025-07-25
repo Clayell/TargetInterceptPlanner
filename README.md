@@ -2,9 +2,9 @@
 
 # Lunar Transfer Planner
 
-### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) from the surface of the celestial body (planet, moon, gas giant, star, etc.) on which you are currently on.
+### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) from the surface of the celestial body (planet, moon, gas giant, star, black hole, etc.) on which you are currently on.
 
-Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive (usually on the Ascending/Descending node), and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
+Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive, and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
 
 Why use this over simply launching into the same LAN and Inclination as your target? This mod allows you to launch from any position on the planet, instead of being limited to a certain area on the planet. This also means that the trajectories this mod gives may not be in the same inclination of your target (because this might be possible to achieve from your launch location), so a plane change maneuver may be needed at the intersection point when rendezvousing with a vessel.
 
@@ -28,6 +28,7 @@ Why use this over simply launching into the same LAN and Inclination as your tar
 * The delta-V of the maneuver from your parking orbit to an intersection with the target
 * The time spent in your parking orbit while waiting for the maneuver
     * Can also show the phasing angle from the current position
+* Map view visualizations of the parking orbit, transfer orbit, and phasing angle (and target orbit if using a manual target)
 
 Keep in mind that this mod assumes you can instantly get into the parking orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit.
 

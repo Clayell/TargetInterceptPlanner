@@ -555,7 +555,7 @@ namespace LunarTransferPlanner
                 { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser (or considered in the phasing angle/time optimizer), default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
                 { "altBehaviorNaN", "Return a NaN when a global minimum cannot be found within the time limit, instead of returning the best local minimum" },
-                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 100000 (the Moon is about 3100). Increase if you're getting NaN for delta-V and the error messages say you need to increase the delta-V" },
+                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 100000 (for comparison, the Moon is about 3100). Increase if you're getting NaN for delta-V and the error messages say you need to increase the delta-V" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
                 { "requireSurfaceVessel", "For useVesselPosition, require that the vessel be on the surface (landed or splashed) for the position to actually be considered" },
@@ -571,7 +571,7 @@ namespace LunarTransferPlanner
                 { "manualTargetMode", "Only used when targetManual is true, ranges from 0 to 8" },
                 { "showManualOrbit", "Only used when targetManual is true" },
                 { "tickSpeed", "The rate at which holding down the \"-\" or \"+\" button changes the value in seconds, default of 0.2" },
-                { "maxIterations", "The max amount of iterations for various calculations. Increase for more accuracy in exchange for a larger lag spike." },
+                { "maxIterations", "The max amount of iterations for various calculations, default of 10000. Increase for more accuracy in exchange for worse performance." },
                 { "COLORS", "All colors are stored as red, green, blue, and alpha, from 0 to 1" },
             };
 

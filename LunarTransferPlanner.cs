@@ -571,7 +571,7 @@ namespace LunarTransferPlanner
                 { "manualTargetMode", "Only used when targetManual is true, ranges from 0 to 8" },
                 { "showManualOrbit", "Only used when targetManual is true" },
                 { "tickSpeed", "The rate at which holding down the \"-\" or \"+\" button changes the value in seconds, default of 0.2" },
-                { "maxIterations", "The max amount of iterations for various calculations, most relevant for EstimateTimeAfterManeuver (which is used for Delta-V calculations). Increase for more accuracy in exchange for a larger lag spike." },
+                { "maxIterations", "The max amount of iterations for various calculations. Increase for more accuracy in exchange for a larger lag spike." },
                 { "COLORS", "All colors are stored as red, green, blue, and alpha, from 0 to 1" },
             };
 

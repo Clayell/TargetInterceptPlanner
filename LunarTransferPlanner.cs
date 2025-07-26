@@ -1963,7 +1963,7 @@ namespace LunarTransferPlanner
             else
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("AoP", $"Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver ({Util.ClampAngle(launchAoP + phaseAngle, false)}\u00B0)"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("AoP", $"Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver ({FormatDecimals(Util.ClampAngle(launchAoP + phaseAngle, false))}\u00B0)"), GUILayout.ExpandWidth(true));
                 if (GUILayout.Button(new GUIContent("LAN", "Switch to Longitude of the Ascending Node"), GUILayout.Width(40))) useLAN = !useLAN;
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent($"{FormatDecimals(launchAoP)}\u00B0", $"{FormatDecimals(launchAoP * degToRad)} rads"));

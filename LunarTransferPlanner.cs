@@ -172,6 +172,7 @@ namespace LunarTransferPlanner
         Texture2D resetGreen;
         bool isWindowOpen = false; // hide on first start-up
         bool isKSPGUIActive = true; // for some reason, this initially only turns to true when you turn off and on the KSP GUI
+        bool isLoading = false;
         Vector2 settingsScroll = Vector2.zero; // TODO, save this in settings?
         bool needCacheClear = true;
 
@@ -350,6 +351,7 @@ namespace LunarTransferPlanner
             GameEvents.onShowUI.Add(KSPShowGUI);
             GameEvents.onHideUI.Add(KSPHideGUI);
             GameEvents.onGameSceneLoadRequested.Add(OnSceneChange);
+            GameEvents.onLevelWasLoadedGUIReady.Add(OpenWindowAfterLoading);
         }
 
         // for some reason the button icons only load if they're in PluginData, but the other icons only load if they're NOT in PluginData /shrug
@@ -401,6 +403,7 @@ namespace LunarTransferPlanner
             GameEvents.onShowUI.Remove(KSPShowGUI);
             GameEvents.onHideUI.Remove(KSPHideGUI);
             GameEvents.onGameSceneLoadRequested.Remove(OnSceneChange);
+            GameEvents.onLevelWasLoadedGUIReady.Remove(OpenWindowAfterLoading);
 
             ClearAllCaches(); // mostly needed for clearing orbits
 
@@ -408,8 +411,12 @@ namespace LunarTransferPlanner
             _phasingAngleRenderer = null;
         }
 
+        private void OpenWindowAfterLoading(GameScenes s) => isLoading = false;
+
         private void OnSceneChange(GameScenes s) // thanks Nazfib
-        { // we could call ToggleWindow here to make it closed during loading, but that would leave it closed during the next scene until the user opens it again
+        {
+            isLoading = true;
+            
             SaveSettings();
 
             ClearAllCaches(); // mostly needed for clearing orbits
@@ -420,8 +427,8 @@ namespace LunarTransferPlanner
 
         void OnGUI()
         {
-            if (isWindowOpen && isKSPGUIActive) // all windows hide if not true
-            { // HighLogic.LoadedScene != GameScenes.LOADING && HighLogic.LoadedScene != GameScenes.LOADINGBUFFER // these dont seem to work? at least not in the way im using them
+            if (isWindowOpen && isKSPGUIActive && !isLoading)
+            {
                 GUI.skin = !useAltSkin ? this.skin : null;
                 int id0 = this.GetHashCode();
                 int id1 = this.GetHashCode() + 1;

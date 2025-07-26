@@ -963,10 +963,10 @@ namespace LunarTransferPlanner
 
             Vector3d orbitNorm = Vector3d.Cross(targetPos - MainPos, upVector).normalized;
 
-            double inclination = Math.Acos(Vector3d.Dot(orbitNorm, MainAxis)); // inclination of the launch orbit, not the target orbit
+            double inclination = Math.Acos(Vector3d.Dot(orbitNorm, MainAxis)); // inclination of the launch orbit, not the target orbit [0,pi]
 
-            // for every orbit plane there are two inclinations/azimuths, a retrograde and a prograde one
-            if (targetLaunchAzimuth >= 180d && targetLaunchAzimuth < 360d)
+            // for every orbit plane there are two inclinations/azimuths, one prograde and one retrograde, so only give them the one that corresponds to what they want
+            if ((inclination > Math.PI / 2 && targetLaunchAzimuth <= 180d) || (inclination <= Math.PI / 2 && targetLaunchAzimuth > 180d && targetLaunchAzimuth <= 360d))
             {
                 inclination = Util.ClampAngle(Math.PI - inclination, true); // keep it positive, we convert to negative for south launches later
                 orbitNorm *= -1; // this flips azimuth too
@@ -1250,7 +1250,7 @@ namespace LunarTransferPlanner
                 return (futurePos - targetPos).magnitude;
             }
 
-            double bestAngle = GoldenSectionSearch(0d, 360d, epsilon, PhasingAngleError, true);
+            double bestAngle = GoldenSectionSearch(0d, 360d, epsilon, PhasingAngleError); // epsilon is probably too strict for this, i only got 53 iterations tho
 
             // Convert angle to time in orbit
             double orbitPeriod = tau * Math.Sqrt(Math.Pow(parkingRadius, 3) / gravParameter);
@@ -1523,6 +1523,8 @@ namespace LunarTransferPlanner
 
         private OrbitData GetCachedLaunchOrbit(Vector3d launchPos, double startTime, int? windowNumber = null)
         {
+            double epsilon = 1e-6;
+
             if (windowNumber.HasValue)
             {
                 int index = launchOrbitCache.FindIndex(item => item.windowNumber == windowNumber.Value);
@@ -1530,6 +1532,17 @@ namespace LunarTransferPlanner
                 else
                 {
                     OrbitData launchOrbit = CalcOrbitForTime(launchPos, startTime);
+
+                    for (int i = 1; i < maxIterations; i++) // this is specifically a problem with targetLaunchAzimuth being 0, 180, or 360, and the azimuth at that time being 180 degrees apart                                    
+                    { // so we have to wiggle back and forth until we find the right window
+                        if (Math.Abs(Math.Abs(launchOrbit.azimuth - targetLaunchAzimuth) - 180d) > epsilon) break;
+                        launchOrbit = CalcOrbitForTime(launchPos, startTime + i * epsilon);
+                        if (Math.Abs(Math.Abs(launchOrbit.azimuth - targetLaunchAzimuth) - 180d) > epsilon) break;
+                        launchOrbit = CalcOrbitForTime(launchPos, startTime - i * epsilon);
+
+                        if (i == maxIterations - 1) Log($"error with wiggle function! this should not happen, open an issue if you see this\ni: {i}");
+                    }
+
                     launchOrbitCache.Add((launchOrbit, windowNumber.Value));
                     return launchOrbit;
                 }
@@ -1585,14 +1598,14 @@ namespace LunarTransferPlanner
 
                 for (int i2 = 0; i2 < maxIterations; i2++)
                 {
-                    if (!double.IsNaN(phasingTime)) { Log($"i2: {i2}"); break; }
+                    if (!double.IsNaN(phasingTime) && !double.IsNaN(phasingAngle)) { /*Log($"i2: {i2}");*/ break; }
                     eccentricity *= 1.25; // raise eccentricity until mean anomaly is less than pi
                     (phasingTime, phasingAngle) = EstimateTimeBeforeManeuver(startTime, eccentricity, azimuth, inclination, LAN, AoP);
                 }
 
                 (dV, eccentricity, errorStateDV) = EstimateDV(startUT + phasingTime);
 
-                if (double.IsNaN(eccentricity) || Math.Abs(eccentricity - lastEcc) < epsilon) { Log($"i1: {i1}"); break; }
+                if (double.IsNaN(eccentricity) || Math.Abs(eccentricity - lastEcc) < epsilon) { /*Log($"i1: {i1}");*/ break; }
 
                 lastEcc = eccentricity;
             }

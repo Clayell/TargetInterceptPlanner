@@ -59,6 +59,13 @@ namespace LunarTransferPlanner
 
         }
 
+        internal static double RoundCheck(double value, double tolerance)
+        {
+            double testValue = Math.Round(value);
+            if (Math.Abs(testValue - value) < tolerance) return testValue;
+            else return value;
+        }
+
         // Unity only has Clamp for floats
         internal static double Clamp(double value, double min, double max)
         {
@@ -67,10 +74,6 @@ namespace LunarTransferPlanner
             return value;
         }
 
-        internal static double ClampEpsilon(double value) => ClampEpsilon(value, value);
-
-        internal static double ClampEpsilon(double value, double signedValue, double epsilon = 1e-9) => Math.Abs(value) < epsilon ? Math.Sign(signedValue) * epsilon : value;
-        
         internal static (double value, bool changed) ClampChanged(double value, double min, double max)
         {
             bool changed;
@@ -81,6 +84,10 @@ namespace LunarTransferPlanner
 
             return (value, changed);
         }
+
+        internal static double ClampEpsilon(double value) => ClampEpsilon(value, value);
+
+        internal static double ClampEpsilon(double value, double signedValue, double epsilon = 1e-9) => Math.Abs(value) < epsilon ? Math.Sign(signedValue) * epsilon : value;
 
         internal static double ClampAngle(double value, bool useRads)
         {
@@ -991,7 +998,7 @@ namespace LunarTransferPlanner
 
             if (Math.Abs(targetOrbit.period - mainBody.rotationPeriod) < epsilon)
             {
-                Log("Target orbital period exactly equals the sidereal day length, so a window cannot be found. Returning NaN.");
+                Log($"Target orbital period {targetOrbit.period} exactly equals the sidereal day length {mainBody.rotationPeriod}, so a window cannot be found. Returning NaN.");
                 return double.NaN;
             }
 
@@ -1004,10 +1011,8 @@ namespace LunarTransferPlanner
             double AzimuthError(double t)
             {
                 double az = GetCachedLaunchOrbit(launchPos, t).azimuth;
-                //Log($"az: {az}");
-                return Math.Abs(((az - targetLaunchAzimuth + 540d) % 360d) - 180d); // shortest angular difference, in [0, 180] (do not replace this with ClampAngle)
+                return 1d - Math.Cos(2d * (az - targetLaunchAzimuth) * degToRad); // this can handle jumps between 0, 180, and 360
             }
-            // dont turn this into InclinationError, CalcOrbitForTime is limited in which inclinations it can return, but it can return 0 to 360 of azimuth
 
             if (useAltBehavior)
             {
@@ -1021,7 +1026,7 @@ namespace LunarTransferPlanner
                     double refinedTime = EstimateLaunchTime(launchPos, candidateTime, false); // recursive call with useAltBehavior = false
                     if (double.IsNaN(refinedTime)) // no min found within normal time limit to analyze
                     {
-                        Log("No minimum found within normal time limit to analyze!");
+                        Log($"No minimum found within normal time limit of {maxTimeLimit} to analyze!");
                         return double.NaN;
                     }
 
@@ -1045,12 +1050,12 @@ namespace LunarTransferPlanner
                         {
                             if (altBehaviorNaN)
                             {
-                                Log($"No time found with error of 0 within time limit, returning NaN.");
+                                Log($"No time found with error of 0 within time limit of {maxTimeLimit}, returning NaN.");
                                 return double.NaN;
                             }
                             else
                             {
-                                Log($"No time found with error of 0 within time limit, returning time {bestTime} with error closest to 0.");
+                                Log($"No time found with error of 0 within time limit of {maxTimeLimit}, returning time {bestTime} with error closest to 0.");
                                 return bestTime;
                             }
                         }
@@ -1083,7 +1088,7 @@ namespace LunarTransferPlanner
                     e1 = AzimuthError(t1);
                     if (t0 >= startTime + maxTimeLimit) // no min found within time limit
                     {
-                        Log("No minimum found within time limit (increasing slope)");
+                        Log($"No minimum found within time limit of {maxTimeLimit}! (increasing slope)");
                         return double.NaN;
                     }
                 }
@@ -1118,7 +1123,7 @@ namespace LunarTransferPlanner
 
                 if (t0 >= startTime + maxTimeLimit) // no min found within time limit
                 {
-                    Log("No minimum found within time limit! (decreasing slope)");
+                    Log($"No minimum found within time limit of {maxTimeLimit}! (decreasing slope)");
                     return double.NaN;
                 }
 
@@ -1164,10 +1169,6 @@ namespace LunarTransferPlanner
             Vector3d launchDir = Math.Sin(aziRad) * east + Math.Cos(aziRad) * north;
             Vector3d orbitNormal = Vector3d.Cross(launchDir, pos).normalized;
 
-            //Log("----------------------------------");
-
-            //Log($"Vector3d.Dot(orbitNormal, Vector3d.up): {Vector3d.Dot(orbitNormal, Vector3d.up)}");
-
             if (Vector3d.Dot(orbitNormal, Vector3d.up) < 0d)
             {
                 orbitNormal *= -1; // make sure orbitNormal always points roughly northwards
@@ -1175,42 +1176,33 @@ namespace LunarTransferPlanner
 
             Vector3d nodeVector = Vector3d.Cross(orbitNormal, equatorNormal).normalized; // line of nodes pointing towards ascending node
 
-            //Log($"Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right): {Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right))}");
-
             double LAN = Util.ClampAngle(Math.Acos(Vector3d.Dot(nodeVector, Vector3d.right)), true);
-
-            //Log($"nodeVector.z: {nodeVector.z}");
 
             if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make sure LAN is in the correct quadrant
 
-            if ((azimuth > 90d && azimuth <= 180d) || (azimuth >= 270d && azimuth < 360d)) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing south-east or north-west
+            if ((azimuth >= 90d && azimuth <= 180d) || (azimuth >= 270d && azimuth < 360d)) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing south-east or north-west
 
 
             Vector3d periapsisVector = (pos - (Vector3d.Dot(pos, orbitNormal) * orbitNormal)).normalized; // bring pos into orbit, consider it the periapsis of the parking orbit
 
             double AoP = Util.ClampAngle(Math.PI - Math.Acos(Vector3d.Dot(nodeVector, periapsisVector)), true); // im not entirely sure why Math.PI is needed
 
-            //Log($"Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal): {Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal)}");
-
             if (Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal) < 0d) AoP = Util.ClampAngle(tau - AoP, true);
 
-            // intentionally excluding 180 for these, 180 just doesnt need any flips for some reason
-            if (azimuth > 90d && azimuth < 180d) AoP = Util.ClampAngle(AoP + Math.PI, true); // azimuth is pointing south-east
-            else if (azimuth > 180d && azimuth < 360d) AoP = Util.ClampAngle(Math.PI - AoP, true); // azimuth is pointing retrograde
-
-            //Log($"azimuth: {azimuth}, LAN: {LAN * radToDeg}, AoP: {AoP * radToDeg}, orbitNormal: {orbitNormal}, latitude: {latRad * radToDeg}, longitude: {lonRad * radToDeg}");
+            if (azimuth >= 90d && azimuth < 270d) AoP = Util.ClampAngle(AoP + Math.PI, true); // azimuth is pointing south
+            if (azimuth > 180d && azimuth < 360d) AoP = Util.ClampAngle(Math.PI - AoP, true); // azimuth is pointing retrograde
 
             return (LAN * radToDeg, AoP * radToDeg);
         }
 
-        private (double phasingTime, double phasingAngle) EstimateTimeBeforeManeuver(double startTime, double transferEcc, double azimuth, double inclination, double LAN, double AoP)
+        private (double phasingTime, double phasingAngle) EstimateTimeBeforeManeuver(double startTime, double transferEcc, double inclination, double LAN, double AoP)
         {
             // We can't just do some vector and quaternion math to get the phasing angle, because the maneuver is only directly opposite the future targetPos when the maneuver is a hohmann transfer (max flight time)
             // With less flight time, you have to move the maneuver further along
             
             if (double.IsNaN(transferEcc) || transferEcc == 1d) return (double.NaN, double.NaN);
 
-            double epsilon = 1e-9;
+            const double epsilon = 1e-9;
             
             double gravParameter = mainBody.gravParameter;
             double parkingRadius = mainBody.Radius + parkingAltitude * 1000d;
@@ -1224,11 +1216,9 @@ namespace LunarTransferPlanner
 
             if (transferEcc < 1d && meanAnomaly > Math.PI) return (double.NaN, double.NaN); // mean anomaly is past apoapsis so eccentricity is too low, return NaN
 
-            bool changeAoP = azimuth >= 180d && azimuth < 270d;
-
             double PhasingAngleError(double phasingAngle)
             {
-                double phaseAoPmodified = changeAoP ? Util.ClampAngle(AoP + phasingAngle + 180d, false) : Util.ClampAngle(AoP + phasingAngle, false);
+                double phaseAoPmodified = Util.ClampAngle(AoP + phasingAngle, false);
                 Orbit transferOrbit = new Orbit
                 {
                     inclination = inclination,
@@ -1523,7 +1513,7 @@ namespace LunarTransferPlanner
 
         private OrbitData GetCachedLaunchOrbit(Vector3d launchPos, double startTime, int? windowNumber = null)
         {
-            double epsilon = 1e-6;
+            const double epsilon = 1e-6;
 
             if (windowNumber.HasValue)
             {
@@ -1573,7 +1563,7 @@ namespace LunarTransferPlanner
         }
 
         private (double phasingTime, double phasingAngle, double dV, double eccentricity, int errorStateDV) GetCachedPhasingAndDeltaV
-            (double startTime, double azimuth, double inclination, double LAN, double AoP, int? windowNumber = null)
+            (double startTime, double inclination, double LAN, double AoP, int? windowNumber = null)
         {
             if (windowNumber.HasValue)
             {
@@ -1594,13 +1584,13 @@ namespace LunarTransferPlanner
 
             for (int i1 = 0; i1 < maxIterations; i1++)
             {
-                (phasingTime, phasingAngle) = EstimateTimeBeforeManeuver(startTime, eccentricity, azimuth, inclination, LAN, AoP);
+                (phasingTime, phasingAngle) = EstimateTimeBeforeManeuver(startTime, eccentricity, inclination, LAN, AoP);
 
                 for (int i2 = 0; i2 < maxIterations; i2++)
                 {
                     if (!double.IsNaN(phasingTime) && !double.IsNaN(phasingAngle)) { /*Log($"i2: {i2}");*/ break; }
                     eccentricity *= 1.25; // raise eccentricity until mean anomaly is less than pi
-                    (phasingTime, phasingAngle) = EstimateTimeBeforeManeuver(startTime, eccentricity, azimuth, inclination, LAN, AoP);
+                    (phasingTime, phasingAngle) = EstimateTimeBeforeManeuver(startTime, eccentricity, inclination, LAN, AoP);
                 }
 
                 (dV, eccentricity, errorStateDV) = EstimateDV(startUT + phasingTime);
@@ -1644,8 +1634,7 @@ namespace LunarTransferPlanner
 
             if (double.IsNaN(valueDouble)) valueDouble = minValueDouble;
             valueDouble = Util.Clamp(valueDouble, minValueDouble, maxValueDouble);
-            double testValue = Math.Round(valueDouble);
-            if (Math.Abs(testValue - valueDouble) < epsilon) valueDouble = testValue; // this works for stuff like 3.99999999, but not for stuff like 4.0999999999. oh well
+            valueDouble = Util.RoundCheck(valueDouble, epsilon); // this works for stuff like 3.99999999, but not for stuff like 4.0999999999. oh well
 
             // TODO, could try subtracting the value from (int)value, multiplying by 10, rounding, checking if close, then repeat 15 times (only do this if accessing the controlId for the first time?) (15 is max significant digits after decimal point)
 
@@ -2424,15 +2413,17 @@ namespace LunarTransferPlanner
                     OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, nextLaunchETA, 0);
                     OrbitData launchOrbit2 = GetCachedLaunchOrbit(launchPos, extraLaunchETA, extraWindowNumber - 1);
 
-                    double launchAz0 = launchOrbit0.azimuth;
+                    const double tolerance = 1e-6; // avoid floating point misses, this is needed because launchOrbit.azimuth isnt exact like targetLaunchAzimuth
+
+                    double launchAz0 = Util.RoundCheck(launchOrbit0.azimuth, tolerance);
                     double launchInc0 = ConvertInc(launchOrbit0);
-                    double launchAz1 = launchOrbit1.azimuth;
+                    double launchAz1 = Util.RoundCheck(launchOrbit1.azimuth, tolerance);
                     double launchInc1 = ConvertInc(launchOrbit1);
-                    double launchAz2 = launchOrbit2.azimuth;
+                    double launchAz2 = Util.RoundCheck(launchOrbit2.azimuth, tolerance);
                     double launchInc2 = ConvertInc(launchOrbit2);
 
                     (double launchLAN0, double launchAoP0) = GetCachedLAN(referenceTime, latitude, longitude, launchAz0, referenceWindowNumber);
-                    (double phaseTime0, double phaseAngle0, double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedPhasingAndDeltaV(referenceTime, launchAz0, launchInc0, launchLAN0, launchAoP0, referenceWindowNumber);
+                    (double phaseTime0, double phaseAngle0, double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedPhasingAndDeltaV(referenceTime, launchInc0, launchLAN0, launchAoP0, referenceWindowNumber);
 
                     if (Util.MapViewEnabled())
                     {
@@ -2526,7 +2517,7 @@ namespace LunarTransferPlanner
 
                     // we need this outside for alarm description and transfer orbit
                     (double launchLAN1, double launchAoP1) = GetCachedLAN(nextLaunchETA, latitude, longitude, launchAz1, 0);
-                    (double phaseTime1, double phaseAngle1, _, _, _) = GetCachedPhasingAndDeltaV(nextLaunchETA, launchAz1, launchInc1, launchLAN1, launchAoP1, 0);
+                    (double phaseTime1, double phaseAngle1, _, _, _) = GetCachedPhasingAndDeltaV(nextLaunchETA, launchInc1, launchLAN1, launchAoP1, 0);
                     if (expandParking1)
                     {
                         ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1);
@@ -2546,7 +2537,7 @@ namespace LunarTransferPlanner
                         if (expandParking2)
                         {
                             (double launchLAN2, double launchAoP2) = GetCachedLAN(extraLaunchETA, latitude, longitude, launchAz2, extraWindowNumber - 1);
-                            (double phaseTime2, double phaseAngle2, _, _, _) = GetCachedPhasingAndDeltaV(extraLaunchETA, launchAz2, launchInc2, launchLAN2, launchAoP2, extraWindowNumber - 1);
+                            (double phaseTime2, double phaseAngle2, _, _, _) = GetCachedPhasingAndDeltaV(extraLaunchETA, launchInc2, launchLAN2, launchAoP2, extraWindowNumber - 1);
                             ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2);
                         }
                     }
@@ -2655,7 +2646,7 @@ namespace LunarTransferPlanner
                         if (inWarp())
                         {
                             TimeWarp.fetch.CancelAutoWarp();
-                            TimeWarp.SetRate(0, false);
+                            TimeWarp.SetRate(0, true);
                         }
                         else
                         {
@@ -2807,6 +2798,8 @@ namespace LunarTransferPlanner
                         }
                     }
 
+                    // TODO, switch the orbits to use launchOrbit.inclination, which is always positive
+
                     if (displayParking && Util.MapViewEnabled() && !needCacheClear)
                     {
                         Orbit parkingOrbit = new Orbit
@@ -2838,7 +2831,24 @@ namespace LunarTransferPlanner
 
                             _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
 
-                            double AoPmodified = (launchAz0 > 90d && launchAz0 < 180d) ? Util.ClampAngle(360d - launchAoP0, false) : 180d - launchAoP0;
+                            double AoPmodified = launchAoP0;
+
+                            if (launchAz0 >= 90d && launchAz0 < 180d)
+                            {
+                                AoPmodified = 360d - AoPmodified;
+                            }
+                            else
+                            {
+                                AoPmodified = 180d - AoPmodified;
+                            }
+
+                            AoPmodified = Util.ClampAngle(AoPmodified, false);
+
+                            if (launchAz0 >= 180d && launchAz0 < 270d)
+                            {
+                                AoPmodified = Util.ClampAngle(AoPmodified + 180d, false);
+                            }
+
                             _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle0, !justResetAngle);
 
                             //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
@@ -2856,7 +2866,7 @@ namespace LunarTransferPlanner
 
                     if (displayTransfer && _transferOrbitRenderer == null && Util.MapViewEnabled() && !needCacheClear && !double.IsNaN(phaseAngle0))
                     {
-                        double phaseAoPmodified = launchAz0 >= 180d && launchAz0 < 270d ? Util.ClampAngle(launchAoP0 + phaseAngle0 + 180d, false) : Util.ClampAngle(launchAoP0 + phaseAngle0, false);
+                        double phaseAoPmodified = Util.ClampAngle(launchAoP0 + phaseAngle0, false);
                         Orbit transferOrbit = new Orbit
                         {
                             inclination = launchInc0,
@@ -2905,7 +2915,7 @@ namespace LunarTransferPlanner
         {
             windowWidth = 500;
             windowState = WindowState.Settings;
-            double epsilon = 1e-9;
+            const double epsilon = 1e-9;
 
             void BeginCombined() => GUILayout.BeginHorizontal();
 
@@ -3220,7 +3230,7 @@ namespace LunarTransferPlanner
 
                                     if (useAngle)
                                     {
-                                        double candidatePhaseAngle = GetCachedPhasingAndDeltaV(candidateLaunchTime, launchAz, launchInc, launchLAN, launchAoP, candidateWindow).phasingAngle;
+                                        double candidatePhaseAngle = GetCachedPhasingAndDeltaV(candidateLaunchTime, launchInc, launchLAN, launchAoP, candidateWindow).phasingAngle;
                                         double errorRatio = Math.Abs(candidatePhaseAngle - targetPhasingAngle) / targetPhasingAngle;
                                         if (errorRatio < bestError)
                                         {
@@ -3231,7 +3241,7 @@ namespace LunarTransferPlanner
                                     }
                                     else
                                     {
-                                        double candidatePhaseTime = GetCachedPhasingAndDeltaV(candidateLaunchTime, launchAz, launchInc, launchLAN, launchAoP, candidateWindow).phasingTime;
+                                        double candidatePhaseTime = GetCachedPhasingAndDeltaV(candidateLaunchTime, launchInc, launchLAN, launchAoP, candidateWindow).phasingTime;
                                         double errorRatio = Math.Abs(candidatePhaseTime - targetPhasingTime) / targetPhasingTime;
                                         if (errorRatio < bestError)
                                         {
@@ -3338,6 +3348,7 @@ namespace LunarTransferPlanner
                     if (StateChanged("targetLaunchAzimuth", targetLaunchAzimuth))
                     {
                         ClearAllCaches(); // this doesn't always result in new minimums, intentional
+                        // TODO, this is re-animating the phasing angle renderer, fix
                     }
                 }
             }

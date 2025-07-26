@@ -108,10 +108,10 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>
-		  xcopy /y /i "$(TargetPath)" "$(SolutionDir)\GameData/LunarTransferPlanner\Plugins\"
+		  xcopy /y /i "$(TargetPath)" "$(SolutionDir)\GameData\LunarTransferPlanner\Plugins\"
 		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "$(SolutionDir)\GameData\LunarTransferPlanner\Plugins\"
 
-		  xcopy /y /i "$(TargetPath)" "$(KSPRoot)/GameData/LunarTransferPlanner\Plugins\"
+		  xcopy /y /i "$(TargetPath)" "$(KSPRoot)\GameData\LunarTransferPlanner\Plugins\"
 		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "$(KSPRoot)\GameData\LunarTransferPlanner\Plugins\"
 
 		  xcopy /y /i "$(TargetPath)" "C:\Users\Clayel\KSP Instances\KSP 1\Kerbal Space Program (1.12.5 STOCKALIKE)\GameData\LunarTransferPlanner\Plugins\"

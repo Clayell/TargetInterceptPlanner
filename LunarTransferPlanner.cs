@@ -571,7 +571,7 @@ namespace LunarTransferPlanner
                 { "manualTargetMode", "Only used when targetManual is true, ranges from 0 to 8" },
                 { "showManualOrbit", "Only used when targetManual is true" },
                 { "tickSpeed", "The rate at which holding down the \"-\" or \"+\" button changes the value in seconds, default of 0.2" },
-                { "maxIterations", "The max amount of iterations for various calculations, default of 10000. Increase for more accuracy in exchange for worse performance." },
+                { "maxIterations", "The max amount of iterations for various calculations, default of 10000. Increase for more accuracy in exchange for worse performance" },
                 { "COLORS", "All colors are stored as red, green, blue, and alpha, from 0 to 1" },
             };
 
@@ -3295,14 +3295,7 @@ namespace LunarTransferPlanner
                         MakeNumberEditField("targetLaunchInclination", ref targetLaunchInclination, 1d, -180d, 180d, true);
 
                         double sinAz = Math.Cos(targetLaunchInclination * degToRad) / cosLat;
-
-                        if (Math.Abs(sinAz) >= 1d - epsilon)
-                        {
-                            GUILayout.Space(5);
-                            GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {FormatDecimals(targetLaunchInclination)}\u00B0 is unreachable from your latitude of {FormatDecimals(latitude)}\u00B0, so it has been automatically converted to the nearest reachable inclination. ({FormatDecimals(ResetTargetInclination())}\u00B0)"));
-                            GUILayout.FlexibleSpace();
-                        }
-                        GUILayout.EndHorizontal();
+                        bool unreachable = Math.Abs(sinAz) >= 1d - epsilon;
 
                         sinAz = Util.Clamp(sinAz, -1d, 1d);
                         double azInter = Math.Abs(Math.Asin(sinAz) * radToDeg); // intermediate value for azimuth
@@ -3312,6 +3305,14 @@ namespace LunarTransferPlanner
                             : (Math.Abs(targetLaunchInclination) <= 90d ? 180d - azInter : 180d + azInter); // SE (prograde) or SW (retrograde)
 
                         targetLaunchAzimuth = Util.ClampAngle(targetLaunchAzimuth, false);
+
+                        if (unreachable)
+                        {
+                            GUILayout.Space(5);
+                            GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {FormatDecimals(targetLaunchInclination)}\u00B0 is unreachable from your latitude of {FormatDecimals(latitude)}\u00B0, so it has been automatically converted to the nearest reachable inclination. ({FormatDecimals(ResetTargetInclination())}\u00B0)"));
+                            GUILayout.FlexibleSpace();
+                        }
+                        GUILayout.EndHorizontal();
 
                         BeginCombined();
                         GUILayout.Label(new GUIContent("Target Launch Azimuth", azimuthTooltip));

@@ -305,7 +305,7 @@ namespace LunarTransferPlanner
         internal static Color arcLineColor = Color.yellow; // 1,0.9215686,0.01568628,1
 
         List<CelestialBody> moons;
-        List<Vessel> vessels;
+        List<ProtoVessel> vessels; // use ProtoVessel so that we can use this in the editor
         double lastLaunchTime = double.NaN;
         readonly List<(object target, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
@@ -1466,7 +1466,7 @@ namespace LunarTransferPlanner
                     //Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
                     if (targetMismatch) // this will only trigger if the mainBody actually has targets(s)
                     {
-                        Log($"Now targeting {(targetManual ? "[Manual Target]" : target)}");
+                        Log($"Now targeting {(targetManual ? "[Manual Target]" : $"{targetName} ({target.GetType().Name})")}");
                     }
                     ClearAllCaches(true); // we need to clear all caches even if one window is wrong, set visibilityChanged to true to have phase angle animate again
                     break;
@@ -2072,10 +2072,11 @@ namespace LunarTransferPlanner
                     targetName = "";
                     ClearAllCaches();
                     moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
-                    vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel != FlightGlobals.ActiveVessel && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).OrderBy(vessel => vessel.vesselName).ToList();
-                    // for some reason, FlightGlobals.Vessels gets obliterated in the editor scene. FlightGlobals.PersistentVesselIds doesnt, but all of the vessels in that dictionary are nulled anyway. TODO fix?
+                    vessels = HighLogic.CurrentGame.flightState.protoVessels?.Where(protoVessel => 
+                    protoVessel != null && mainBody != null && protoVessel.vesselID != FlightGlobals.ActiveVessel?.id && protoVessel.orbitSnapShot?.ReferenceBodyIndex == mainBody.flightGlobalsIndex && protoVessel.situation == Vessel.Situations.ORBITING)
+                    .OrderBy(protoVessel => protoVessel.vesselName).ToList();
                 }
-                // TODO, instead of ordering alphabetically, order by closest periapsis? make this a setting
+                // TODO, instead of ordering alphabetically, order by closest periapsis? closest launch window? make this a setting
 
                 moonsInvalid = moons == null || moons.Count == 0;
                 vesselsInvalid = vessels == null || vessels.Count == 0;
@@ -2145,11 +2146,13 @@ namespace LunarTransferPlanner
                     if (!targetManual)
                     {
                         _ = StateChanged("targetManual", false); // this should have been done already, but just in case
-                        Vessel matchingVessel = null;
+
+                        ProtoVessel matchingVessel = null;
                         CelestialBody matchingMoon = null;
+
                         if (targetName != "") // this is for loading the target from settings
                         {
-                            matchingVessel = vessels?.FirstOrDefault(v => v.vesselName == targetName);
+                            matchingVessel = vessels?.FirstOrDefault(p => p.vesselName == targetName);
                             matchingMoon = moons?.FirstOrDefault(b => b.bodyName == targetName);
                         }
 
@@ -2157,8 +2160,8 @@ namespace LunarTransferPlanner
                         {
                             if (target == null || StateChanged("targetVessel", targetVessel))
                             {
-                                if (matchingVessel != null) target = matchingVessel as Vessel;
-                                else target = vessels[0] as Vessel;
+                                if (matchingVessel != null) target = matchingVessel as ProtoVessel;
+                                else target = vessels?[0] as ProtoVessel;
                             }
                             count = vessels.Count;
                         }
@@ -2172,11 +2175,21 @@ namespace LunarTransferPlanner
                             count = moons.Count;
                         }
 
-                        if (target is Vessel vessel)
+                        if (target is ProtoVessel vessel)
                         {
-                            targetOrbit = vessel?.orbit;
-                            targetName = vessel?.vesselName;
-                            if (currentBody == -1) currentBody = vessels.FindIndex(v => v.vesselName == targetName);
+                            targetName = vessel.vesselName;
+                            if (currentBody == -1)
+                                currentBody = vessels.FindIndex(p => p.vesselName == targetName);
+
+                            if (vessel.orbitSnapShot != null)
+                            {
+                                targetOrbit = vessel.orbitSnapShot.Load();
+                            }
+                            else
+                            {
+                                targetOrbit = null;
+                                LogError("ProtoVessel has no orbit snapshot");
+                            }
                         }
                         else if (target is CelestialBody body)
                         {
@@ -2749,8 +2762,12 @@ namespace LunarTransferPlanner
                         if (!targetSet)
                         {
                             targetSet = true;
-                            if (target is Vessel vesselTarget)
-                                FlightGlobals.fetch.SetVesselTarget(vesselTarget);
+                            if (target is ProtoVessel protoTarget)
+                            {
+                                Vessel vesselTarget = FlightGlobals.Vessels.FirstOrDefault(v => v.id == protoTarget.vesselID);
+                                if (vesselTarget != null) FlightGlobals.fetch.SetVesselTarget(vesselTarget);
+                                else LogError("Could not load ProtoVessel"); // this shouldnt happen because we should be in the flight scene
+                            }
                             else if (target is CelestialBody bodyTarget)
                                 FlightGlobals.fetch.SetVesselTarget(bodyTarget);
                             else LogError("Unknown target type passed to targetSet: " + target.GetType().Name);
@@ -2764,8 +2781,12 @@ namespace LunarTransferPlanner
 
                     if (focusPressed)
                     {
-                        if (target is Vessel vesselTarget)
-                            PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
+                        if (target is ProtoVessel protoTarget)
+                        {
+                            Vessel vesselTarget = FlightGlobals.Vessels.FirstOrDefault(v => v.id == protoTarget.vesselID);
+                            if (vesselTarget != null) PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
+                            else LogError("Could not load ProtoVessel"); // this shouldnt happen because we should be in the map view
+                        }
                         else if (target is CelestialBody bodyTarget)
                             PlanetariumCamera.fetch.SetTarget(bodyTarget.MapObject);
                         else LogError("Unknown target type passed to focusSet: " + target.GetType().Name);

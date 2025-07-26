@@ -136,7 +136,7 @@ namespace LunarTransferPlanner
         }
     }
 
-    [KSPAddon(KSPAddon.Startup.AllGameScenes, false)] // TODO, stop it from appearing in R&D, Admininistration, Astronaut Complex, during Loading
+    [KSPAddon(KSPAddon.Startup.AllGameScenes, false)]
     public class LunarTransferPlanner : MonoBehaviour
     {
         #region Fields
@@ -173,6 +173,7 @@ namespace LunarTransferPlanner
         bool isWindowOpen = false; // hide on first start-up
         bool isKSPGUIActive = true; // for some reason, this initially only turns to true when you turn off and on the KSP GUI
         bool isLoading = false;
+        bool isBadUI = false;
         Vector2 settingsScroll = Vector2.zero; // TODO, save this in settings?
         bool needCacheClear = true;
 
@@ -352,6 +353,15 @@ namespace LunarTransferPlanner
             GameEvents.onHideUI.Add(KSPHideGUI);
             GameEvents.onGameSceneLoadRequested.Add(OnSceneChange);
             GameEvents.onLevelWasLoadedGUIReady.Add(OpenWindowAfterLoading);
+
+            GameEvents.onGUIAstronautComplexSpawn.Add(HideBadUI);
+            GameEvents.onGUIRnDComplexSpawn.Add(HideBadUI);
+            GameEvents.onGUIAdministrationFacilitySpawn.Add(HideBadUI);
+            GameEvents.onGUIAstronautComplexDespawn.Add(ShowBadUI);
+            GameEvents.onGUIRnDComplexDespawn.Add(ShowBadUI);
+            GameEvents.onGUIAdministrationFacilityDespawn.Add(ShowBadUI);
+
+            //onGUIMissionControlSpawn also exists, but I think this could be useful for selecting contracts
         }
 
         // for some reason the button icons only load if they're in PluginData, but the other icons only load if they're NOT in PluginData /shrug
@@ -359,6 +369,10 @@ namespace LunarTransferPlanner
         private void KSPShowGUI() => isKSPGUIActive = true;
 
         private void KSPHideGUI() => isKSPGUIActive = false;
+
+        private void HideBadUI() => isBadUI = true;
+
+        private void ShowBadUI() => isBadUI = false;
 
         void Start()
         {
@@ -405,6 +419,13 @@ namespace LunarTransferPlanner
             GameEvents.onGameSceneLoadRequested.Remove(OnSceneChange);
             GameEvents.onLevelWasLoadedGUIReady.Remove(OpenWindowAfterLoading);
 
+            GameEvents.onGUIAstronautComplexSpawn.Remove(HideBadUI);
+            GameEvents.onGUIRnDComplexSpawn.Remove(HideBadUI);
+            GameEvents.onGUIAdministrationFacilitySpawn.Remove(HideBadUI);
+            GameEvents.onGUIAstronautComplexDespawn.Remove(ShowBadUI);
+            GameEvents.onGUIRnDComplexDespawn.Remove(ShowBadUI);
+            GameEvents.onGUIAdministrationFacilityDespawn.Remove(ShowBadUI);
+
             ClearAllCaches(); // mostly needed for clearing orbits
 
             Destroy(_phasingAngleRenderer);
@@ -427,7 +448,7 @@ namespace LunarTransferPlanner
 
         void OnGUI()
         {
-            if (isWindowOpen && isKSPGUIActive && !isLoading)
+            if (isWindowOpen && isKSPGUIActive && !isLoading && !isBadUI)
             {
                 GUI.skin = !useAltSkin ? this.skin : null;
                 int id0 = this.GetHashCode();

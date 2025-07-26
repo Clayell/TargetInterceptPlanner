@@ -305,7 +305,7 @@ namespace LunarTransferPlanner
         internal static Color arcLineColor = Color.yellow; // 1,0.9215686,0.01568628,1
 
         List<CelestialBody> moons;
-        List<ProtoVessel> vessels; // use ProtoVessel so that we can use this in the editor
+        List<ProtoVessel> vessels; // FlightGlobals.Vessels doesnt work in the editor, so we need to use ProtoVessel which should always work
         double lastLaunchTime = double.NaN;
         readonly List<(object target, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
@@ -1209,7 +1209,7 @@ namespace LunarTransferPlanner
 
             if (nodeVector.z < 0d) LAN = Util.ClampAngle(tau - LAN, true); // make sure LAN is in the correct quadrant
 
-            if ((azimuth >= 90d && azimuth <= 180d) || (azimuth >= 270d && azimuth < 360d)) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is pointing south-east or north-west
+            if (azimuth >= 180d && azimuth < 360d) LAN = Util.ClampAngle(LAN + Math.PI, true); // azimuth is retrograde
 
 
             Vector3d periapsisVector = (pos - (Vector3d.Dot(pos, orbitNormal) * orbitNormal)).normalized; // bring pos into orbit, consider it the periapsis of the parking orbit
@@ -1218,8 +1218,7 @@ namespace LunarTransferPlanner
 
             if (Vector3d.Dot(Vector3d.Cross(nodeVector, periapsisVector), orbitNormal) < 0d) AoP = Util.ClampAngle(tau - AoP, true);
 
-            if (azimuth >= 90d && azimuth < 270d) AoP = Util.ClampAngle(AoP + Math.PI, true); // azimuth is pointing south
-            if (azimuth > 180d && azimuth < 360d) AoP = Util.ClampAngle(Math.PI - AoP, true); // azimuth is pointing retrograde
+            if (azimuth >= 180d && azimuth < 360d) AoP = Util.ClampAngle(Math.PI - AoP, true); // azimuth is retrograde
 
             return (LAN * radToDeg, AoP * radToDeg);
         }
@@ -1247,14 +1246,13 @@ namespace LunarTransferPlanner
 
             double PhasingAngleError(double phasingAngle)
             {
-                double phaseAoPmodified = Util.ClampAngle(AoP + phasingAngle, false);
                 Orbit transferOrbit = new Orbit
                 {
                     inclination = inclination,
                     eccentricity = transferEcc,
                     semiMajorAxis = transferSMA,
                     LAN = LAN,
-                    argumentOfPeriapsis = phaseAoPmodified,
+                    argumentOfPeriapsis = Util.ClampAngle(AoP + phasingAngle, false),
                     meanAnomalyAtEpoch = 0d,
                     epoch = currentUT,
                     referenceBody = mainBody,
@@ -1965,7 +1963,7 @@ namespace LunarTransferPlanner
             else
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("AoP", "Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("AoP", $"Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver ({Util.ClampAngle(launchAoP + phaseAngle, false)}\u00B0)"), GUILayout.ExpandWidth(true));
                 if (GUILayout.Button(new GUIContent("LAN", "Switch to Longitude of the Ascending Node"), GUILayout.Width(40))) useLAN = !useLAN;
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent($"{FormatDecimals(launchAoP)}\u00B0", $"{FormatDecimals(launchAoP * degToRad)} rads"));
@@ -2187,7 +2185,7 @@ namespace LunarTransferPlanner
                             }
                             else
                             {
-                                targetOrbit = null;
+                                targetOrbit = null; // this is risky, i hope it doesnt happen
                                 LogError("ProtoVessel has no orbit snapshot");
                             }
                         }
@@ -2849,13 +2847,11 @@ namespace LunarTransferPlanner
                         }
                     }
 
-                    // TODO, switch the orbits to use launchOrbit.inclination, which is always positive
-
                     if (displayParking && Util.MapViewEnabled() && !needCacheClear)
                     {
                         Orbit parkingOrbit = new Orbit
                         {
-                            inclination = launchInc0,
+                            inclination = launchOrbit0.inclination, // use the real inclination directly from launchOrbit
                             eccentricity = epsilon, // just to make periapsis visible
                             semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
                             LAN = launchLAN0,
@@ -2882,23 +2878,7 @@ namespace LunarTransferPlanner
 
                             _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
 
-                            double AoPmodified = launchAoP0;
-
-                            if (launchAz0 >= 90d && launchAz0 < 180d)
-                            {
-                                AoPmodified = 360d - AoPmodified;
-                            }
-                            else
-                            {
-                                AoPmodified = 180d - AoPmodified;
-                            }
-
-                            AoPmodified = Util.ClampAngle(AoPmodified, false);
-
-                            if (launchAz0 >= 180d && launchAz0 < 270d)
-                            {
-                                AoPmodified = Util.ClampAngle(AoPmodified + 180d, false);
-                            }
+                            double AoPmodified = Util.ClampAngle(180d - launchAoP0, false); // TODO, fix this in update vectors
 
                             _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle0, !justResetAngle);
 
@@ -2917,14 +2897,13 @@ namespace LunarTransferPlanner
 
                     if (displayTransfer && _transferOrbitRenderer == null && Util.MapViewEnabled() && !needCacheClear && !double.IsNaN(phaseAngle0))
                     {
-                        double phaseAoPmodified = Util.ClampAngle(launchAoP0 + phaseAngle0, false);
                         Orbit transferOrbit = new Orbit
                         {
-                            inclination = launchInc0,
+                            inclination = launchOrbit0.inclination, // use the real inclination directly from launchOrbit
                             eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
                             semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
                             LAN = launchLAN0,
-                            argumentOfPeriapsis = phaseAoPmodified,
+                            argumentOfPeriapsis = Util.ClampAngle(launchAoP0 + phaseAngle0, false),
                             meanAnomalyAtEpoch = 0d,
                             epoch = currentUT,
                             referenceBody = mainBody,

@@ -352,7 +352,7 @@ namespace LunarTransferPlanner
             GameEvents.onShowUI.Add(KSPShowGUI);
             GameEvents.onHideUI.Add(KSPHideGUI);
             GameEvents.onGameSceneLoadRequested.Add(OnSceneChange);
-            GameEvents.onLevelWasLoadedGUIReady.Add(OpenWindowAfterLoading);
+            GameEvents.onLevelWasLoadedGUIReady.Add(OnSceneLoaded);
 
             GameEvents.onGUIAstronautComplexSpawn.Add(HideBadUI);
             GameEvents.onGUIRnDComplexSpawn.Add(HideBadUI);
@@ -413,11 +413,12 @@ namespace LunarTransferPlanner
 
             toolbarControl?.OnDestroy();
             Destroy(toolbarControl);
+            // think these two do the same thing?
 
             GameEvents.onShowUI.Remove(KSPShowGUI);
             GameEvents.onHideUI.Remove(KSPHideGUI);
             GameEvents.onGameSceneLoadRequested.Remove(OnSceneChange);
-            GameEvents.onLevelWasLoadedGUIReady.Remove(OpenWindowAfterLoading);
+            GameEvents.onLevelWasLoadedGUIReady.Remove(OnSceneLoaded);
 
             GameEvents.onGUIAstronautComplexSpawn.Remove(HideBadUI);
             GameEvents.onGUIRnDComplexSpawn.Remove(HideBadUI);
@@ -432,7 +433,7 @@ namespace LunarTransferPlanner
             _phasingAngleRenderer = null;
         }
 
-        private void OpenWindowAfterLoading(GameScenes s) => isLoading = false;
+        private void OnSceneLoaded(GameScenes s) => isLoading = false;
 
         private void OnSceneChange(GameScenes s) // thanks Nazfib
         {
@@ -2057,7 +2058,7 @@ namespace LunarTransferPlanner
 
                 if (FlightGlobals.currentMainBody != null) // this makes it impossible to switch your mainBody in flight map view without physically changing your SOI. TODO?
                     mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
-                else if (MapView.MapIsEnabled && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
+                else if (Util.MapViewEnabled() && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
                     mainBody = MapView.MapCamera.target.celestialBody; // tracking station, technically works for flight map view too but we already checked that
                 else if (FlightGlobals.GetHomeBody() != null)
                     mainBody = FlightGlobals.GetHomeBody(); // vab/sph, this always gives the home body (could also do Planetarium.fetch.Home)
@@ -2071,7 +2072,8 @@ namespace LunarTransferPlanner
                     targetName = "";
                     ClearAllCaches();
                     moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
-                    vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).OrderBy(vessel => vessel.vesselName).ToList();
+                    vessels = FlightGlobals.Vessels?.Where(vessel => vessel != null && mainBody != null && vessel != FlightGlobals.ActiveVessel && vessel.mainBody == mainBody && vessel.situation == Vessel.Situations.ORBITING).OrderBy(vessel => vessel.vesselName).ToList();
+                    // for some reason, FlightGlobals.Vessels gets obliterated in the editor scene. FlightGlobals.PersistentVesselIds doesnt, but all of the vessels in that dictionary are nulled anyway. TODO fix?
                 }
                 // TODO, instead of ordering alphabetically, order by closest periapsis? make this a setting
 

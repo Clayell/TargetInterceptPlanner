@@ -314,7 +314,7 @@ namespace LunarTransferPlanner
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
-        readonly string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LunarTransferPlanner/PluginData/settings.cfg");
+        readonly static string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LunarTransferPlanner/PluginData/settings.cfg");
 
         ToolbarControl toolbarControl = null;
 
@@ -411,9 +411,7 @@ namespace LunarTransferPlanner
         {
             SaveSettings();
 
-            toolbarControl?.OnDestroy();
             Destroy(toolbarControl);
-            // think these two do the same thing?
 
             GameEvents.onShowUI.Remove(KSPShowGUI);
             GameEvents.onHideUI.Remove(KSPHideGUI);
@@ -2861,8 +2859,6 @@ namespace LunarTransferPlanner
                             referenceBody = mainBody,
                         };
 
-                        //Log($"launchLAN1: {launchLAN1}, launchAoP1: {launchAoP1}");
-
                         if (_parkingOrbitRenderer == null)
                         {
                             _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, parkingColor);
@@ -2879,8 +2875,6 @@ namespace LunarTransferPlanner
                             _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
 
                             _phasingAngleRenderer.Draw(parkingOrbit, launchAoP0, phaseAngle0, !justResetAngle);
-
-                            //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
                         }
                     }
                     else if (!displayParking && _parkingOrbitRenderer != null)

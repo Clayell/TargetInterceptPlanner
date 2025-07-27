@@ -2878,9 +2878,7 @@ namespace LunarTransferPlanner
 
                             _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
 
-                            double AoPmodified = Util.ClampAngle(180d - launchAoP0, false); // TODO, fix this in update vectors
-
-                            _phasingAngleRenderer.Draw(parkingOrbit, AoPmodified, phaseAngle0, !justResetAngle);
+                            _phasingAngleRenderer.Draw(parkingOrbit, launchAoP0, phaseAngle0, !justResetAngle);
 
                             //Log($"AoPmodified: {AoPmodified}, phaseAngle1: {phaseAngle1}, parkingOrbit: {parkingOrbit}");
                         }

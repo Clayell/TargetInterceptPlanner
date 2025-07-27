@@ -99,7 +99,8 @@ namespace LunarTransferPlanner
         private Vector3d Point2Direction;
 
         private Vector3d orbitNormal;
-        private double initialAoP;
+        private double initialAoPRad;
+        private double newAoPRad;
         private double AoPDiff;
         private Orbit parkingOrbit;
 
@@ -169,20 +170,21 @@ namespace LunarTransferPlanner
 
             Vector3d AoPToWorldVector(double AoPRad)
             {
-                Vector3d nodeLine = Vector3d.Cross(Vector3d.up, orbitNormal).normalized;
+                Vector3d nodeLine = Vector3d.Cross(orbitNormal, Vector3d.up).normalized;
 
-                return Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(orbitNormal, nodeLine);
+                return (Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(nodeLine, orbitNormal)).normalized;
             }
 
-            Point1Direction = AoPToWorldVector(initialAoP * LunarTransferPlanner.degToRad);
-            Point2Direction = AoPToWorldVector(Util.ClampAngle(initialAoP - AoPDiff, false) * LunarTransferPlanner.degToRad);
+            Point1Direction = AoPToWorldVector(initialAoPRad);
+            Point2Direction = AoPToWorldVector(newAoPRad);
         }
 
         internal void Draw(Orbit orbit, double launchAoP, double phasingAngle, bool visibilityChanged)
         {
             BodyOrigin = orbit.referenceBody;
             parkingOrbit = orbit;
-            initialAoP = launchAoP;
+            initialAoPRad = launchAoP * LunarTransferPlanner.degToRad;
+            newAoPRad = Util.ClampAngle(launchAoP + phasingAngle, false) * LunarTransferPlanner.degToRad;
             AoPDiff = phasingAngle;
 
             UpdateVectors();
@@ -213,8 +215,8 @@ namespace LunarTransferPlanner
 
             double lineLength = parkingOrbit.semiMajorAxis * 4d;
             double arcRadius = parkingOrbit.semiMajorAxis * 2d;
-            Vector3d dir1 = Point1Direction.normalized;
-            Vector3d dir2 = Point2Direction.normalized;
+            Vector3d dir1 = Point1Direction;
+            Vector3d dir2 = Point2Direction;
 
             //Are we Showing, Hiding or Static State
             double pctDone;
@@ -280,8 +282,8 @@ namespace LunarTransferPlanner
 
             Vector3 center = BodyOrigin.transform.position;
             double length = 4d * parkingOrbit.semiMajorAxis; // line uses 4
-            Vector3 dir1 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point1Direction.normalized));
-            Vector3 dir2 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point2Direction.normalized));
+            Vector3 dir1 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point1Direction));
+            Vector3 dir2 = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + length * Point2Direction));
 
             bool cameraNear = PlanetariumCamera.fetch.Distance < 100000d * (parkingOrbit.semiMajorAxis / 6571000d); // 6571000 is a 200km parking orbit for earth
 
@@ -289,7 +291,7 @@ namespace LunarTransferPlanner
             if (dir1.z > 0 && cameraNear) GUI.Label(new Rect(dir1.x - 50, Screen.height - dir1.y - 15, 100, 30), new GUIContent("Parking Orbit Insertion", "This is the point directly above the launch site"), _styleLabel);
             if (dir2.z > 0 && cameraNear) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
 
-            Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction.normalized;
+            Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction;
             double arcRadius = 2.5 * parkingOrbit.semiMajorAxis; // arc uses 2
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));

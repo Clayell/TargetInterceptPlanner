@@ -1,5 +1,4 @@
 using ClickThroughFix;
-using ToolbarControl_NS;
 using KSP.UI.Screens;
 using System;
 using System.Collections.Generic;
@@ -8,6 +7,7 @@ using System.Diagnostics; // use this for stopwatch
 using System.Globalization; // stick to CultureInfo.InvariantCulture
 using System.IO;
 using System.Linq;
+using ToolbarControl_NS;
 using UnityEngine;
 
 namespace LunarTransferPlanner
@@ -2846,9 +2846,26 @@ namespace LunarTransferPlanner
                         ClearAngleRenderer();
                     }
 
-                    if (debugMode)
+                    if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
                     {
-                        if (GUILayout.Button("Set Orbit") && FlightGlobals.ActiveVessel != null && HighLogic.LoadedSceneIsFlight)
+                        GUI.enabled = FlightGlobals.ActiveVessel.situation == Vessel.Situations.ORBITING;
+                        if (GUILayout.Button(new GUIContent("Make Node", $"Make Maneuver Node in parking orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING ? "\nMust be in orbit" : "")}")))
+                        {
+                            ManeuverNode node = FlightGlobals.ActiveVessel.patchedConicSolver.AddManeuverNode(currentUT + phaseTime0);
+                            node.DeltaV = new Vector3d(0, 0, dV);
+                            node.solver.UpdateFlightPlan();
+                        }
+                        GUI.enabled = true;
+                    }
+
+                    if (StateChanged("InFlight", HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null))
+                    {
+                        ResetWindow();
+                    }
+
+                    if (debugMode && HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
+                    {
+                        if (GUILayout.Button("Set Orbit"))
                         {
                             FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), launchInc0, launchLAN0, 0d, launchAoP0, 0d);
                         }

@@ -2997,8 +2997,16 @@ namespace LunarTransferPlanner
 
             GUILayout.Space(5);
             GUILayout.BeginHorizontal();
-            GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - 50)); // this sets the width of the window
+            GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - (50 + 50))); // this sets the width of the window
             // this tooltip is really only useful when paused, it flashes too quickly to be seen otherwise
+            GUILayout.FlexibleSpace();
+            GUILayout.BeginVertical();
+            GUILayout.Space(5);
+            if (GUILayout.Button(new GUIContent("Wiki", "Open Github Wiki link in a new tab"), GUILayout.Width(50)))
+            {
+                Application.OpenURL("https://github.com/Clayell/LunarTransferPlanner/wiki"); // TODO change this link
+            }
+            GUILayout.EndVertical();
             GUILayout.BeginVertical();
             GUILayout.Space(5);
             if (GUILayout.Button(new GUIContent("Reset", "Reset all windows and caches"), GUILayout.Width(50)))

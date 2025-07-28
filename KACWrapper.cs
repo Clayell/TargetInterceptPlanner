@@ -1,16 +1,19 @@
-﻿// this was originally copied from linuxgurugamer's KCT (https://github.com/linuxgurugamer/KCT/blob/master/Kerbal_Construction_Time/KACWrapper.cs),
-// but that code is not original and seems to be used in 30 projects
-// it originates from TriggerAu's KAC Wrapper example code (https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock_APITester/KACWrapper.cs)
+﻿// this is taken from TriggerAu's KAC Wrapper example code (https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock/API/KACWrapper.cs)
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 
 namespace LunarTransferPlanner
 {
+
+    ///////////////////////////////////////////////////////////////////////////////////////////
+    // BELOW HERE SHOULD NOT BE EDITED - this links to the loaded KAC module without requiring a Hard Dependancy
+    ///////////////////////////////////////////////////////////////////////////////////////////
 
     /// <summary>
     /// The Wrapper class to access KAC from another plugin
@@ -20,7 +23,7 @@ namespace LunarTransferPlanner
         protected static System.Type KACType;
         protected static System.Type KACAlarmType;
 
-        protected static object actualKAC = null;
+        protected static Object actualKAC = null;
 
         /// <summary>
         /// This is the Kerbal Alarm Clock object
@@ -33,34 +36,34 @@ namespace LunarTransferPlanner
         /// 
         /// SET AFTER INIT
         /// </summary>
-        public static bool AssemblyExists { get { return (KACType != null); } }
+        public static Boolean AssemblyExists { get { return (KACType != null); } }
         /// <summary>
         /// Whether we managed to hook the running Instance from the assembly. 
         /// 
         /// SET AFTER INIT
         /// </summary>
-        public static bool InstanceExists { get { return (KAC != null); } }
+        public static Boolean InstanceExists { get { return (KAC != null); } }
         /// <summary>
         /// Whether we managed to wrap all the methods/functions from the instance. 
         /// 
         /// SET AFTER INIT
         /// </summary>
-        private static bool _KACWrapped = false;
+        private static Boolean _KACWrapped = false;
 
         /// <summary>
         /// Whether the object has been wrapped and the APIReady flag is set in the real KAC
         /// </summary>
-        public static bool APIReady { get { return _KACWrapped && KAC.APIReady && !NeedUpgrade; } }
+        public static Boolean APIReady { get { return _KACWrapped && KAC.APIReady && !NeedUpgrade; } }
 
 
-        public static bool NeedUpgrade { get; private set; }
+        public static Boolean NeedUpgrade { get; private set; }
 
         /// <summary>
         /// This method will set up the KAC object and wrap all the methods/functions
         /// </summary>
         /// <param name="Force">This option will force the Init function to rebind everything</param>
         /// <returns></returns>
-        public static bool InitKACWrapper()
+        public static Boolean InitKACWrapper()
         {
             //if (!_KACWrapped )
             //{
@@ -71,14 +74,11 @@ namespace LunarTransferPlanner
             LogFormatted("Attempting to Grab KAC Types...");
 
             //find the base type
-            KACType = null;
-			AssemblyLoader.loadedAssemblies.TypeOperation(t =>
-			{
-				if (t.FullName == "KerbalAlarmClock.KerbalAlarmClock")
-				{
-					KACType = t;
-				}
-			});
+            AssemblyLoader.loadedAssemblies.TypeOperation(t =>
+            {
+                if (t.FullName == "KerbalAlarmClock.KerbalAlarmClock")
+                    KACType = t;
+            });
 
             if (KACType == null)
             {
@@ -92,15 +92,11 @@ namespace LunarTransferPlanner
                 NeedUpgrade = true;
             }
 
-			//now the Alarm Type
-			KACAlarmType = null;
-			AssemblyLoader.loadedAssemblies.TypeOperation(t =>
-			{
-				if (t.FullName == "KerbalAlarmClock.KACAlarm")
-				{
-					KACAlarmType = t;
-				}
-			});
+            //now the Alarm Type
+            KACAlarmType = AssemblyLoader.loadedAssemblies
+                .Select(a => a.assembly.GetExportedTypes())
+                .SelectMany(t => t)
+                .FirstOrDefault(t => t.FullName == "KerbalAlarmClock.KACAlarm");
 
             if (KACAlarmType == null)
             {
@@ -140,7 +136,7 @@ namespace LunarTransferPlanner
         public class KACAPI
         {
 
-            internal KACAPI(object KAC)
+            internal KACAPI(Object KAC)
             {
                 //store the actual object
                 actualKAC = KAC;
@@ -189,25 +185,25 @@ namespace LunarTransferPlanner
                 //}
             }
 
-            private object actualKAC;
+            private Object actualKAC;
 
             private FieldInfo APIReadyField;
             /// <summary>
             /// Whether the APIReady flag is set in the real KAC
             /// </summary>
-            public bool APIReady
+            public Boolean APIReady
             {
                 get
                 {
                     if (APIReadyField == null)
                         return false;
 
-                    return (bool)APIReadyField.GetValue(null);
+                    return (Boolean)APIReadyField.GetValue(null);
                 }
             }
 
             #region Alarms
-            private object actualAlarms;
+            private Object actualAlarms;
             private FieldInfo AlarmsField;
 
             /// <summary>
@@ -226,18 +222,15 @@ namespace LunarTransferPlanner
             /// </summary>
             /// <param name="actualAlarmList"></param>
             /// <returns></returns>
-            private KACAlarmList ExtractAlarmList(object actualAlarmList)
+            private KACAlarmList ExtractAlarmList(Object actualAlarmList)
             {
                 KACAlarmList ListToReturn = new KACAlarmList();
                 try
                 {
                     //iterate each "value" in the dictionary
-                    for (var i = ((IList)actualAlarmList).Count - 1; i >= 0; i--)
+
+                    foreach (var item in (IList)actualAlarmList)
                     {
-                        var item = ((IList)actualAlarmList)[i];
-                    
-                    //foreach (var item in (IList)actualAlarmList)
-                    //{
                         KACAlarm r1 = new KACAlarm(item);
                         ListToReturn.Add(r1);
                     }
@@ -260,14 +253,14 @@ namespace LunarTransferPlanner
             /// <param name="Event">EventInfo of the event we want to attach to</param>
             /// <param name="KACObject">actual object the eventinfo is gathered from</param>
             /// <param name="Handler">Method that we are going to hook to the event</param>
-            protected void AddHandler(EventInfo Event, object KACObject, Action<object> Handler)
+            protected void AddHandler(EventInfo Event, Object KACObject, Action<Object> Handler)
             {
                 //build a delegate
                 Delegate d = Delegate.CreateDelegate(Event.EventHandlerType, Handler.Target, Handler.Method);
                 //get the Events Add method
                 MethodInfo addHandler = Event.GetAddMethod();
                 //and add the delegate
-                addHandler.Invoke(KACObject, new object[] { d });
+                addHandler.Invoke(KACObject, new System.Object[] { d });
             }
 
             //the info about the event;
@@ -287,7 +280,7 @@ namespace LunarTransferPlanner
             /// </summary>
             public class AlarmStateChangedEventArgs
             {
-                public AlarmStateChangedEventArgs(object actualEvent, KACAPI kac)
+                public AlarmStateChangedEventArgs(System.Object actualEvent, KACAPI kac)
                 {
                     Type type = actualEvent.GetType();
                     this.alarm = new KACAlarm(type.GetField("alarm").GetValue(actualEvent));
@@ -330,9 +323,9 @@ namespace LunarTransferPlanner
             /// <param name="Name">Name of the Alarm for the display</param>
             /// <param name="UT">Universal Time for the alarm</param>
             /// <returns>ID of the newly created alarm</returns>
-            internal string CreateAlarm(AlarmTypeEnum AlarmType, string Name, double UT)
+            internal String CreateAlarm(AlarmTypeEnum AlarmType, String Name, Double UT)
             {
-                return (string)CreateAlarmMethod.Invoke(actualKAC, new object[] { (int)AlarmType, Name, UT });
+                return (String)CreateAlarmMethod.Invoke(actualKAC, new System.Object[] { (Int32)AlarmType, Name, UT });
             }
 
 
@@ -342,9 +335,9 @@ namespace LunarTransferPlanner
             /// </summary>
             /// <param name="AlarmID">Unique ID of the alarm</param>
             /// <returns>Success of the deletion</returns>
-            internal bool DeleteAlarm(string AlarmID)
+            internal Boolean DeleteAlarm(String AlarmID)
             {
-                return (bool)DeleteAlarmMethod.Invoke(actualKAC, new object[] { AlarmID });
+                return (Boolean)DeleteAlarmMethod.Invoke(actualKAC, new System.Object[] { AlarmID });
             }
 
 
@@ -354,10 +347,10 @@ namespace LunarTransferPlanner
             /// </summary>
             /// <param name="AlarmID">Unique ID of the alarm</param>
             /// <returns>Success of the deletion</returns>
-            internal bool DrawAlarmActionChoice(ref AlarmActionEnum Choice, string LabelText, int LabelWidth, int ButtonWidth)
+            internal Boolean DrawAlarmActionChoice(ref AlarmActionEnum Choice, String LabelText, Int32 LabelWidth, Int32 ButtonWidth)
             {
-                int InValue = (int)Choice;
-                int OutValue = (int)DrawAlarmActionChoiceMethod.Invoke(actualKAC, new object[] { InValue, LabelText, LabelWidth, ButtonWidth });
+                Int32 InValue = (Int32)Choice;
+                Int32 OutValue = (Int32)DrawAlarmActionChoiceMethod.Invoke(actualKAC, new System.Object[] { InValue, LabelText, LabelWidth, ButtonWidth });
 
                 Choice = (AlarmActionEnum)OutValue;
                 return (InValue != OutValue);
@@ -385,7 +378,7 @@ namespace LunarTransferPlanner
 
             public class KACAlarm
             {
-                internal KACAlarm(object a)
+                internal KACAlarm(Object a)
                 {
                     actualAlarm = a;
                     VesselIDField = KACAlarmType.GetField("VesselID");
@@ -395,8 +388,10 @@ namespace LunarTransferPlanner
                     AlarmTypeField = KACAlarmType.GetField("TypeOfAlarm");
                     AlarmTimeProperty = KACAlarmType.GetProperty("AlarmTimeUT");
                     AlarmMarginField = KACAlarmType.GetField("AlarmMarginSecs");
-                    AlarmActionField = KACAlarmType.GetField("AlarmAction");
                     RemainingField = KACAlarmType.GetField("Remaining");
+
+                    AlarmActionField = KACAlarmType.GetField("AlarmAction");
+                    ActionActionProperty = KACAlarmType.GetProperty("AlarmActionConvert");
 
                     XferOriginBodyNameField = KACAlarmType.GetField("XferOriginBodyName");
                     //LogFormatted("XFEROrigin:{0}", XferOriginBodyNameField == null);
@@ -416,15 +411,15 @@ namespace LunarTransferPlanner
                     //    LogFormatted("F:{0}-{1}", fi.Name, fi.DeclaringType);
                     //}
                 }
-                private object actualAlarm;
+                private Object actualAlarm;
 
                 private FieldInfo VesselIDField;
                 /// <summary>
                 /// Unique Identifier of the Vessel that the alarm is attached to
                 /// </summary>
-                public string VesselID
+                public String VesselID
                 {
-                    get { return (string)VesselIDField.GetValue(actualAlarm); }
+                    get { return (String)VesselIDField.GetValue(actualAlarm); }
                     set { VesselIDField.SetValue(actualAlarm, value); }
                 }
 
@@ -432,18 +427,18 @@ namespace LunarTransferPlanner
                 /// <summary>
                 /// Unique Identifier of this alarm
                 /// </summary>
-                public string ID
+                public String ID
                 {
-                    get { return (string)IDField.GetValue(actualAlarm); }
+                    get { return (String)IDField.GetValue(actualAlarm); }
                 }
 
                 private FieldInfo NameField;
                 /// <summary>
                 /// Short Text Name for the Alarm
                 /// </summary>
-                public string Name
+                public String Name
                 {
-                    get { return (string)NameField.GetValue(actualAlarm); }
+                    get { return (String)NameField.GetValue(actualAlarm); }
                     set { NameField.SetValue(actualAlarm, value); }
                 }
 
@@ -451,9 +446,9 @@ namespace LunarTransferPlanner
                 /// <summary>
                 /// Longer Text Description for the Alarm
                 /// </summary>
-                public string Notes
+                public String Notes
                 {
-                    get { return (string)NotesField.GetValue(actualAlarm); }
+                    get { return (String)NotesField.GetValue(actualAlarm); }
                     set { NotesField.SetValue(actualAlarm, value); }
                 }
 
@@ -461,9 +456,9 @@ namespace LunarTransferPlanner
                 /// <summary>
                 /// Name of the origin body for a transfer
                 /// </summary>
-                public string XferOriginBodyName
+                public String XferOriginBodyName
                 {
-                    get { return (string)XferOriginBodyNameField.GetValue(actualAlarm); }
+                    get { return (String)XferOriginBodyNameField.GetValue(actualAlarm); }
                     set { XferOriginBodyNameField.SetValue(actualAlarm, value); }
                 }
 
@@ -471,9 +466,9 @@ namespace LunarTransferPlanner
                 /// <summary>
                 /// Name of the destination body for a transfer
                 /// </summary>
-                public string XferTargetBodyName
+                public String XferTargetBodyName
                 {
-                    get { return (string)XferTargetBodyNameField.GetValue(actualAlarm); }
+                    get { return (String)XferTargetBodyNameField.GetValue(actualAlarm); }
                     set { XferTargetBodyNameField.SetValue(actualAlarm, value); }
                 }
 
@@ -487,9 +482,9 @@ namespace LunarTransferPlanner
                 /// <summary>
                 /// In game UT value of the alarm
                 /// </summary>
-                public double AlarmTime
+                public Double AlarmTime
                 {
-                    get { return (double)AlarmTimeProperty.GetValue(actualAlarm, null); }
+                    get { return (Double)AlarmTimeProperty.GetValue(actualAlarm, null); }
                     set { AlarmTimeProperty.SetValue(actualAlarm, value, null); }
                 }
 
@@ -497,9 +492,9 @@ namespace LunarTransferPlanner
                 /// <summary>
                 /// In game seconds the alarm will fire before the event it is for
                 /// </summary>
-                public double AlarmMargin
+                public Double AlarmMargin
                 {
-                    get { return (double)AlarmMarginField.GetValue(actualAlarm); }
+                    get { return (Double)AlarmMarginField.GetValue(actualAlarm); }
                     set { AlarmMarginField.SetValue(actualAlarm, value); }
                 }
 
@@ -507,37 +502,48 @@ namespace LunarTransferPlanner
                 /// <summary>
                 /// What should the Alarm Clock do when the alarm fires
                 /// </summary>
+                //public AlarmActionEnum AlarmAction
+                //{
+                //    get { return (AlarmActionEnum)AlarmActionField.GetValue(actualAlarm); }
+                //    set { AlarmActionField.SetValue(actualAlarm, (Int32)value); }
+                //}
+                /// <summary>
+                /// What should the Alarm Clock do when the alarm fires
+                /// </summary>
                 public AlarmActionEnum AlarmAction
                 {
-                    get { return (AlarmActionEnum)AlarmActionField.GetValue(actualAlarm); }
-                    set { AlarmActionField.SetValue(actualAlarm, (int)value); }
+                    get { return (AlarmActionEnum)ActionActionProperty.GetValue(actualAlarm); }
+                    set { ActionActionProperty.SetValue(actualAlarm, (Int32)value); }
                 }
+                private PropertyInfo ActionActionProperty;
+
+
 
                 private FieldInfo RemainingField;
                 /// <summary>
                 /// How much Game time is left before the alarm fires
                 /// </summary>
-                public double Remaining { get { return (double)RemainingField.GetValue(actualAlarm); } }
+                public Double Remaining { get { return (Double)RemainingField.GetValue(actualAlarm); } }
 
 
                 private FieldInfo RepeatAlarmField;
                 /// <summary>
                 /// Whether the alarm will be repeated after it fires
                 /// </summary>
-                public bool RepeatAlarm
+                public Boolean RepeatAlarm
                 {
-                    get { return (bool)RepeatAlarmField.GetValue(actualAlarm); }
+                    get { return (Boolean)RepeatAlarmField.GetValue(actualAlarm); }
                     set { RepeatAlarmField.SetValue(actualAlarm, value); }
                 }
                 private PropertyInfo RepeatAlarmPeriodProperty;
                 /// <summary>
                 /// Value in Seconds after which the alarm will repeat
                 /// </summary>
-                public double RepeatAlarmPeriod
+                public Double RepeatAlarmPeriod
                 {
                     get
                     {
-                        try { return (double)RepeatAlarmPeriodProperty.GetValue(actualAlarm, null); }
+                        try { return (Double)RepeatAlarmPeriodProperty.GetValue(actualAlarm, null); }
                         catch (Exception) { return 0; }
                     }
                     set { RepeatAlarmPeriodProperty.SetValue(actualAlarm, value, null); }
@@ -571,23 +577,18 @@ namespace LunarTransferPlanner
                 Crew,
                 EarthTime,
                 Contract,
-                ContractAuto
+                ContractAuto,
+                ScienceLab
             }
 
             public enum AlarmActionEnum
             {
-                [Description("Do Nothing-Delete When Past")]
-                DoNothingDeleteWhenPassed,
-                [Description("Do Nothing")]
-                DoNothing,
-                [Description("Message Only-No Affect on warp")]
-                MessageOnly,
-                [Description("Kill Warp Only-No Message")]
-                KillWarpOnly,
-                [Description("Kill Warp and Message")]
-                KillWarp,
-                [Description("Pause Game and Message")]
-                PauseGame,
+                [Description("Do Nothing-Delete When Past")] DoNothingDeleteWhenPassed,
+                [Description("Do Nothing")] DoNothing,
+                [Description("Message Only-No Affect on warp")] MessageOnly,
+                [Description("Kill Warp Only-No Message")] KillWarpOnly,
+                [Description("Kill Warp and Message")] KillWarp,
+                [Description("Pause Game and Message")] PauseGame
             }
 
             public enum TimeEntryPrecisionEnum
@@ -611,7 +612,7 @@ namespace LunarTransferPlanner
         /// <param name="Message">Text to be printed - can be formatted as per String.format</param>
         /// <param name="strParams">Objects to feed into a String.format</param>
         [System.Diagnostics.Conditional("DEBUG")]
-        internal static void LogFormatted_DebugOnly(string Message, params object[] strParams)
+        internal static void LogFormatted_DebugOnly(String Message, params Object[] strParams)
         {
             LogFormatted(Message, strParams);
         }
@@ -621,10 +622,10 @@ namespace LunarTransferPlanner
         /// </summary>
         /// <param name="Message">Text to be printed - can be formatted as per String.format</param>
         /// <param name="strParams">Objects to feed into a String.format</param>
-        internal static void LogFormatted(string Message, params object[] strParams)
+        internal static void LogFormatted(String Message, params Object[] strParams)
         {
-            Message = string.Format(Message, strParams);
-            string strMessageLine = string.Format("{0},{2}-{3},{1}",
+            Message = String.Format(Message, strParams);
+            String strMessageLine = String.Format("{0},{2}-{3},{1}",
                 DateTime.Now, Message, System.Reflection.Assembly.GetExecutingAssembly().GetName().Name,
                 System.Reflection.MethodBase.GetCurrentMethod().DeclaringType.Name);
             UnityEngine.Debug.Log(strMessageLine);

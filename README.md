@@ -61,7 +61,7 @@ Wiki: https://github.com/Clayell/LunarTransferPlanner/wiki
 * [Nazfib](https://github.com/Nazfib) ([Southern Latitude fix](https://github.com/KSP-RO/LunarTransferPlanner/pull/8) and Orbit/Angle Renderer from [TWP2](https://github.com/Nazfib/TransferWindowPlanner2))
 * test_account ([Delta-V and phasing time calculations](https://github.com/KSP-RO/LunarTransferPlanner/pull/3))
 * [siimav](https://github.com/siimav) ([Tooltips from RP-1](https://github.com/KSP-RO/RP-1/blob/master/Source/RP0/UI/Tooltip.cs))
-* [TriggerAu](https://github.com/TriggerAu) ([KAC Wrapper](https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock_APITester/KACWrapper.cs))
+* [TriggerAu](https://github.com/TriggerAu) ([KAC Wrapper](https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock/API/KACWrapper.cs))
 
 ## License
 The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/LunarTransferPlanner/blob/2.0.0/LICENSE.md))

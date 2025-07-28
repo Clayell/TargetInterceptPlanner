@@ -2644,6 +2644,7 @@ namespace LunarTransferPlanner
                         DescribeD("Latitude", "\u00B0", latitude);
                         DescribeD("Longitude", "\u00B0", longitude);
                         DescribeD("Flight Time", "s", flightTime);
+                        if (flightTime_Adj != flightTime) DescribeD("Flight Time Formatted", flightTimeLabel, flightTime_Adj);
                         DescribeD("Required delta-V", "m/s", dV);
                         DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
                         DescribeD("Launch Inclination", "\u00B0", launchInc1); // this is the true inclination, not the display
@@ -3169,6 +3170,8 @@ namespace LunarTransferPlanner
                         useKAC = GUILayout.Toggle(useKAC, "");
                         EndCombined();
                     }
+                    
+                    // we could make it impossible to add a stock alarm when stock alarm clock disabler is installed, but its unnecessary and fails cleanly anyway
 
                     if (PrincipiaInstalled)
                     {

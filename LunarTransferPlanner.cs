@@ -848,7 +848,7 @@ namespace LunarTransferPlanner
             double left = upperBound - invphi * (upperBound - lowerBound);
             double right = lowerBound + invphi * (upperBound - lowerBound);
             int i = 0;
-            if (enableLogging) Log($"GSS Logging on for {errorFunc.Method.Name}");
+            if (enableLogging) Log($"\n\nGSS Logging on for {errorFunc.Method.Name}, left: {left}, right: {right}");
 
             double eLeft = errorFunc(left);
             double eRight = errorFunc(right);
@@ -880,7 +880,7 @@ namespace LunarTransferPlanner
                 }
             }
 
-            if (enableLogging) Log($"i for {errorFunc.Method.Name}: {i}");
+            if (enableLogging) Log($"i for {errorFunc.Method.Name}: {i}, result: {(upperBound + lowerBound) / 2d}");
 
             return (upperBound + lowerBound) / 2d;
         }
@@ -1258,20 +1258,22 @@ namespace LunarTransferPlanner
                     LAN = LAN,
                     argumentOfPeriapsis = Util.ClampAngle(AoP + phasingAngle, false),
                     meanAnomalyAtEpoch = 0d,
-                    epoch = currentUT,
+                    epoch = currentUT + startTime,
                     referenceBody = mainBody,
                 };
 
                 transferOrbit.Init();
-                transferOrbit.UpdateFromUT(currentUT);
+                transferOrbit.UpdateFromUT(currentUT + startTime);
 
                 double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, transferEcc, epsilon);
                 Vector3d futurePos = transferOrbit.getPositionFromEccAnomaly(eccAnomaly);
 
-                return (futurePos - targetPos).magnitude;
+                //Log($"targetPos: {targetPos}, futurePos: {futurePos}");
+
+                return Vector3d.Distance(targetPos, futurePos); // TODO, these are still decently far off for the moon, and get further off with high eccentricity
             }
 
-            double bestAngle = GoldenSectionSearch(0d, 360d, epsilon, PhasingAngleError); // epsilon is probably too strict for this, i only got 53 iterations tho
+            double bestAngle = GoldenSectionSearch(0d, 360d, epsilon, PhasingAngleError);
 
             // Convert angle to time in orbit
             double orbitPeriod = tau * Math.Sqrt(Math.Pow(parkingRadius, 3) / gravParameter);
@@ -1649,6 +1651,8 @@ namespace LunarTransferPlanner
             {
                 phasingAndDeltaVCache.Add((phasingTime, phasingAngle, dV, eccentricity, errorStateDV, windowNumber.Value));
             }
+
+            _ = EstimateTimeBeforeManeuver(startTime, eccentricity, inclination, LAN, AoP);
 
             return (phasingTime, phasingAngle, dV, eccentricity, errorStateDV);
         }
@@ -2543,7 +2547,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.BeginVertical();
                     GUILayout.Space(5);
-                    if (GUILayout.Button(new GUIContent(showAzimuth ? "Az." : "In.", showAzimuth ? "Launch to this azimuth to get into the target parking orbit" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
+                    if (GUILayout.Button(new GUIContent(showAzimuth ? "Az." : "In.", showAzimuth ? "Launch to this azimuth to get into the target parking orbit\nClick to change to inclination" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)\nClick to change to azimuth"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
                     GUILayout.EndVertical();
 
                     ExpandCollapse(ref expandParking0, "Show Orbit Details");
@@ -2575,9 +2579,9 @@ namespace LunarTransferPlanner
                     GUILayout.EndHorizontal();
 
                     GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {nextLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
+                    GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {FormatDecimals(nextLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
 
-                    // we need this outside for alarm description and transfer orbit
+                    // we need this outside for alarm description
                     (double launchLAN1, double launchAoP1) = GetCachedLAN(nextLaunchETA, latitude, longitude, launchAz1, 0);
                     (double phaseTime1, double phaseAngle1, _, _, _) = GetCachedPhasingAndDeltaV(nextLaunchETA, launchInc1, launchLAN1, launchAoP1, 0);
                     if (expandParking1)
@@ -2594,7 +2598,7 @@ namespace LunarTransferPlanner
                         GUILayout.EndHorizontal();
 
                         GUILayout.Space(5);
-                        GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {extraLaunchUT:0}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
+                        GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {FormatDecimals(extraLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
 
                         if (expandParking2)
                         {
@@ -2635,7 +2639,7 @@ namespace LunarTransferPlanner
                             DescribeI("Window Number", "", extraWindowNumber);
                         }
 
-                        DescribeD("UT", "s", time);
+                        DescribeD("Window UT", "s", time + warpMargin);
                         DescribeD("Warp Margin", "s", warpMargin);
                         DescribeD("Latitude", "\u00B0", latitude);
                         DescribeD("Longitude", "\u00B0", longitude);
@@ -2895,7 +2899,7 @@ namespace LunarTransferPlanner
                             LAN = launchLAN0,
                             argumentOfPeriapsis = launchAoP0,
                             meanAnomalyAtEpoch = 0d,
-                            epoch = currentUT,
+                            epoch = currentUT + referenceTime,
                             referenceBody = mainBody,
                         };
 
@@ -2907,7 +2911,7 @@ namespace LunarTransferPlanner
                         if (displayPhasing && (_phasingAngleRenderer == null || _phasingAngleRenderer.IsHidden) && !double.IsNaN(phaseAngle0))
                         {
                             parkingOrbit.Init(); // we need to do this to access GetOrbitNormal() in UpdateVectors()
-                            parkingOrbit.UpdateFromUT(currentUT); // dont think we need to do this, but just to be safe
+                            parkingOrbit.UpdateFromUT(currentUT + referenceTime); // dont think we need to do this, but just to be safe
 
                             _phasingAngleRenderer?.Hide(false);
                             _phasingAngleRenderer = null;
@@ -2937,11 +2941,9 @@ namespace LunarTransferPlanner
                             LAN = launchLAN0,
                             argumentOfPeriapsis = Util.ClampAngle(launchAoP0 + phaseAngle0, false),
                             meanAnomalyAtEpoch = 0d,
-                            epoch = currentUT,
+                            epoch = currentUT + referenceTime + phaseAngle0,
                             referenceBody = mainBody,
                         };
-
-                        //Log($"transferOrbit.eccentricity: {transferOrbit.eccentricity}");
 
                         _transferOrbitRenderer = OrbitRendererHack.Setup(transferOrbit, transferColor);
                     }

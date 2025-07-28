@@ -174,7 +174,7 @@ namespace LunarTransferPlanner
         bool isKSPGUIActive = true; // for some reason, this initially only turns to true when you turn off and on the KSP GUI
         bool isLoading = false;
         bool isBadUI = false;
-        Vector2 settingsScroll = Vector2.zero; // TODO, save this in settings?
+        Vector2 settingsScroll = Vector2.zero; // no idea why BeginScrollView requires a Vector2 when it only uses the y coordinate, x just stays at 0
         bool needCacheClear = true;
 
         int currentBody = -1;
@@ -412,6 +412,7 @@ namespace LunarTransferPlanner
             SaveSettings();
 
             Destroy(toolbarControl);
+            toolbarControl = null;
 
             GameEvents.onShowUI.Remove(KSPShowGUI);
             GameEvents.onHideUI.Remove(KSPHideGUI);
@@ -498,6 +499,7 @@ namespace LunarTransferPlanner
                 { "settingsRect.yMin", settingsRect.yMin },
                 { "manualOrbitRect.xMin", manualOrbitRect.xMin },
                 { "manualOrbitRect.yMin", manualOrbitRect.yMin },
+                { "settingsScroll.y", settingsScroll.y },
                 { "isWindowOpen", isWindowOpen },
                 { "targetName", targetName }, // we convert it to an actual target later
                 { "targetManual", targetManual },
@@ -634,6 +636,7 @@ namespace LunarTransferPlanner
                     float x1 = mainRect.xMin, y1 = mainRect.yMin;
                     float x2 = settingsRect.xMin, y2 = settingsRect.yMin;
                     float x3 = manualOrbitRect.xMin, y3 = manualOrbitRect.yMin;
+                    float ySettings = settingsScroll.y;
 
                     Read(ref x1, "mainRect.xMin");
                     Read(ref y1, "mainRect.yMin");
@@ -641,6 +644,7 @@ namespace LunarTransferPlanner
                     Read(ref y2, "settingsRect.yMin");
                     Read(ref x3, "manualOrbitRect.xMin");
                     Read(ref y3, "manualOrbitRect.yMin");
+                    Read(ref ySettings, "settingsScroll.y");
 
                     Read(ref isWindowOpen, "isWindowOpen");
                     Read(ref targetName, "targetName"); // we convert it to an actual target later
@@ -704,6 +708,7 @@ namespace LunarTransferPlanner
                     mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
                     settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
                     manualOrbitRect = new Rect(x3, y3, manualOrbitRect.width, manualOrbitRect.height);
+                    settingsScroll = new Vector2(settingsScroll.x, ySettings);
 
                     ConfigNode colorNode = settings.GetNode("COLORS");
                     if (colorNode != null)
@@ -1000,6 +1005,7 @@ namespace LunarTransferPlanner
             double inclination = Math.Acos(Vector3d.Dot(orbitNorm, MainAxis)); // inclination of the launch orbit, not the target orbit [0,pi]
 
             // for every orbit plane there are two inclinations/azimuths, one prograde and one retrograde, so only give them the one that corresponds to what they want
+            // retrograde is defined as the azimuth being greater than but not equal to 180 degrees, including 360 degrees. 0 degrees is considered prograde
             if ((inclination > Math.PI / 2 && targetLaunchAzimuth <= 180d) || (inclination <= Math.PI / 2 && targetLaunchAzimuth > 180d && targetLaunchAzimuth <= 360d))
             {
                 inclination = Util.ClampAngle(Math.PI - inclination, true); // keep it positive, we convert to negative for south launches later
@@ -1588,7 +1594,7 @@ namespace LunarTransferPlanner
         }
 
         private (double phasingTime, double phasingAngle, double dV, double eccentricity, int errorStateDV) GetCachedPhasingAndDeltaV
-            (double startTime, double inclination, double LAN, double AoP, int? windowNumber = null)
+            (double startTime, double inclination, double LAN, double AoP, int? windowNumber = null) // the inclination needs to be the one from launchOrbit
         {
             if (windowNumber.HasValue)
             {
@@ -1832,7 +1838,7 @@ namespace LunarTransferPlanner
 
         private double ConvertInc(OrbitData launchOrbit) => ConvertInc(launchOrbit.azimuth, launchOrbit.inclination);
 
-        private double ConvertInc(double azimuth, double inclination, double epsilon = 1e-9) => azimuth <= 90d + epsilon || azimuth >= 270d - epsilon ? inclination : -inclination;
+        private double ConvertInc(double azimuth, double inclination, double epsilon = 1e-6) => azimuth <= 90d + epsilon || azimuth >= 270d - epsilon ? inclination : -inclination; // east or west is taken as facing north (positive)
 
         private string FormatTime(double t)
         {
@@ -2455,11 +2461,14 @@ namespace LunarTransferPlanner
                     const double tolerance = 1e-6; // avoid floating point misses, this is needed because launchOrbit.azimuth isnt exact like targetLaunchAzimuth
 
                     double launchAz0 = Util.RoundCheck(launchOrbit0.azimuth, tolerance);
-                    double launchInc0 = ConvertInc(launchOrbit0);
+                    double launchInc0 = launchOrbit0.inclination;
+                    double displayInc0 = ConvertInc(launchOrbit0);
                     double launchAz1 = Util.RoundCheck(launchOrbit1.azimuth, tolerance);
-                    double launchInc1 = ConvertInc(launchOrbit1);
+                    double launchInc1 = launchOrbit1.inclination;
+                    //double displayInc1 = ConvertInc(launchOrbit1); // unused
                     double launchAz2 = Util.RoundCheck(launchOrbit2.azimuth, tolerance);
-                    double launchInc2 = ConvertInc(launchOrbit2);
+                    double launchInc2 = launchOrbit2.inclination;
+                    //double displayInc2 = ConvertInc(launchOrbit2); // unused
 
                     (double launchLAN0, double launchAoP0) = GetCachedLAN(referenceTime, latitude, longitude, launchAz0, referenceWindowNumber);
                     (double phaseTime0, double phaseAngle0, double dV, double trajectoryEccentricity, int errorStateDV) = GetCachedPhasingAndDeltaV(referenceTime, launchInc0, launchLAN0, launchAoP0, referenceWindowNumber);
@@ -2529,11 +2538,11 @@ namespace LunarTransferPlanner
                     GUILayout.Space(5);
                     if (showAzimuth)
                     {
-                        GUILayout.Box(new GUIContent($"{FormatDecimals(launchAz0)}\u00B0", $"Azimuth\n{FormatDecimals(launchAz0 * degToRad)} rads, this is {(launchAz0 <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(launchAz0)}\u00B0", $"Azimuth\n{FormatDecimals(launchAz0 * degToRad)} rads, this is {(launchAz0 > 180d && launchAz0 <= 360d ? "retrograde" : "prograde")}"), GUILayout.MinWidth(100));
                     }
                     else
                     {
-                        GUILayout.Box(new GUIContent($"{FormatDecimals(launchInc0)}\u00B0", $"Inclination\n{FormatDecimals(launchInc0 * degToRad)} rads, this is {(launchAz0 <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(displayInc0)}\u00B0", $"Inclination\n{FormatDecimals(displayInc0 * degToRad)} rads, this is {(launchAz0 > 180d && launchAz0 <= 360d ? "retrograde" : "prograde")}"), GUILayout.MinWidth(100));
                     }
 
                     if (expandParking0)
@@ -2619,7 +2628,7 @@ namespace LunarTransferPlanner
                         DescribeD("Flight Time", "s", flightTime);
                         DescribeD("Required delta-V", "m/s", dV);
                         DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
-                        DescribeD("Launch Inclination", "\u00B0", launchInc1);
+                        DescribeD("Launch Inclination", "\u00B0", launchInc1); // this is the true inclination, not the display
                         DescribeD("Launch Azimuth", "\u00B0", launchAz1);
                         DescribeD("Phasing Time", "s", phaseTime1);
                         DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
@@ -2849,7 +2858,7 @@ namespace LunarTransferPlanner
                     {
                         Orbit parkingOrbit = new Orbit
                         {
-                            inclination = launchOrbit0.inclination, // use the real inclination directly from launchOrbit
+                            inclination = launchInc0,
                             eccentricity = epsilon, // just to make periapsis visible
                             semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
                             LAN = launchLAN0,
@@ -2891,7 +2900,7 @@ namespace LunarTransferPlanner
                     {
                         Orbit transferOrbit = new Orbit
                         {
-                            inclination = launchOrbit0.inclination, // use the real inclination directly from launchOrbit
+                            inclination = launchInc0,
                             eccentricity = double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? double.NaN : trajectoryEccentricity, // dont display transfer orbit if NaN
                             semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
                             LAN = launchLAN0,
@@ -2937,7 +2946,6 @@ namespace LunarTransferPlanner
         {
             windowWidth = 500;
             windowState = WindowState.Settings;
-            const double epsilon = 1e-9;
 
             void BeginCombined() => GUILayout.BeginHorizontal();
 
@@ -3241,7 +3249,7 @@ namespace LunarTransferPlanner
                                     double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, targetInclination, useAltBehavior, candidateWindow) - currentUT;
                                     OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, candidateLaunchTime, candidateWindow);
                                     double launchAz = launchOrbit.azimuth;
-                                    double launchInc = ConvertInc(launchOrbit);
+                                    double launchInc = launchOrbit.inclination;
                                     (double launchLAN, double launchAoP) = GetCachedLAN(candidateLaunchTime, latitude, longitude, launchAz, candidateWindow);
 
                                     if (double.IsNaN(candidateLaunchTime))
@@ -3310,18 +3318,40 @@ namespace LunarTransferPlanner
 
                     double ResetTargetInclination() => ConvertInc(targetLaunchAzimuth, Math.Acos(cosLat * Math.Sin(targetLaunchAzimuth * degToRad)) * radToDeg);
 
+                    bool SwitchDirections()
+                    {
+                        GUILayout.BeginVertical();
+                        GUILayout.Space(5);
+                        bool pressed = GUILayout.Button(new GUIContent("Switch", $"Switch from {(targetLaunchAzimuth > 180d && targetLaunchAzimuth <= 360d ? "Retrograde to Prograde" : "Prograde to Retrograde")}"), GUILayout.Width(60));
+                        GUILayout.EndVertical();
+
+                        return pressed;
+                    }
+
+                    void SwitchAzimuthInclination()
+                    {
+                        GUILayout.BeginVertical();
+                        GUILayout.Space(5);
+                        if (GUILayout.Button(new GUIContent(showAzimuth ? "Azimuth" : "Inclination", showAzimuth ? "Switch from azimuth to inclination" : "Switch from inclination to azimuth"), GUILayout.Width(90))) showAzimuth = !showAzimuth;
+                        GUILayout.EndVertical();
+                    }
+
                     if (double.IsNaN(targetLaunchInclination)) targetLaunchInclination = ResetTargetInclination();
 
                     if (showAzimuth)
                     {
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Target Launch Azimuth", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
+                        GUILayout.Label(new GUIContent("Target Launch", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
+                        SwitchAzimuthInclination();
+                        if (SwitchDirections()) targetLaunchAzimuth = Util.ClampAngle(targetLaunchAzimuth + 180d, false);
                         ResetDefault(ref targetLaunchAzimuth, 90d);
                         GUILayout.EndHorizontal();
 
                         MakeNumberEditField("targetLaunchAzimuth", ref targetLaunchAzimuth, 1d, 0d, 360d, true);
 
                         targetLaunchInclination = ResetTargetInclination(); // continuously update value
+
+                        GUILayout.Space(5);
 
                         BeginCombined();
                         GUILayout.Label(new GUIContent("Target Launch Inclination", inclinationTooltip));
@@ -3332,7 +3362,13 @@ namespace LunarTransferPlanner
                     else
                     {
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Target Launch Inclination", inclinationTooltip + " Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
+                        GUILayout.Label(new GUIContent("Target Launch", inclinationTooltip + " Changing the Target Launch Inclination may not change the launch window time, this is normal and expected."));
+                        SwitchAzimuthInclination();
+                        if (SwitchDirections())
+                        {
+                            targetLaunchInclination = Util.ClampAngle(targetLaunchInclination - 180d, false);
+                            if (targetLaunchInclination > 180d) targetLaunchInclination -= 360d; // do not clamp
+                        }
                         ResetDefault(ref targetLaunchInclination, latitude);
                         GUILayout.EndHorizontal();
 
@@ -3340,7 +3376,7 @@ namespace LunarTransferPlanner
                         MakeNumberEditField("targetLaunchInclination", ref targetLaunchInclination, 1d, -180d, 180d, true);
 
                         double sinAz = Math.Cos(targetLaunchInclination * degToRad) / cosLat;
-                        bool unreachable = Math.Abs(sinAz) >= 1d - epsilon;
+                        bool unreachable = Math.Abs(sinAz) > 1d;
 
                         sinAz = Util.Clamp(sinAz, -1d, 1d);
                         double azInter = Math.Abs(Math.Asin(sinAz) * radToDeg); // intermediate value for azimuth
@@ -3349,7 +3385,7 @@ namespace LunarTransferPlanner
                             ? (targetLaunchInclination <= 90d ? azInter : 360d - azInter) // NE (prograde) or NW (retrograde)
                             : (Math.Abs(targetLaunchInclination) <= 90d ? 180d - azInter : 180d + azInter); // SE (prograde) or SW (retrograde)
 
-                        targetLaunchAzimuth = Util.ClampAngle(targetLaunchAzimuth, false);
+                        targetLaunchAzimuth = Util.ClampAngle(targetLaunchAzimuth, false); // just in case
 
                         if (unreachable)
                         {
@@ -3358,6 +3394,8 @@ namespace LunarTransferPlanner
                             GUILayout.FlexibleSpace();
                         }
                         GUILayout.EndHorizontal();
+
+                        GUILayout.Space(5);
 
                         BeginCombined();
                         GUILayout.Label(new GUIContent("Target Launch Azimuth", azimuthTooltip));
@@ -3369,7 +3407,7 @@ namespace LunarTransferPlanner
 
                     if (StateChanged("targetLaunchAzimuth", targetLaunchAzimuth))
                     {
-                        ClearAllCaches(); // this doesn't always result in new minimums, intentional
+                        ClearAllCaches(); // this doesn't always result in new minimums, intentional (especially if switching from prograde to retrograde or vice versa, itll always be the same time)
                         // TODO, this is re-animating the phasing angle renderer, fix
                     }
                 }

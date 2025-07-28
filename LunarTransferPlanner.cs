@@ -1468,7 +1468,16 @@ namespace LunarTransferPlanner
                     //Log($"Resetting Window Cache due to change of Cached Launch Window {i + 1}, old values: target:{entry.target}, latitude: {entry.latitude}, longitude: {entry.longitude}, inclination: {entry.inclination:F3}, time: {entry.absoluteLaunchTime:F3} due to {(expired ? "time expiration " : "")}{(targetMismatch ? "target mismatch " : "")}{(posMismatch ? "position mismatch " : "")}{(inclinationMismatch ? "inclination mismatch " : "")}{(altitudeMismatch ? "altitude mismatch" : "")}");
                     if (targetMismatch) // this will only trigger if the mainBody actually has targets(s)
                     {
-                        Log($"Now targeting {(targetManual ? "[Manual Target]" : $"{targetName} ({target.GetType().Name})")}");
+                        string type = "";
+                        if (target is CelestialBody)
+                        {
+                            type = "Celestial Body";
+                        }
+                        else if (target is ProtoVessel)
+                        {
+                            type = "Vessel";
+                        }
+                        Log($"Now targeting {(targetManual ? "[Manual Target]" : $"{targetName} ({type})")}");
                     }
                     ClearAllCaches(true); // we need to clear all caches even if one window is wrong, set visibilityChanged to true to have phase angle animate again
                     break;
@@ -2068,16 +2077,21 @@ namespace LunarTransferPlanner
 
                 // TODO, implement setting that allows people to switch mainBody in the flight map view instead of being locked to their currentMainBody
 
-                if (StateChanged("mainBody", mainBody))
+                if (StateChanged("mainBody1", mainBody))
                 {
                     target = null;
-                    targetName = "";
                     ClearAllCaches();
                     moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
-                    vessels = HighLogic.CurrentGame.flightState.protoVessels?.Where(protoVessel => 
+                    vessels = HighLogic.CurrentGame.flightState.protoVessels?.Where(protoVessel =>
                     protoVessel != null && mainBody != null && protoVessel.vesselID != FlightGlobals.ActiveVessel?.id && protoVessel.orbitSnapShot?.ReferenceBodyIndex == mainBody.flightGlobalsIndex && protoVessel.situation == Vessel.Situations.ORBITING)
                     .OrderBy(protoVessel => protoVessel.vesselName).ToList();
                 }
+
+                if (StateChanged("mainBody2", mainBody, false)) // do not detect on first access, because we dont want to blank the targetName immediately
+                {
+                    targetName = "";
+                }
+
                 // TODO, instead of ordering alphabetically, order by closest periapsis? closest launch window? make this a setting
 
                 moonsInvalid = moons == null || moons.Count == 0;
@@ -2858,17 +2872,17 @@ namespace LunarTransferPlanner
                         GUI.enabled = true;
                     }
 
-                    if (StateChanged("InFlight", HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null))
-                    {
-                        ResetWindow();
-                    }
-
                     if (debugMode && HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
                     {
                         if (GUILayout.Button("Set Orbit"))
                         {
                             FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), launchInc0, launchLAN0, 0d, launchAoP0, 0d);
                         }
+                    }
+
+                    if (StateChanged("InFlight", HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null))
+                    {
+                        ResetWindow();
                     }
 
                     if (displayParking && Util.MapViewEnabled() && !needCacheClear)
@@ -2997,12 +3011,12 @@ namespace LunarTransferPlanner
 
             GUILayout.Space(5);
             GUILayout.BeginHorizontal();
-            GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - (50 + 50))); // this sets the width of the window
+            GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - (50 + 45))); // this sets the width of the window
             // this tooltip is really only useful when paused, it flashes too quickly to be seen otherwise
             GUILayout.FlexibleSpace();
             GUILayout.BeginVertical();
             GUILayout.Space(5);
-            if (GUILayout.Button(new GUIContent("Wiki", "Open Github Wiki link in a new tab"), GUILayout.Width(50)))
+            if (GUILayout.Button(new GUIContent("Wiki", "Open Github Wiki link in a new tab"), GUILayout.Width(45)))
             {
                 Application.OpenURL("https://github.com/Clayell/LunarTransferPlanner/wiki"); // TODO change this link
             }
@@ -3101,6 +3115,8 @@ namespace LunarTransferPlanner
                         //ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
                         target = null;
                         targetName = "";
+
+                        // for some reason, if i switch to moons and then switch back to vessels (or vice versa), itll remember the last vessel i had without doing any saving or loading. no idea how its doing this but im not complaining
                     }
                 }
 

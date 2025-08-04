@@ -226,7 +226,6 @@ namespace LunarTransferPlanner
         bool useAltSkin = false; // Use Unity GUI skin instead of default
         double tickSpeed = 0.2;
 
-        bool useFlightTime = false;
         double flightTime = double.NaN; // Desired flight time after maneuver, in seconds (this gets initialized to 4d * solarDayLength later) TODO, initialize it to max flight time instead
         double flightTime_Adj = double.NaN; // Desired flight time after maneuver, in whatever unit the user has selected
         int flightTimeMode = 0; // 0, 1, 2, 3 (default to days), TODO change this to enum
@@ -520,7 +519,6 @@ namespace LunarTransferPlanner
                 { "useAltSkin", useAltSkin },
                 { "tickSpeed", tickSpeed },
                 { "useHomeSolarDay", useHomeSolarDay },
-                { "useFlightTime", useFlightTime },
                 { "flightTime", flightTime },
                 { "flightTimeMode", flightTimeMode },
                 { "parkingAltitude", parkingAltitude },
@@ -666,7 +664,6 @@ namespace LunarTransferPlanner
                     Read(ref showSettings, "showSettings");
                     Read(ref useAltSkin, "useAltSkin");
                     Read(ref tickSpeed, "tickSpeed");
-                    Read(ref useFlightTime, "useFlightTime");
                     Read(ref flightTime, "flightTime");
                     Read(ref flightTimeMode, "flightTimeMode");
                     Read(ref useHomeSolarDay, "useHomeSolarDay");
@@ -1493,8 +1490,6 @@ namespace LunarTransferPlanner
         {
             windowCache.Clear();
             launchOrbitCache.Clear();
-            //phasingAndDeltaVCache.Clear();
-            //LANCache.Clear();;
             ClearAllOrbitDisplays();
             ClearAngleRenderer(visibilityChanged);
 
@@ -1965,7 +1960,8 @@ namespace LunarTransferPlanner
             if (useAngle)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Phasing angle", "Phasing angle between the launch location and the maneuver in orbit, max of 360\u00B0"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Phasing angle", "Phasing angle between the launch location and the maneuver in orbit, max of 360\u00B0"));
+                GUILayout.FlexibleSpace();
                 if (GUILayout.Button(new GUIContent("Time", "Switch to phasing time"), GUILayout.Width(60))) useAngle = !useAngle;
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent($"{FormatDecimals(phaseAngle)}\u00B0", $"{FormatDecimals(phaseAngle * degToRad)} rads"));
@@ -1975,7 +1971,8 @@ namespace LunarTransferPlanner
                 double orbitPeriod = phaseTime * 360d / phaseAngle;
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("Phasing time", $"Phasing time spent waiting in parking orbit before the maneuver, max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("Phasing time", $"Phasing time spent waiting in parking orbit before the maneuver, max of {FormatDecimals(orbitPeriod)} seconds (the orbit period)"));
+                GUILayout.FlexibleSpace();
                 if (GUILayout.Button(new GUIContent("Angle", "Switch to phasing angle"), GUILayout.Width(60))) useAngle = !useAngle;
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent(FormatTime(phaseTime), $"{FormatDecimals(phaseTime)}s"));
@@ -1991,7 +1988,8 @@ namespace LunarTransferPlanner
             if (useLAN)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("LAN", "Longitude of the Ascending Node of the Parking Orbit, max of 360\u00B0"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("LAN", "Longitude of the Ascending Node of the Parking Orbit, max of 360\u00B0"));
+                GUILayout.FlexibleSpace();
                 if (GUILayout.Button(new GUIContent("AoP", "Switch to Argument of Periapsis"), GUILayout.Width(40))) useLAN = !useLAN;
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent($"{FormatDecimals(launchLAN)}\u00B0", $"{FormatDecimals(launchLAN * degToRad)} rads"));
@@ -1999,7 +1997,8 @@ namespace LunarTransferPlanner
             else
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(new GUIContent("AoP", $"Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver ({FormatDecimals(Util.ClampAngle(launchAoP + phaseAngle, false))}\u00B0)"), GUILayout.ExpandWidth(true));
+                GUILayout.Label(new GUIContent("AoP", $"Argument of Periapsis of the Parking Orbit (if the position in orbit directly above the launch location was the periapsis), max of 360\u00B0\nAdd this to the phasing angle to get the AoP of the maneuver ({FormatDecimals(Util.ClampAngle(launchAoP + phaseAngle, false))}\u00B0)"));
+                GUILayout.FlexibleSpace();
                 if (GUILayout.Button(new GUIContent("LAN", "Switch to Longitude of the Ascending Node"), GUILayout.Width(40))) useLAN = !useLAN;
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent($"{FormatDecimals(launchAoP)}\u00B0", $"{FormatDecimals(launchAoP * degToRad)} rads"));
@@ -2336,7 +2335,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.BeginHorizontal();
                     if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>!!!</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
-                    GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : (useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as"))} launch location"), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : (useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as"))} launch location"));
                     ExpandCollapse(ref expandLatLong, "Set manual latitude and longitude");
                     GUILayout.EndHorizontal();
 
@@ -2359,113 +2358,117 @@ namespace LunarTransferPlanner
                     if (double.IsNaN(flightTime)) flightTime = 4d * solarDayLength; // TODO make this the max flight time
 
                     GUILayout.Space(5);
+                    
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label(new GUIContent("Flight Time", $"Time after launch until intercept with the target\nClick the button to the right to change the unit"));
+                    GUILayout.BeginVertical();
+                    GUILayout.Space(5);
+                    if (GUILayout.Button(new GUIContent($"{flightTimeLabel}", flightTimeTooltip), GUILayout.Width(20))) flightTimeMode = (flightTimeMode + 1) % 4;
+                    GUILayout.EndVertical();
 
-                    //if (useFlightTime)
-                    //{
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Flight Time", $"Time after launch until intercept with the target\nClick the button to the right to change the unit"));
-                        GUILayout.BeginVertical();
-                        GUILayout.Space(5);
-                        if (GUILayout.Button(new GUIContent($"{flightTimeLabel}", flightTimeTooltip), GUILayout.Width(20))) flightTimeMode = (flightTimeMode + 1) % 4;
-                        GUILayout.EndVertical();
+                    switch (flightTimeMode) // TODO, round solarDayLength to prevent excessive decimals?
+                    {
+                        case 0:
+                            flightTimeLabel = "d";
+                            flightTimeTooltip = $"Currently using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days\nClick to change flight time unit to hours";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime / solarDayLength;
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj /= solarDayLength;
+                            }
+                            flightTime = flightTime_Adj * solarDayLength;
+                            break;
+                        case 1:
+                            flightTimeLabel = "h";
+                            flightTimeTooltip = "Currently using hours\nClick to change flight time unit to minutes";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime / (60d * 60d);
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj *= solarDayLength / (60d * 60d);
+                            }
+                            flightTime = flightTime_Adj * 60d * 60d;
+                            break;
+                        case 2:
+                            flightTimeLabel = " m";
+                            flightTimeTooltip = "Currently using minutes\nClick to change flight time unit to seconds";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime / 60d;
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj *= 60d;
+                            }
+                            flightTime = flightTime_Adj * 60d;
+                            break;
+                        case 3:
+                            flightTimeLabel = "s";
+                            flightTimeTooltip = $"Currently using seconds\nClick to change flight time unit to {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days";
+                            if (double.IsNaN(flightTime_Adj))
+                            {
+                                flightTime_Adj = flightTime;
+                            }
+                            else if (StateChanged("flightTimeMode", flightTimeMode, false))
+                            {
+                                flightTime_Adj *= 60d;
+                            }
+                            flightTime = flightTime_Adj;
+                            break;
+                    }
 
-                        switch (flightTimeMode) // TODO, round solarDayLength to prevent excessive decimals?
+                    if (ResetDefault())
+                    {
+                        double r0 = parkingAltitude * 1000d + mainBody.Radius;
+                        double r1 = targetOrbit.ApR;
+                        double minDV = Math.Sqrt(mainBody.gravParameter / r0) * (Math.Sqrt(2d * r1 / (r0 + r1)) - 1d) + .01d;
+
+                        //flightTime = EstimateTimeAfterManeuver(minDV, currentUT).time;
+
+                        // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
+                        // this only finds the maximum flight time for the launch now window. doing anything else is going to be annoyingly difficult
+
+                        switch (flightTimeMode)
                         {
                             case 0:
-                                flightTimeLabel = "d";
-                                flightTimeTooltip = $"Currently using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days\nClick to change flight time unit to hours";
-                                if (double.IsNaN(flightTime_Adj))
-                                {
-                                    flightTime_Adj = flightTime / solarDayLength;
-                                }
-                                else if (StateChanged("flightTimeMode", flightTimeMode, false))
-                                {
-                                    flightTime_Adj /= solarDayLength;
-                                }
-                                flightTime = flightTime_Adj * solarDayLength;
+                                flightTime_Adj = flightTime / solarDayLength;
                                 break;
                             case 1:
-                                flightTimeLabel = "h";
-                                flightTimeTooltip = "Currently using hours\nClick to change flight time unit to minutes";
-                                if (double.IsNaN(flightTime_Adj))
-                                {
-                                    flightTime_Adj = flightTime / (60d * 60d);
-                                }
-                                else if (StateChanged("flightTimeMode", flightTimeMode, false))
-                                {
-                                    flightTime_Adj *= solarDayLength / (60d * 60d);
-                                }
-                                flightTime = flightTime_Adj * 60d * 60d;
+                                flightTime_Adj = flightTime / (60d * 60d);
                                 break;
                             case 2:
-                                flightTimeLabel = " m";
-                                flightTimeTooltip = "Currently using minutes\nClick to change flight time unit to seconds";
-                                if (double.IsNaN(flightTime_Adj))
-                                {
-                                    flightTime_Adj = flightTime / 60d;
-                                }
-                                else if (StateChanged("flightTimeMode", flightTimeMode, false))
-                                {
-                                    flightTime_Adj *= 60d;
-                                }
-                                flightTime = flightTime_Adj * 60d;
+                                flightTime_Adj = flightTime / 60d;
                                 break;
                             case 3:
-                                flightTimeLabel = "s";
-                                flightTimeTooltip = $"Currently using seconds\nClick to change flight time unit to {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days";
-                                if (double.IsNaN(flightTime_Adj))
-                                {
-                                    flightTime_Adj = flightTime;
-                                }
-                                else if (StateChanged("flightTimeMode", flightTimeMode, false))
-                                {
-                                    flightTime_Adj *= 60d;
-                                }
-                                flightTime = flightTime_Adj;
+                                flightTime_Adj = flightTime;
                                 break;
                         }
+                    }
 
-                        if (ResetDefault())
+                    ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
+
+                    GUILayout.EndHorizontal();
+
+                    MakeNumberEditField("flightTime", ref flightTime_Adj, 0.1d, epsilon, double.MaxValue);
+                    if (StateChanged("flightTime", flightTime)) ClearAllCaches();
+                    GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s (Total Flight Time)"), GUILayout.MinWidth(100));
+
+                    if (expandAltitude)
+                    {
+                        GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"));
+                        MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : epsilon, Math.Max(targetOrbit.PeA / 1000d, mainBody.atmosphereDepth / 1000d)); // PeA updates every frame so we don't need to ask Principia
+                        if (StateChanged("parkingAltitude", parkingAltitude))
                         {
-                            double r0 = parkingAltitude * 1000d + mainBody.Radius;
-                            double r1 = targetOrbit.ApR;
-                            double minDV = Math.Sqrt(mainBody.gravParameter / r0) * (Math.Sqrt(2d * r1 / (r0 + r1)) - 1d) + .01d;
-
-                            //flightTime = EstimateTimeAfterManeuver(minDV, currentUT).time;
-
-                            // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
-                            // this only finds the maximum flight time for the launch now window. doing anything else is going to be annoyingly difficult
-
-                            switch (flightTimeMode)
-                            {
-                                case 0:
-                                    flightTime_Adj = flightTime / solarDayLength;
-                                    break;
-                                case 1:
-                                    flightTime_Adj = flightTime / (60d * 60d);
-                                    break;
-                                case 2:
-                                    flightTime_Adj = flightTime / 60d;
-                                    break;
-                                case 3:
-                                    flightTime_Adj = flightTime;
-                                    break;
-                            }
+                            launchOrbitCache.Clear();
+                            ClearAllOrbitDisplays();
+                            ClearAngleRenderer();
                         }
-
-                        GUILayout.EndHorizontal();
-
-                        MakeNumberEditField("flightTime", ref flightTime_Adj, 0.1d, epsilon, double.MaxValue);
-                        if (StateChanged("flightTime", flightTime)) ClearAllCaches();
-                        GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s (Total Flight Time)"), GUILayout.MinWidth(100));
-                        
-                    //}
-                    //else
-                    //{
-                    //    //GUILayout.Label("");
-                    //}
-
-
+                    }
 
                     // make sure to call GetCachedLaunchTime after resetting flightTime and clearing caches
 
@@ -2516,9 +2519,9 @@ namespace LunarTransferPlanner
                     double launchAoP0 = launchOrbit0.AoP;
                     double phaseTime0 = launchOrbit0.phaseTime;
                     double phaseAngle0 = launchOrbit0.phaseAngle;
-                    double dV = launchOrbit0.deltaV;
-                    double trajectoryEccentricity = launchOrbit0.eccentricity;
-                    int errorStateDV = launchOrbit0.errorStateDV;
+                    double dV0 = launchOrbit0.deltaV;
+                    double transferEcc0 = launchOrbit0.eccentricity;
+                    int errorStateDV0 = launchOrbit0.errorStateDV;
 
                     if (Util.MapViewEnabled())
                     {
@@ -2532,7 +2535,7 @@ namespace LunarTransferPlanner
                             ClearAllOrbitDisplays();
                             ClearAngleRenderer();
                         }
-                        else if (ValueChanged("trajectoryEccentricity", trajectoryEccentricity, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer); // 1e-5 resets it about every minute or so when using Launch Now
+                        else if (ValueChanged("transferEcc0", transferEcc0, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer); // 1e-5 resets it about every minute or so when using Launch Now
                     }
 
                     bool inSpecialWarp = warpState == 2 || warpState == 3;
@@ -2543,27 +2546,14 @@ namespace LunarTransferPlanner
                     GUILayout.Space(5);
 
                     GUILayout.BeginHorizontal();
-                    if (errorStateDV != 0) GUILayout.Label(new GUIContent("<b>!!!</b>", errorStateDV == 1
+                    if (errorStateDV0 != 0) GUILayout.Label(new GUIContent("<b>!!!</b>", errorStateDV0 == 1
                         ? "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."
                         : $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius))}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."));
-                    GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"), GUILayout.ExpandWidth(true));
-                    ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
+                    GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"));
                     GUILayout.EndHorizontal();
 
                     GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(dV)} m/s", $"Eccentricity of {(!double.IsNaN(trajectoryEccentricity) ? (trajectoryEccentricity > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(trajectoryEccentricity)}"), GUILayout.MinWidth(100));
-
-                    if (expandAltitude)
-                    {
-                        GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"), GUILayout.ExpandWidth(true));
-                        MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : epsilon, Math.Max(targetOrbit.PeA / 1000d, mainBody.atmosphereDepth / 1000d)); // PeA updates every frame so we don't need to ask Principia
-                        if (StateChanged("parkingAltitude", parkingAltitude))
-                        {
-                            launchOrbitCache.Clear();
-                            ClearAllOrbitDisplays();
-                            ClearAngleRenderer();
-                        }
-                    }
+                    GUILayout.Box(new GUIContent($"{FormatDecimals(dV0)} m/s", $"Eccentricity of {(!double.IsNaN(transferEcc0) ? (transferEcc0 > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(transferEcc0)}"), GUILayout.MinWidth(100));
 
                     GUILayout.Space(5);
 
@@ -2603,7 +2593,7 @@ namespace LunarTransferPlanner
 
                     GUILayout.Space(5);
                     GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Next Window", windowTooltip), GUILayout.ExpandWidth(true));
+                    GUILayout.Label(new GUIContent("Next Window", windowTooltip));
                     ExpandCollapse(ref expandParking1, "Show Orbit Details");
                     GUILayout.EndHorizontal();
 
@@ -2624,7 +2614,7 @@ namespace LunarTransferPlanner
                     {
                         GUILayout.Space(5);
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip), GUILayout.ExpandWidth(true));
+                        GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip));
                         ExpandCollapse(ref expandParking2, "Show Orbit Details");
                         GUILayout.EndHorizontal();
 
@@ -2642,7 +2632,7 @@ namespace LunarTransferPlanner
                     }
 
                     GUILayout.Space(5);
-                    GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.ExpandWidth(true), GUILayout.Width(windowWidth)); // this sets the width of the window
+                    GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.Width(windowWidth)); // this sets the width of the window
                     MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
 
                     GUILayout.Space(10);
@@ -2678,7 +2668,7 @@ namespace LunarTransferPlanner
                         DescribeD("Longitude", "\u00B0", longitude);
                         DescribeD("Flight Time", "s", flightTime);
                         if (flightTime_Adj != flightTime) DescribeD("Flight Time Formatted", flightTimeLabel, flightTime_Adj);
-                        DescribeD("Required delta-V", "m/s", dV);
+                        DescribeD("Required delta-V", "m/s", dV0);
                         DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
                         DescribeD("Launch Inclination", "\u00B0", launchInc1); // this is the true inclination, not the display
                         DescribeD("Launch Azimuth", "\u00B0", launchAz1);
@@ -2862,7 +2852,7 @@ namespace LunarTransferPlanner
                         GUILayout.EndHorizontal();
 
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Show Transfer Orbit", $"Show Transfer Orbit for the Next Launch Window in Map View{(double.IsNaN(trajectoryEccentricity) || double.IsNaN(dV) ? "\nError: Trajectory is invalid" : "")}"));
+                        GUILayout.Label(new GUIContent("Show Transfer Orbit", $"Show Transfer Orbit for the Next Launch Window in Map View{(double.IsNaN(transferEcc0) || double.IsNaN(dV0) ? "\nError: Trajectory is invalid" : "")}"));
                         GUILayout.FlexibleSpace();
                         BeginCenter();
                         displayTransfer = GUILayout.Toggle(displayTransfer, "");
@@ -2904,7 +2894,7 @@ namespace LunarTransferPlanner
                         if (GUILayout.Button(new GUIContent("Make Node", $"Make Maneuver Node in parking orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING ? "\nMust be in orbit" : "")}")))
                         {
                             ManeuverNode node = FlightGlobals.ActiveVessel.patchedConicSolver.AddManeuverNode(currentUT + referenceTime + phaseTime0);
-                            node.DeltaV = new Vector3d(0, 0, dV);
+                            node.DeltaV = new Vector3d(0, 0, dV0);
                             node.solver.UpdateFlightPlan();
                         }
                         GUI.enabled = true;
@@ -2965,13 +2955,13 @@ namespace LunarTransferPlanner
                         ClearAngleRenderer(true);
                     }
 
-                    if (displayTransfer && _transferOrbitRenderer == null && Util.MapViewEnabled() && !needCacheClear && !double.IsNaN(trajectoryEccentricity) && !double.IsNaN(dV))
+                    if (displayTransfer && _transferOrbitRenderer == null && Util.MapViewEnabled() && !needCacheClear && !double.IsNaN(transferEcc0) && !double.IsNaN(dV0))
                     {
                         Orbit transferOrbit = new Orbit
                         {
                             inclination = launchInc0,
-                            eccentricity = trajectoryEccentricity,
-                            semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - trajectoryEccentricity),
+                            eccentricity = transferEcc0,
+                            semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - transferEcc0),
                             LAN = launchLAN0,
                             argumentOfPeriapsis = Util.ClampAngle(launchAoP0 + phaseAngle0, false),
                             meanAnomalyAtEpoch = 0d,
@@ -3238,14 +3228,6 @@ namespace LunarTransferPlanner
                         ResetWindow(WindowState.Main);
                         //ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
                     }
-
-                    DrawLine();
-
-                    BeginCombined();
-                    GUILayout.Label("Choose Flight Time instead of the Delta-V");
-                    MiddleCombined();
-                    useFlightTime = GUILayout.Toggle(useFlightTime, "");
-                    EndCombined();
 
                     if (expandExtraWindow)
                     {

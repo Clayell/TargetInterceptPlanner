@@ -236,7 +236,7 @@ namespace LunarTransferPlanner
         bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
         bool altBehaviorNaN = false; // Return NaN when a global min can't be found, instead of returning the closest time
-        int maxIterations = 10000; // Max iterations for GSS and EstimateTimeAfterManeuver (mostly relevant for EstimateTimeAfterManeuver)
+        int maxIterations = 10000; // Max iterations for GSS and other for loops
         bool displaySeconds = false;
         bool useVesselPosition = true; // Use vessel position for latitude instead of launch site position, default is true as the KSC location isn't always the same as the actual launch site directly from the VAB
         bool requireSurfaceVessel = true; // Do not consider useVesselPosition if the vessel is not on the surface
@@ -1033,7 +1033,7 @@ namespace LunarTransferPlanner
             return (orbitNorm, azimuth * radToDeg, inclination * radToDeg);
         }
 
-        double EstimateLaunchTime(Vector3d launchPos, double flightTime, double startTime, bool useAltBehavior)
+        double CalculateLaunchTime(Vector3d launchPos, double flightTime, double startTime, bool useAltBehavior)
         {
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
@@ -1068,7 +1068,7 @@ namespace LunarTransferPlanner
 
                 while (candidateTime <= startTime + maxTimeLimit)
                 {
-                    double refinedTime = EstimateLaunchTime(launchPos, flightTime, candidateTime, false); // recursive call with useAltBehavior = false
+                    double refinedTime = CalculateLaunchTime(launchPos, flightTime, candidateTime, false); // recursive call with useAltBehavior = false
                     if (double.IsNaN(refinedTime)) // no min found within normal time limit to analyze
                     {
                         Log($"No minimum found within normal time limit of {maxTimeLimit} to analyze!");
@@ -1239,7 +1239,7 @@ namespace LunarTransferPlanner
             return (LAN * radToDeg, AoP * radToDeg);
         }
 
-        private (double phasingTime, double phasingAngle) EstimateTimeBeforeManeuver(double flightTime, double startUT, double transferEcc, double inclination, double LAN, double AoP)
+        private (double phasingTime, double phasingAngle) CalculateTimeBeforeManeuver(double flightTime, double startUT, double transferEcc, double inclination, double LAN, double AoP)
         {
             // We can't just do some vector and quaternion math to get the phasing angle, because the maneuver is only directly opposite the future targetPos when the maneuver is a hohmann transfer (max flight time)
             // With less flight time, you have to move the maneuver further along
@@ -1307,7 +1307,7 @@ namespace LunarTransferPlanner
             return (bestTime, bestAngle);
         }
 
-        private (double time, double eccentricity) EstimateTimeAfterManeuver(double dV, double startUT)
+        private (double time, double eccentricity) CalculateTimeAfterManeuver(double dV, double startUT)
         { // The formulas are from http://www.braeunig.us/space/orbmech.htm
             if (targetOrbit == null) return (double.NaN, double.NaN);
 
@@ -1371,7 +1371,7 @@ namespace LunarTransferPlanner
 
                 if (i >= maxIterations - 1)
                 {
-                    Log($"Max iteration limit ({maxIterations}) reached in EstimateTimeAfterManeuver, returning last value");
+                    Log($"Max iteration limit ({maxIterations}) reached in CalculateTimeAfterManeuver, returning last value");
                     break;
                 }
             }
@@ -1381,7 +1381,7 @@ namespace LunarTransferPlanner
             return (t1, e);
         }
 
-        (double dV, double eccentricity, int errorStateDV) EstimateDV(double postManeuverTime, double startUT)
+        (double dV, double eccentricity, int errorStateDV) CalculateDV(double postManeuverTime, double startUT)
         {
             // flight time needs to be the one after the maneuver
             
@@ -1402,7 +1402,7 @@ namespace LunarTransferPlanner
 
             double FlightTimeError(double candidateDV)
             {
-                (double estimatedFlightTime, _) = EstimateTimeAfterManeuver(candidateDV, startUT);
+                (double estimatedFlightTime, _) = CalculateTimeAfterManeuver(candidateDV, startUT);
 
                 //Log($"estimatedFlightTime: {estimatedFlightTime}, candidateDV: {candidateDV}");
 
@@ -1414,7 +1414,7 @@ namespace LunarTransferPlanner
 
             double dV = GoldenSectionSearch(lowerBound, upperBound, epsilon, FlightTimeError);
 
-            (double finalTime, double eccentricity) = EstimateTimeAfterManeuver(dV, startUT);
+            (double finalTime, double eccentricity) = CalculateTimeAfterManeuver(dV, startUT);
 
             //Log($"Final Time: {finalTime}, postManeuverTime: {postManeuverTime}, maxPossibleDV: {maxPossibleDV}, eccentricity: {eccentricity}");
 
@@ -1451,11 +1451,9 @@ namespace LunarTransferPlanner
             double dV = double.NaN;
             int errorStateDV = -1;
 
-            // i wonder if we could combine EstimateTimeBeforeManeuver and EstimateDV into one loop
-
             for (int i1 = 0; i1 < maxIterations; i1++)
             {
-                (phasingTime, phasingAngle) = EstimateTimeBeforeManeuver(flightTime, startUT, eccentricity, inclination, LAN, AoP);
+                (phasingTime, phasingAngle) = CalculateTimeBeforeManeuver(flightTime, startUT, eccentricity, inclination, LAN, AoP);
 
                 if (double.IsNaN(phasingTime) || double.IsNaN(phasingAngle))
                 {
@@ -1463,7 +1461,7 @@ namespace LunarTransferPlanner
                     continue;
                 }
 
-                (dV, eccentricity, errorStateDV) = EstimateDV(flightTime - phasingTime, startUT + phasingTime);
+                (dV, eccentricity, errorStateDV) = CalculateDV(flightTime - phasingTime, startUT + phasingTime);
 
                 if (double.IsNaN(eccentricity) || Math.Abs(eccentricity - lastEcc) < epsilon) { /*Log($"i1: {i1}");*/ break; }
 
@@ -1477,6 +1475,11 @@ namespace LunarTransferPlanner
 
             return (phasingTime, phasingAngle, dV, eccentricity, errorStateDV);
         }
+
+        //private double CalculateMaxFlightTime()
+        //{
+
+        //}
 
         #endregion
         #region Caching Methods
@@ -1585,7 +1588,7 @@ namespace LunarTransferPlanner
             for (int w = windowCache.Count; w <= windowNumber; w++)
             {
                 //var stopwatch = Stopwatch.StartNew();
-                newLaunchTime = EstimateLaunchTime(launchPos, flightTime, startTime, useAltBehavior);
+                newLaunchTime = CalculateLaunchTime(launchPos, flightTime, startTime, useAltBehavior);
                 //stopwatch.Stop();
                 //Log($"Relative Launch Time: {newLaunchTime}, Absolute Launch Time: {newLaunchTime + currentUT}\nCompleted in {stopwatch.Elapsed.TotalSeconds}s");
 
@@ -1602,7 +1605,7 @@ namespace LunarTransferPlanner
 
                 if (double.IsNaN(newLaunchTime)) // this needs to be done after we set the cache, otherwise itll go into an endless loop of returning NaN
                 {
-                    //Log("LaunchTime is NaN, exiting"); // keep this log inside EstimateLaunchTime
+                    //Log("LaunchTime is NaN, exiting"); // keep this log inside CalculateLaunchTime
                     break;
                 }
 
@@ -2428,7 +2431,7 @@ namespace LunarTransferPlanner
                         double r1 = targetOrbit.ApR;
                         double minDV = Math.Sqrt(mainBody.gravParameter / r0) * (Math.Sqrt(2d * r1 / (r0 + r1)) - 1d) + .01d;
 
-                        //flightTime = EstimateTimeAfterManeuver(minDV, currentUT).time;
+                        //flightTime = CalculateTimeAfterManeuver(minDV, currentUT).time;
 
                         // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
                         // this only finds the maximum flight time for the launch now window. doing anything else is going to be annoyingly difficult

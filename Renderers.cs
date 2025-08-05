@@ -157,9 +157,9 @@ namespace LunarTransferPlanner
             _lineEnd = null;
             _lineArc = null;
 
-            _objLineStart.DestroyGameObject();
-            _objLineEnd.DestroyGameObject();
-            _objLineArc.DestroyGameObject();
+            Destroy(_objLineStart);
+            Destroy(_objLineEnd);
+            Destroy(_objLineArc);
         }
 
         private void Log(string message) => Util.Log(message);

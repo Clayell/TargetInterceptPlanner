@@ -217,7 +217,7 @@ namespace LunarTransferPlanner
 
         double targetInclination;
         double currentUT;
-        double dayScale;
+        double dayScale; // The ratio of the mainBody's sidereal rotation period to Earth's sidereal rotation period
         double solarDayLength;
         bool useHomeSolarDay = true;
         int errorStateTargets = 0; // TODO, change this to an enum, same with errorStateDV
@@ -226,14 +226,14 @@ namespace LunarTransferPlanner
         bool useAltSkin = false; // Use Unity GUI skin instead of default
         double tickSpeed = 0.2;
 
-        double flightTime = double.NaN; // Desired flight time after maneuver, in seconds (this gets initialized to 4d * solarDayLength later) TODO, initialize it to max flight time instead
-        double flightTime_Adj = double.NaN; // Desired flight time after maneuver, in whatever unit the user has selected
+        double flightTime = double.NaN; // Desired total flight time from launch to intercept, in seconds (this gets initialized to the max flight time on the first load)
+        double flightTime_Adj = double.NaN; // Desired total flight time from launch to intercept, in whatever unit the user has selected
         int flightTimeMode = 0; // 0, 1, 2, 3 (default to days), TODO change this to enum
         string flightTimeLabel;
         string flightTimeTooltip;
 
         double parkingAltitude = 200d; // Parking orbit altitude (circular orbit)
-        bool useAltBehavior = false; // Find global minimum for low latitudes instead of local minimum
+        bool useAltBehavior = true; // Find global minimum for low latitudes instead of local minimum
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
         bool altBehaviorNaN = false; // Return NaN when a global min can't be found, instead of returning the closest time
         int maxIterations = 10000; // Max iterations for GSS and other for loops
@@ -253,7 +253,7 @@ namespace LunarTransferPlanner
         double referenceTime = 0d;
         int? referenceWindowNumber = null;
 
-        double targetLaunchAzimuth = 90d; // due east
+        double targetLaunchAzimuth = 90d; // due east (TODO, change this to target inclination? would need to be initialized later)
         double targetLaunchInclination = double.NaN;
         double targetPhasingAngle = 180d;
         double targetPhasingTime = double.NaN;
@@ -268,7 +268,7 @@ namespace LunarTransferPlanner
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
-        double maxDeltaVScaled = 100000d; // Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body
+        double maxDeltaVScaled = 100000d; // Max amount of delta-V that can be calculated, scaled based pn the ratio of the orbital velocity at 0 altitude of the mainBody to Earth
         bool ranSearch = false; // If we've ran the targetPhasingAngle/Time search
         internal static int decimals = 2; // Amount of decimal precision to display
         bool useAngle = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
@@ -1033,7 +1033,7 @@ namespace LunarTransferPlanner
             return (orbitNorm, azimuth * radToDeg, inclination * radToDeg);
         }
 
-        double CalculateLaunchTime(Vector3d launchPos, double flightTime, double startTime, bool useAltBehavior)
+        double CalculateLaunchTime(Vector3d launchPos, double flightTime, double startTime, bool useAltBehavior, bool? overrideNaN)
         {
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
@@ -1068,7 +1068,7 @@ namespace LunarTransferPlanner
 
                 while (candidateTime <= startTime + maxTimeLimit)
                 {
-                    double refinedTime = CalculateLaunchTime(launchPos, flightTime, candidateTime, false); // recursive call with useAltBehavior = false
+                    double refinedTime = CalculateLaunchTime(launchPos, flightTime, candidateTime, false, overrideNaN); // recursive call with useAltBehavior = false
                     if (double.IsNaN(refinedTime)) // no min found within normal time limit to analyze
                     {
                         Log($"No minimum found within normal time limit of {maxTimeLimit} to analyze!");
@@ -1093,7 +1093,9 @@ namespace LunarTransferPlanner
 
                         if (candidateTime > startTime + maxTimeLimit) // no global min found within extended time limit
                         {
-                            if (altBehaviorNaN)
+                            bool NaNBehavior = overrideNaN ?? altBehaviorNaN;
+                            
+                            if (NaNBehavior)
                             {
                                 Log($"No time found with error of 0 within time limit of {maxTimeLimit}, returning NaN.");
                                 return double.NaN;
@@ -1317,14 +1319,14 @@ namespace LunarTransferPlanner
             double r1 = targetOrbit.GetRadiusAtUT(startUT); // Initial guess for the altitude of the target
             double t1 = double.MaxValue;
             double previousT1 = 0d;
-            double v0 = Math.Sqrt(gravParameter / r0) + dV;
-            double e = r0 * v0 * v0 / gravParameter - 1;
+            double v = Math.Sqrt(gravParameter / r0) + dV;
+            double e = r0 * v * v / gravParameter - 1;
             if (e == 1d) // e == 1 would mean that the orbit is parabolic. No idea which formulas are applicable in this case.
             {
-                v0 += 0.1;
-                e = r0 * v0 * v0 / gravParameter - 1;
+                v += 0.1;
+                e = r0 * v * v / gravParameter - 1;
             }
-            double a = 1d / (2d / r0 - v0 * v0 / gravParameter);
+            double a = 1d / (2d / r0 - v * v / gravParameter);
             int i = 0;
 
             //Log($"initial r1: {r1}, t1: {t1}");
@@ -1332,7 +1334,7 @@ namespace LunarTransferPlanner
             // The target is moving, so we need to know its altitude when the vessel arrives
             // For that we need to know the flight time, so we can iterate the flight time until the error is small enough or goes over maxIterations
             // TODO, optimize this much better (https://github.com/Clayell/LunarTransferPlanner/commit/d73af739c4ffa7163fc43c567cb28710b0bc0113#commitcomment-160841101)
-            // TLDR of TODO: this converges really slowly, but I can't find a better way to find a good time (maybe something with Lambert?)
+            // TLDR of TODO: this converges really slowly when close to the max flight time, but I can't find a better way to find a good time (maybe something with Lambert?)
 
             while (Math.Abs(t1 - previousT1) >= tolerance)
             {
@@ -1383,8 +1385,8 @@ namespace LunarTransferPlanner
 
         (double dV, double eccentricity, int errorStateDV) CalculateDV(double postManeuverTime, double startUT)
         {
-            // flight time needs to be the one after the maneuver
-            
+            // startUT needs to include phasingTime, postManeuverTime is the time in transit after the maneuver
+
             //CelestialBody mainBody = target.referenceBody;
 
             // Search in this range
@@ -1420,14 +1422,14 @@ namespace LunarTransferPlanner
 
             if (Math.Abs(dV - maxPossibleDV) <= 1d)
             { // dV seems to get only sorta close to the max, like within .03
-                //Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN.");
+                //Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN."); // flight time is too low
                 dV = double.NaN;
                 eccentricity = double.NaN;
                 errorStateDV = 2;
             }
             else if (double.IsNaN(finalTime) || Math.Abs(finalTime - postManeuverTime) >= tolerance)
             {
-                //Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
+                //Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN."); // flight time is too high
                 dV = double.NaN;
                 eccentricity = double.NaN;
                 errorStateDV = 1;
@@ -1445,7 +1447,6 @@ namespace LunarTransferPlanner
             double startUT = currentUT + startTime;
 
             double eccentricity = 0.5d;
-            double lastEcc = -1d;
             double phasingTime = double.NaN;
             double phasingAngle = double.NaN;
             double dV = double.NaN;
@@ -1453,6 +1454,8 @@ namespace LunarTransferPlanner
 
             for (int i1 = 0; i1 < maxIterations; i1++)
             {
+                double lastEcc = eccentricity;
+
                 (phasingTime, phasingAngle) = CalculateTimeBeforeManeuver(flightTime, startUT, eccentricity, inclination, LAN, AoP);
 
                 if (double.IsNaN(phasingTime) || double.IsNaN(phasingAngle))
@@ -1464,11 +1467,9 @@ namespace LunarTransferPlanner
                 (dV, eccentricity, errorStateDV) = CalculateDV(flightTime - phasingTime, startUT + phasingTime);
 
                 if (double.IsNaN(eccentricity) || Math.Abs(eccentricity - lastEcc) < epsilon) { /*Log($"i1: {i1}");*/ break; }
-
-                lastEcc = eccentricity;
             }
 
-            if (double.IsNaN(eccentricity))
+            if (double.IsNaN(eccentricity)) // NaN eccentricity means flight time is too low
             {
                 phasingTime = phasingAngle = double.NaN;
             }
@@ -1476,10 +1477,149 @@ namespace LunarTransferPlanner
             return (phasingTime, phasingAngle, dV, eccentricity, errorStateDV);
         }
 
-        //private double CalculateMaxFlightTime()
-        //{
+        private double CalculateTimeAfterManeuverMax() // TODO this can be cached, only needs to be changed when mainBody, targetOrbit, or parkingAltitude changes
+        { // The formulas are from http://www.braeunig.us/space/orbmech.htm
+            if (targetOrbit == null) return double.NaN;
 
-        //}
+            double ApR = targetOrbit.ApR;
+            double r0 = parkingAltitude * 1000d + mainBody.Radius;
+
+            double dV = Math.Sqrt(mainBody.gravParameter / r0) * (Math.Sqrt(2d * ApR / (r0 + ApR)) - 1d);
+
+            double gravParameter = mainBody.gravParameter;
+            double t1;
+            double v = Math.Sqrt(gravParameter / r0) + dV;
+            double e = r0 * v * v / gravParameter - 1;
+            if (e == 1d) // e == 1 would mean that the orbit is parabolic. No idea which formulas are applicable in this case.
+            {
+                v += 0.1;
+                e = r0 * v * v / gravParameter - 1;
+            }
+            double a = 1d / (2d / r0 - v * v / gravParameter);
+
+            // True anomaly when the vessel reaches the apoapsis of the target
+            double trueAnomaly1 = Math.Acos((a * (1d - e * e) - ApR) / (e * ApR));
+
+            if (e < 1d) // Elliptic orbit
+            {
+                double eccAnomaly1 = Math.Acos((e + Math.Cos(trueAnomaly1)) / (1d + e * Math.Cos(trueAnomaly1)));
+                double meanAnomaly1 = eccAnomaly1 - e * Math.Sin(eccAnomaly1);
+
+                t1 = meanAnomaly1 / Math.Sqrt(gravParameter / Math.Pow(a, 3));
+            }
+            else // Hyperbolic orbit, Parabolic orbit (e == 1) should have been prevented earlier
+            {
+                double hEccAnomaly1 = Util.Acosh((e + Math.Cos(trueAnomaly1)) / (1d + e * Math.Cos(trueAnomaly1)));
+
+                t1 = Math.Sqrt(Math.Pow(-a, 3) / gravParameter) * (e * Math.Sinh(hEccAnomaly1) - hEccAnomaly1);
+            }
+
+            return t1;
+        }
+
+        private double CalculateMaxFlightTime(Vector3d launchPos, double latitude, double longitude, double targetInclination, bool useAltBehavior)
+        { // targets with an eccentricity of 1 have already been filtered out
+            double candidateFlightTime = solarDayLength; // completely arbitrary
+            const double epsilon = 1e-9;
+            double absoluteMaxTime = CalculateTimeAfterManeuverMax(); // this will almost always give a NaN later on unless the orbit is perfectly circular
+
+            if (referenceTimeMode == 0)
+            {
+                //for (; i < maxIterations; i++)
+                //{
+                //    double lastFlightTime = candidateFlightTime;
+
+                //    (_, double azimuth, double inclination) = CalcOrbitForTime(launchPos, candidateFlightTime, 0);
+                //    (double LAN, double AoP) = CalculateLAN(0d, latitude, longitude, azimuth);
+                //    double phasingTime = CalculatePhasingAndDeltaV(candidateFlightTime, 0, inclination, LAN, AoP).phasingTime;
+
+                //    double r1 = targetOrbit.GetRadiusAtUT(currentUT + candidateFlightTime);
+                //    double minDV = v0 * (Math.Sqrt(2d * r1 / (r0 + r1)) - 1d) + .01d; // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
+                //    candidateFlightTime = CalculateTimeAfterManeuver(minDV, currentUT + phasingTime).time;
+
+                //    Log($"r1: {r1}, phasingTime: {phasingTime}, minDV: {minDV}, candidateFlightTime: {candidateFlightTime}");
+
+                //    if (double.IsNaN(candidateFlightTime)) { candidateFlightTime = lastFlightTime; break; }
+                //    if (!double.IsNaN(candidateFlightTime) && !double.IsNaN(lastFlightTime) && Math.Abs(candidateFlightTime - lastFlightTime) < epsilon) break;
+                //}
+
+                //double bufferTime = 10d; // give us a little bit of time before the deltaV turns NaN, since this max flight time is always changing
+
+                double FlightTimeError(double time)
+                {
+                    (_, double azimuth, double inclination) = CalcOrbitForTime(launchPos, time, 0);
+                    (double LAN, double AoP) = CalculateLAN(0, latitude, longitude, azimuth);
+                    int errorStateDV = CalculatePhasingAndDeltaV(time, 0, inclination, LAN, AoP).errorStateDV;
+
+                    if (errorStateDV == 1) // flight time is too high
+                    {
+                        time = -absoluteMaxTime; // this makes the error very large so that the left side gets picked instead
+                    }
+
+                    return absoluteMaxTime - time;
+                }
+
+                candidateFlightTime = GoldenSectionSearch(0d, absoluteMaxTime, epsilon, FlightTimeError, true);
+            }
+            else
+            {
+                if (referenceWindowNumber == null)
+                {
+                    LogError("ReferenceWindowNumber is somehow null when referenceTimeMode isn't 0");
+                    return double.NaN;
+                }
+                
+                windowCache.Clear();
+                launchOrbitCache.Clear();
+
+                //for (; i < maxIterations; i++)
+                //{
+                //    double lastFlightTime = candidateFlightTime;
+
+                //    double candidateLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, candidateFlightTime, targetInclination, useAltBehavior, referenceWindowNumber.Value, true);
+                //    double candidateLaunchETA = candidateLaunchUT - currentUT;
+                //    OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, latitude, longitude, candidateFlightTime, candidateLaunchETA, referenceWindowNumber.Value);
+                //    double phasingTime = launchOrbit.phaseTime;
+
+                //    double r1 = targetOrbit.GetRadiusAtUT(candidateLaunchUT + candidateFlightTime);
+                //    double minDV = v0 * (Math.Sqrt(2d * r1 / (r0 + r1)) - 1d) + .01d; // .01d is margin
+                //    candidateFlightTime = CalculateTimeAfterManeuver(minDV, candidateLaunchUT + phasingTime).time;
+
+                //    Log($"r1: {r1}, phasingTime: {phasingTime}, minDV: {minDV}, candidateFlightTime: {candidateFlightTime}");
+
+                //    if (double.IsNaN(candidateFlightTime)) { candidateFlightTime = lastFlightTime; break; }
+                //    if (!double.IsNaN(candidateFlightTime) && !double.IsNaN(lastFlightTime) && Math.Abs(candidateFlightTime - lastFlightTime) < epsilon) break;
+                    
+                //    windowCache.Clear(); // we're only use GetCachedLaunchTime for the window number logic
+                //    launchOrbitCache.Clear(); // we're only use GetCachedLaunchOrbit for the window number and wiggle logic
+                //}
+
+                double FlightTimeError(double time)
+                {
+                    double candidateLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, time, targetInclination, useAltBehavior, referenceWindowNumber.Value, true);
+                    double candidateLaunchETA = candidateLaunchUT - currentUT;
+
+                    OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, latitude, longitude, time, candidateLaunchETA, referenceWindowNumber.Value);
+                    int errorStateDV = launchOrbit.errorStateDV;
+
+                    windowCache.Clear(); // we're only use GetCachedLaunchTime for the window number logic
+                    launchOrbitCache.Clear(); // we're only use GetCachedLaunchOrbit for the window number and wiggle logic
+
+                    if (double.IsNaN(candidateLaunchETA) || errorStateDV == 1) // unable to find a window or flight time is too high
+                    {
+                        time = -absoluteMaxTime; // this makes the error very large so that the left side gets picked instead
+                    }
+
+                    return absoluteMaxTime - time;
+                }
+
+                candidateFlightTime = GoldenSectionSearch(0d, absoluteMaxTime, epsilon, FlightTimeError, true);
+            }
+
+            candidateFlightTime *= (1 - 1e-3); // decrease slightly to account for rounding errors (TODO, not quite working, possibly due to EstimateTimeAfterManeuver?)
+
+            return candidateFlightTime;
+        }
 
         #endregion
         #region Caching Methods
@@ -1554,7 +1694,7 @@ namespace LunarTransferPlanner
             }
         }
 
-        private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double flightTime, double targetInclination, bool useAltBehavior, int windowNumber)
+        private double GetCachedLaunchTime(Vector3d launchPos, double latitude, double longitude, double flightTime, double targetInclination, bool useAltBehavior, int windowNumber, bool? overrideNaN = null)
         {
             // bad caches already removed by CheckWindowCache
 
@@ -1588,7 +1728,7 @@ namespace LunarTransferPlanner
             for (int w = windowCache.Count; w <= windowNumber; w++)
             {
                 //var stopwatch = Stopwatch.StartNew();
-                newLaunchTime = CalculateLaunchTime(launchPos, flightTime, startTime, useAltBehavior);
+                newLaunchTime = CalculateLaunchTime(launchPos, flightTime, startTime, useAltBehavior, overrideNaN);
                 //stopwatch.Stop();
                 //Log($"Relative Launch Time: {newLaunchTime}, Absolute Launch Time: {newLaunchTime + currentUT}\nCompleted in {stopwatch.Elapsed.TotalSeconds}s");
 
@@ -1648,7 +1788,7 @@ namespace LunarTransferPlanner
 
                     if (Math.Abs(Math.Abs(launchOrbit.azimuth - targetLaunchAzimuth) - 180d) <= epsilon)
                     { // this is specifically a problem with targetLaunchAzimuth being 0, 180, or 360, and the azimuth at that time being 180 degrees apart
-                      // so we have to wiggle back and forth until we find the right window
+                      // so we have to wiggle back and forth until we find the right window (CalculateLaunchTime doesnt need to do this bc it uses Cos)
                         for (int i = 1; i < maxIterations; i++)                                   
                         {
                             launchOrbit = GetOrbitData(startTime + i * epsilon);
@@ -1673,7 +1813,7 @@ namespace LunarTransferPlanner
         #endregion
         #region GUI Methods
 
-        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false, string minusTooltip = "", string plusTooltip = "") where T : struct, IConvertible
+        private void MakeNumberEditField<T>(string controlId, ref T value, IConvertible step, IConvertible minValue, IConvertible maxValue, bool wrapAround = false) where T : struct, IConvertible
         {
             const double epsilon = 1e-9;
 
@@ -1738,19 +1878,20 @@ namespace LunarTransferPlanner
             bool canDecrease = wrapAround || valueDouble > minValueDouble + epsilon;
             bool canIncrease = wrapAround || valueDouble < maxValueDouble - epsilon;
 
+            string minusTooltip = $"Decrease by {step}{(canDecrease ? "" : "\nThis button is currently disabled as the value is at the minimum")}";
+            string plusTooltip = $"Increase by {step}{(canDecrease ? "" : "\nThis button is currently disabled as the value is at the minimum")}";
+
             GUI.enabled = canDecrease;
-            if (!canDecrease) minusTooltip += (minusTooltip == "" ? "" : "\n") + "This button is currently disabled as the value is at the minimum";
             bool hitMinusButton = GUILayout.RepeatButton(new GUIContent("\u2013", minusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60)); // en dash shows up as the same width as + ingame, while the minus symbol is way thinner
             GUI.enabled = true;
 
             GUI.enabled = canIncrease;
-            if (!canIncrease) plusTooltip += (plusTooltip == "" ? "" : "\n") + "This button is currently disabled as the value is at the maximum";
             bool hitPlusButton = GUILayout.RepeatButton(new GUIContent("+", plusTooltip), GUILayout.MinWidth(40), GUILayout.MaxWidth(60));
             GUI.enabled = true;
 
             if (hitPlusButton || hitMinusButton)
             {
-                double tick = Time.realtimeSinceStartup; // TODO, account for game lag which can cause the button to repeat itself
+                double tick = Time.realtimeSinceStartup; // TODO, account for game lag which can cause the button to repeat itself (use currentUT?)
                 if (tick > nextTick)
                 {
                     int decimals = -1;
@@ -2106,18 +2247,18 @@ namespace LunarTransferPlanner
                 {
                     target = null;
                     ClearAllCaches();
-                    moons = mainBody?.orbitingBodies?.OrderBy(body => body.bodyName).ToList();
+                    moons = mainBody?.orbitingBodies?.Where(body => body.orbit.eccentricity < 1d).OrderBy(body => body.bodyName).ToList();
                     vessels = HighLogic.CurrentGame.flightState.protoVessels?.Where(protoVessel =>
-                    protoVessel != null && mainBody != null && protoVessel.vesselID != FlightGlobals.ActiveVessel?.id && protoVessel.orbitSnapShot?.ReferenceBodyIndex == mainBody.flightGlobalsIndex && protoVessel.situation == Vessel.Situations.ORBITING)
+                    protoVessel != null && mainBody != null && protoVessel.vesselID != FlightGlobals.ActiveVessel?.id && protoVessel.situation == Vessel.Situations.ORBITING && protoVessel.orbitSnapShot?.ReferenceBodyIndex == mainBody.flightGlobalsIndex && protoVessel.orbitSnapShot?.eccentricity < 1d)
                     .OrderBy(protoVessel => protoVessel.vesselName).ToList();
                 }
+
+                // TODO, instead of ordering alphabetically, order by lowest periapsis? make this a setting
 
                 if (StateChanged("mainBody2", mainBody, false)) // do not detect on first access, because we dont want to blank the targetName immediately
                 {
                     targetName = "";
                 }
-
-                // TODO, instead of ordering alphabetically, order by closest periapsis? closest launch window? make this a setting
 
                 moonsInvalid = moons == null || moons.Count == 0;
                 vesselsInvalid = vessels == null || vessels.Count == 0;
@@ -2358,7 +2499,7 @@ namespace LunarTransferPlanner
 
                     //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
-                    if (double.IsNaN(flightTime)) flightTime = 4d * solarDayLength; // TODO make this the max flight time
+                    if (double.IsNaN(flightTime)) flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetInclination, useAltBehavior); // initialize on first load
 
                     GUILayout.Space(5);
                     
@@ -2425,16 +2566,9 @@ namespace LunarTransferPlanner
                             break;
                     }
 
-                    if (ResetDefault())
+                    if (ResetDefault("Reset to Maximum Flight Time"))
                     {
-                        double r0 = parkingAltitude * 1000d + mainBody.Radius;
-                        double r1 = targetOrbit.ApR;
-                        double minDV = Math.Sqrt(mainBody.gravParameter / r0) * (Math.Sqrt(2d * r1 / (r0 + r1)) - 1d) + .01d;
-
-                        //flightTime = CalculateTimeAfterManeuver(minDV, currentUT).time;
-
-                        // min delta-V from first half of hohmann transfer, + .01 to make it not NaN (source: https://en.wikipedia.org/wiki/Hohmann_transfer_orbit#Calculation)
-                        // this only finds the maximum flight time for the launch now window. doing anything else is going to be annoyingly difficult
+                        flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetInclination, useAltBehavior);
 
                         switch (flightTimeMode)
                         {

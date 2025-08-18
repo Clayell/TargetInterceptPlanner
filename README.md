@@ -1,4 +1,4 @@
-(while this is still a WIP, use [this guide](https://github.com/KSP-RO/RP-1/wiki/How-To-Install-a-Mod-From-Github#grabbing-a-branchs-source-code-the-less-common-way-to-install) to learn how to install this)
+(while this is still a WIP, use [this guide](https://github.com/KSP-RO/RP-1/wiki/How-To-Install-a-Mod-From-Github#grabbing-a-branchs-source-code-the-less-common-way-to-install) to learn how to install this, and DM @clayel on discord for any issues you encounter)
 
 # Lunar Transfer Planner
 

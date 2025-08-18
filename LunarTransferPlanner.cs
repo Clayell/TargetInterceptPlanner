@@ -189,6 +189,7 @@ namespace LunarTransferPlanner
         bool vesselsInvalid = true;
         bool KACInstalled;
         bool PrincipiaInstalled;
+        PQSCity KSC;
 
         double manualEccentricity = double.NaN; // eccentricity of manual target
         double eccentricity_Adj;
@@ -257,8 +258,6 @@ namespace LunarTransferPlanner
         double targetLaunchInclination = double.NaN;
         double targetPhasingAngle = 180d;
         double targetPhasingTime = double.NaN;
-        double bestAngle = double.NaN;
-        double bestTime = double.NaN;
         bool showAzimuth = false;
         bool expandExtraWindow = true; // Show the extra window chooser
         int extraWindowNumber = 2; // counting from 1
@@ -268,7 +267,7 @@ namespace LunarTransferPlanner
         bool expandParking0 = false; // Expand/collapse time in parking orbit for launch now
         bool expandParking1 = false; // Expand/collapse time in parking orbit for next window
         bool expandParking2 = false; // Expand/collapse time in parking orbit for extra window
-        double maxDeltaVScaled = 100000d; // Max amount of delta-V that can be calculated, scaled based pn the ratio of the orbital velocity at 0 altitude of the mainBody to Earth
+        double maxDeltaVScaled = 100000d; // Max amount of delta-V that can be calculated, scaled based on GetBodyScaledDV()
         bool ranSearch = false; // If we've ran the targetPhasingAngle/Time search
         internal static int decimals = 2; // Amount of decimal precision to display
         bool useAngle = false; // Show the phasing angle instead of the time in parking orbit, applies to all boxes
@@ -307,7 +306,6 @@ namespace LunarTransferPlanner
         List<CelestialBody> moons;
         List<ProtoVessel> vessels; // FlightGlobals.Vessels doesnt work in the editor, so we need to use ProtoVessel which should always work
         double lastLaunchTime = double.NaN;
-        (double totalTime, double postTime)? maxTimeCache = null;
         readonly List<(object target, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(object, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
@@ -346,6 +344,8 @@ namespace LunarTransferPlanner
             resetGreen = LoadImage("resetGreen");
 
             LoadSettings();
+
+            KSC = FindKSC(FlightGlobals.GetHomeBody());
 
             // GameEvents should be kept in Awake()
             GameEvents.onShowUI.Add(KSPShowGUI);
@@ -590,7 +590,7 @@ namespace LunarTransferPlanner
                 { "maxWindows", "Changes the maximum amount of windows that can be calculated with the extra window chooser (or considered in the phasing angle/time optimizer), default of 100. Each launch window is temporarily cached, so caching a ridiculous amount may lead to performance degradation" },
                 { "altBehaviorTimeLimit", "Max time limit for the global minimum search in sidereal days of the main body, default of 30. Increase this if you're getting close local minimums instead of absolute global minimums" },
                 { "altBehaviorNaN", "Return a NaN when a global minimum cannot be found within the time limit, instead of returning the best local minimum" },
-                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the length of a sidereal day for the main body, default of 100000 (for comparison, the Moon is about 3100). Increase if you're getting NaN for delta-V and the error messages say you need to increase the delta-V" },
+                { "maxDeltaVScaled", "Max amount of delta-V that can be calculated, scaled based on the body compared to Earth with a default of 100000 (for comparison, the Moon is about 3100). Increase if you're getting NaN for delta-V and the error message says you need to increase the delta-V" },
                 { "targetLaunchAzimuth", "Target Inclination is converted to and from Target Azimuth automatically" },
                 { "targetPhasingAngle", "Target Phasing Time is converted to and from Target Phasing Angle automatically" },
                 { "requireSurfaceVessel", "For useVesselPosition, require that the vessel be on the surface (landed or splashed) for the position to actually be considered" },
@@ -848,8 +848,11 @@ namespace LunarTransferPlanner
 
             //Stopwatch stopwatch = Stopwatch.StartNew();
 
-            double left = upperBound - invphi * (upperBound - lowerBound);
-            double right = lowerBound + invphi * (upperBound - lowerBound);
+            double CalcLeft() => upperBound - invphi * (upperBound - lowerBound);
+            double CalcRight() => lowerBound + invphi * (upperBound - lowerBound);
+
+            double left = CalcLeft();
+            double right = CalcRight();
             int i = 0;
             if (enableLogging) Log($"\n\nGSS Logging on for {errorFunc.Method.Name}, lowerBound: {lowerBound}, upperBound: {upperBound}");
 
@@ -865,7 +868,7 @@ namespace LunarTransferPlanner
                     upperBound = right;
                     right = left;
                     eRight = eLeft;
-                    left = upperBound - invphi * (upperBound - lowerBound);
+                    left = CalcLeft();
                     eLeft = errorFunc(left);
                 }
                 else
@@ -873,7 +876,7 @@ namespace LunarTransferPlanner
                     lowerBound = left;
                     left = right;
                     eLeft = eRight;
-                    right = lowerBound + invphi * (upperBound - lowerBound);
+                    right = CalcRight();
                     eRight = errorFunc(right);
                 }
                 if (i == maxIterations - 1)
@@ -886,12 +889,12 @@ namespace LunarTransferPlanner
             //stopwatch.Stop();
 
             //if (enableLogging) Log($"GSS for {errorFunc.Method.Name}, i: {i}, result: {(upperBound + lowerBound) / 2d}, time: {stopwatch.Elapsed.Seconds}s");
-            if (enableLogging) Log($"GSS for {errorFunc.Method.Name}, i: {i}, result: {(upperBound + lowerBound) / 2d}");
+            if (enableLogging) Log($"GSS for {errorFunc.Method.Name}, i: {i}, result: {(upperBound + lowerBound) / 2d}, upperBound: {upperBound}, lowerBound: {lowerBound}, left: {left}, eLeft: {eLeft}, right: {right}, eRight: {eRight}");
 
             return (upperBound + lowerBound) / 2d;
         }
 
-        private PQSCity FindKSC(CelestialBody home) // TODO, cache this
+        private PQSCity FindKSC(CelestialBody home)
         {
             if (home != null)
             {
@@ -936,21 +939,17 @@ namespace LunarTransferPlanner
             }
             else
             {
-                if (SpaceCenter.Instance != null)
+                if (KSC != null)
                 {
-                    PQSCity ksc = FindKSC(FlightGlobals.GetHomeBody());
-                    if (ksc)
-                    {
-                        Latitude = ksc.lat;
-                        Longitude = ksc.lon;
-                        //Altitude = ksc.alt;
-                    }
-                    else
-                    {
-                        Latitude = SpaceCenter.Instance.Latitude;
-                        Longitude = SpaceCenter.Instance.Longitude;
-                        //Altitude = 0d; // TODO, find a way to get altitude of SpaceCenter? tbh idek when we use SpaceCenter
-                    }
+                    Latitude = KSC.lat;
+                    Longitude = KSC.lon;
+                    //Altitude = KSC.alt;
+                }
+                else if (SpaceCenter.Instance != null)
+                {
+                    Latitude = SpaceCenter.Instance.Latitude;
+                    Longitude = SpaceCenter.Instance.Longitude;
+                    //Altitude = 0d; // TODO, find a way to get altitude of SpaceCenter? tbh idek when we use SpaceCenter
                 }
             }
 
@@ -1046,7 +1045,6 @@ namespace LunarTransferPlanner
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
             const double epsilon = 1e-9;
-            const double tolerance = 0.01;
             const double buffer = 1d;
 
             if (Math.Abs(targetOrbit.period - mainBody.rotationPeriod) < epsilon)
@@ -1079,7 +1077,7 @@ namespace LunarTransferPlanner
                     double refinedTime = CalculateLaunchTime(launchPos, flightTime, candidateTime, false, overrideNaN); // recursive call with useAltBehavior = false
                     if (double.IsNaN(refinedTime)) // no min found within normal time limit to analyze
                     {
-                        LogWarning($"No minimum found within normal time limit of {maxTimeLimit} to analyze! Flight Time: {flightTime}s.");
+                        LogWarning($"No minimum found within normal time limit of {mainBody.rotationPeriod * alignmentMultiplier} to analyze! Flight Time: {flightTime}s.");
                         return double.NaN;
                     }
 
@@ -1127,7 +1125,7 @@ namespace LunarTransferPlanner
             {
                 double refinedTime = GoldenSectionSearch(t0, t1, epsilon, AzimuthError);
 
-                if (refinedTime > t0 + tolerance) // t0 and t1 are on opposite sides of a min (and t0 has a lower error)
+                if (refinedTime > t0 + epsilon) // t0 and t1 are on opposite sides of a min (and t0 has a lower error)
                 {
                     //Log($"launchTime found at {refinedTime}");
                     return refinedTime;
@@ -1308,20 +1306,22 @@ namespace LunarTransferPlanner
                 return Vector3d.Distance(targetPos, futurePos);
             }
 
-            double bestAngle = GoldenSectionSearch(0d, 360d, epsilon, DistanceError, true); // TODO, we could allow multiple revolutions if we changed the min and max here, there is one minimum per 360 degrees
+            double bestAngle = GoldenSectionSearch(epsilon, 360d - epsilon, epsilon, DistanceError, true); // TODO, we could allow multiple revolutions if we changed the min and max here, there is one minimum per 360 degrees
             // TODO, add wrapAround for GSS
 
             double bestTime = orbitPeriod * (bestAngle / 360d);
 
             meanAnomaly = meanMotion * (flightTime - bestTime);
 
-            //Log($"DistanceError: {DistanceError(bestAngle)}, bestAngle: {bestAngle}, bestTime: {bestTime}, meanAnomaly: {meanAnomaly}, transferEcc: {transferEcc}, flightTime: {flightTime}");
+            Log($"DistanceError: {DistanceError(bestAngle)}, bestAngle: {bestAngle}, bestTime: {bestTime}, meanAnomaly: {meanAnomaly}, transferEcc: {transferEcc}, flightTime: {flightTime}");
 
             if ((transferEcc < 1d && meanAnomaly > Math.PI) || flightTime <= bestTime) return (double.NaN, double.NaN);
             // mean anomaly is past apoapsis so eccentricity is too low, return NaN (or flight time is too low)
 
             return (bestTime, bestAngle);
         }
+
+        private double GetBodyScaledDV() => Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scaled based on the ratio of the orbital velocity at sea level of the mainBody compared to Earth
 
         (double dV, double eccentricity, int errorStateDV) CalculateDV(double postManeuverTime, double startUT, double inclination, double LAN, double AoP)
         {
@@ -1332,7 +1332,7 @@ namespace LunarTransferPlanner
             const double epsilon = 1e-9;
             double gravParameter = mainBody.gravParameter;
             double r0 = mainBody.Radius + parkingAltitude * 1000d;
-            double maxPossibleDV = maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius); // scale by orbital velocity at sea level
+            double maxPossibleDV = maxDeltaVScaled * GetBodyScaledDV();
             double maxVelocity = Math.Sqrt(gravParameter / r0) + maxPossibleDV;
             double maxEccentricity = (r0 * maxVelocity * maxVelocity / gravParameter) - 1;
             double meanAnomaly = tau;
@@ -1480,7 +1480,7 @@ namespace LunarTransferPlanner
         { // targets with an eccentricity of 1 have already been filtered out
             const double epsilon = 1e-9;
             double candidateFlightTime = solarDayLength; // completely arbitrary
-            double absoluteMaxTime = GetCachedHohmannTime().totalTime; // this will almost always give a NaN later on unless the orbit is perfectly circular
+            double absoluteMaxTime = CalculateTimeAfterHohmannManeuver().totalTime; // this will almost always give a NaN later on unless the orbit is perfectly circular
 
             if (referenceTimeMode == 0)
             {
@@ -1563,14 +1563,11 @@ namespace LunarTransferPlanner
         {
             windowCache.Clear();
             launchOrbitCache.Clear();
-            ClearHohmannCache();
             ClearAllOrbitDisplays();
             ClearAngleRenderer(visibilityChanged);
 
             needCacheClear = true;
         }
-
-        private void ClearHohmannCache() => maxTimeCache = null;
 
         private void ClearAllOrbitDisplays()
         {
@@ -1620,7 +1617,6 @@ namespace LunarTransferPlanner
                             type = "Vessel";
                         }
                         Log($"Now targeting {(targetManual ? "[Manual Target]" : $"{targetName} ({type})")}");
-                        ClearHohmannCache();
                     }
                     ClearAllCaches(true); // we need to clear all caches even if one window is wrong, set visibilityChanged to true to have phase angle animate again
                     break;
@@ -1742,17 +1738,6 @@ namespace LunarTransferPlanner
             {
                 return GetOrbitData(startTime);
             }
-        }
-
-        private (double totalTime, double postTime) GetCachedHohmannTime()
-        {
-            if (!maxTimeCache.HasValue)
-            {
-                (double totalTime, double postTime) = CalculateTimeAfterHohmannManeuver();
-                maxTimeCache = (totalTime, postTime);
-            }
-
-            return (maxTimeCache.Value.totalTime, maxTimeCache.Value.postTime);
         }
 
         #endregion
@@ -2547,7 +2532,6 @@ namespace LunarTransferPlanner
                         if (StateChanged("parkingAltitude", parkingAltitude)) // clear all but window cache
                         {
                             launchOrbitCache.Clear();
-                            ClearHohmannCache();
                             ClearAllOrbitDisplays();
                             ClearAngleRenderer();
                         }
@@ -2635,7 +2619,7 @@ namespace LunarTransferPlanner
                         switch (errorStateDV0)
                         {
                             case 1: tooltip = "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."; break;
-                            case 2: tooltip = $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * Math.Sqrt(mainBody.Mass / mainBody.Radius) / Math.Sqrt(EarthMass / EarthRadius))}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."; break;
+                            case 2: tooltip = $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * GetBodyScaledDV())}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."; break;
                             case 3: tooltip = "Max iterations was reached and a valid dV cannot be given."; break;
                         }
                         GUILayout.Label(new GUIContent("<b>!!!</b>", tooltip));
@@ -3433,7 +3417,6 @@ namespace LunarTransferPlanner
                                         {
                                             bestError = errorRatio;
                                             bestWindow = candidateWindow;
-                                            bestAngle = candidatePhaseAngle;
                                         }
                                     }
                                     else
@@ -3444,7 +3427,6 @@ namespace LunarTransferPlanner
                                         {
                                             bestError = errorRatio;
                                             bestWindow = candidateWindow;
-                                            bestTime = candidatePhaseTime;
                                         }
                                     }
                                 }
@@ -3452,6 +3434,10 @@ namespace LunarTransferPlanner
                             }
                             if (ranSearch)
                             {
+                                double bestLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetInclination, useAltBehavior, extraWindowNumber - 1) - currentUT;
+                                OrbitData bestOrbit = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, bestLaunchTime, extraWindowNumber - 1);
+                                double bestAngle = bestOrbit.phaseAngle;
+                                double bestTime = bestOrbit.phaseTime;
                                 GUILayout.Label(new GUIContent($"Found window {extraWindowNumber} with {(useAngle ? $"angle {FormatDecimals(bestAngle)}\u00B0" : $"time {FormatTime(bestTime)}")}!", $"Window {extraWindowNumber} is the closest window to your target phasing {(useAngle ? $"angle of {targetPhasingAngle}\u00B0" : $"time of {targetPhasingTime}s")} within the max of {maxWindows} windows"));
                             }
                             GUILayout.EndHorizontal();

@@ -450,10 +450,10 @@ namespace LunarTransferPlanner
         {
             if (isWindowOpen && isKSPGUIActive && !isLoading && !isBadUI)
             {
-                GUI.skin = !useAltSkin ? this.skin : null;
-                int id0 = this.GetHashCode();
-                int id1 = this.GetHashCode() + 1;
-                int id2 = this.GetHashCode() + 2;
+                GUI.skin = !useAltSkin ? skin : null;
+                int id0 = GetHashCode();
+                int id1 = GetHashCode() + 1;
+                int id2 = GetHashCode() + 2;
 
                 mainRect = ClickThruBlocker.GUILayoutWindow(id0, mainRect, MakeMainWindow, mainTitle);
                 ClampToScreen(ref mainRect);

@@ -452,8 +452,8 @@ namespace LunarTransferPlanner
             {
                 GUI.skin = !useAltSkin ? skin : null;
                 int id0 = GetHashCode();
-                int id1 = GetHashCode() + 1;
-                int id2 = GetHashCode() + 2;
+                int id1 = id0 + 1;
+                int id2 = id0 + 2;
 
                 mainRect = ClickThruBlocker.GUILayoutWindow(id0, mainRect, MakeMainWindow, mainTitle);
                 ClampToScreen(ref mainRect);

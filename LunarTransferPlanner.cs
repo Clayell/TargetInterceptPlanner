@@ -3603,6 +3603,8 @@ namespace LunarTransferPlanner
                         ClearAllCaches(); // this doesn't always result in new minimums, intentional (especially if switching from prograde to retrograde or vice versa, itll always be the same time)
                         // TODO, this is re-animating the phasing angle renderer, fix
                     }
+
+                    GUILayout.Space(10);
                 }
             }
             finally

@@ -2995,7 +2995,7 @@ namespace LunarTransferPlanner
                     if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
                     {
                         GUI.enabled = FlightGlobals.ActiveVessel.situation == Vessel.Situations.ORBITING;
-                        if (GUILayout.Button(new GUIContent("Make Node", $"Make Maneuver Node in parking orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING ? "\nMust be in orbit" : "")}")))
+                        if (GUILayout.Button(new GUIContent("Make Node", $"Make Maneuver Node in parking orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING ? "\nMust be in orbit" : "")}")) && !double.IsNaN(dV0) && !double.IsNaN(phaseTime0))
                         {
                             ManeuverNode node = FlightGlobals.ActiveVessel.patchedConicSolver.AddManeuverNode(currentUT + referenceTime + phaseTime0);
                             node.DeltaV = new Vector3d(0, 0, dV0);

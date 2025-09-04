@@ -1047,6 +1047,7 @@ namespace LunarTransferPlanner
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
             const double epsilon = 1e-9;
+            const double tolerance = 0.01; // needs to be higher than epsilon bc we use that for GSS
             const double buffer = 1d;
 
             if (Math.Abs(targetOrbit.period - mainBody.rotationPeriod) < epsilon)
@@ -1059,7 +1060,7 @@ namespace LunarTransferPlanner
             double alignmentMultiplier = targetOrbit.period / Math.Abs(targetOrbit.period - mainBody.rotationPeriod); // this is the number of rotations per alignment cycle, it approaches infinity as the orbital period and rotation period converge
             double maxTimeLimit = mainBody.rotationPeriod * (useAltBehavior ? altBehaviorTimeLimit : 1d) * alignmentMultiplier; // expand to 30 days (altBehaviorTimeLimit) to search for global min
 
-            //Log($"beginning, coarseStep: {coarseStep}, maxTimeLimit: {maxTimeLimit}, startTime: {startTime}");
+            //Log($"beginning, coarseStep: {coarseStep}, maxTimeLimit: {maxTimeLimit}, alignmentMultiplier: {alignmentMultiplier}, startTime: {startTime}");
 
             double AzimuthError(double candidateTime) // this doesnt actually spit out the azimuth error since we're using cos, but it does spit out the right error
             {
@@ -1127,9 +1128,9 @@ namespace LunarTransferPlanner
             {
                 double refinedTime = GoldenSectionSearch(t0, t1, epsilon, AzimuthError);
 
-                if (refinedTime > t0 + epsilon) // t0 and t1 are on opposite sides of a min (and t0 has a lower error)
+                if (refinedTime > t0 + tolerance) // t0 and t1 are on opposite sides of a min (and t0 has a lower error)
                 {
-                    //Log($"launchTime found at {refinedTime}");
+                   //Log($"launchTime found at {refinedTime}");
                     return refinedTime;
                 } // else, t0 (startTime) is the 'local' min, so this is an increasing slope
 

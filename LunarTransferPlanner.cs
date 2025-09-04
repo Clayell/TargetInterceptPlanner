@@ -306,7 +306,7 @@ namespace LunarTransferPlanner
 
         List<CelestialBody> moons;
         List<ProtoVessel> vessels; // FlightGlobals.Vessels doesnt work in the editor, so we need to use ProtoVessel which should always work
-        double lastLaunchTime = double.NaN;
+        double lastLaunchTime = 0d;
         readonly List<(string targetName, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(string, double, double, double, double)>();
         readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
@@ -365,7 +365,7 @@ namespace LunarTransferPlanner
         }
 
         // for some reason the button icons only load if they're in PluginData, but the other icons only load if they're NOT in PluginData /shrug
-
+        
         private void KSPShowGUI() => isKSPGUIActive = true;
 
         private void KSPHideGUI() => isKSPGUIActive = false;
@@ -1702,6 +1702,8 @@ namespace LunarTransferPlanner
                     absoluteLaunchTime = currentUT + newLaunchTime;
                     windowCache.Add((targetName, latitude, longitude, targetInclination, absoluteLaunchTime));
                 }
+
+                //Log($"PrincipiaInstalled: {PrincipiaInstalled}, newLaunchTime: {newLaunchTime}, lastLaunchTime: {lastLaunchTime}, currentUT: {currentUT}, dayScale: {dayScale}, 60d * dayScale: {60d * dayScale}");
 
                 if (double.IsNaN(newLaunchTime)) // this needs to be done after we set the cache, otherwise itll go into an endless loop of returning NaN
                 {

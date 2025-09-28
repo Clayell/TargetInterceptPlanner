@@ -238,7 +238,7 @@ namespace LunarTransferPlanner
         double altBehaviorTimeLimit = 30d; // Max time limit for the global minimum search, in sidereal days of mainBody
         bool altBehaviorNaN = false; // Return NaN when a global min can't be found, instead of returning the closest time
         int maxIterations = 1000; // Max iterations for GSS and other for loops
-        bool resetToMaxTime = true; // Reset flight time to max flight time when changing target, default is true
+        bool resetToMaxTime = true; // Reset flight time to max flight time when changing target, default is true // TODO: Do not trigger this when changing the map view focus to something different in-flight
         bool displaySeconds = false;
         bool useVesselPosition = true; // Use vessel position for latitude instead of launch site position, default is true as the KSC location isn't always the same as the actual launch site directly from the VAB
         bool requireSurfaceVessel = true; // Do not consider useVesselPosition if the vessel is not on the surface
@@ -1423,6 +1423,9 @@ namespace LunarTransferPlanner
         private (double phasingTime, double phasingAngle, double dV, double eccentricity, int errorStateDV) CalculatePhasingAndDeltaV
             (double flightTime, double startTime, double inclination, double LAN, double AoP) // the inclination needs to be the one from launchOrbit
         {
+            // TODO, this isn't perfectly accurate for rendezvous with celestial bodies, as their gravity can slightly change the trajectory and therefore the deltaV/phasing time needed (especially with Principia)
+            // (this is probably unfixable without serious re-factoring of this, the worst case I can think of would be pluto to charon)
+            
             //Stopwatch stopwatch = Stopwatch.StartNew();
 
             const double epsilon = 1e-9;
@@ -2794,11 +2797,22 @@ namespace LunarTransferPlanner
                                 if (!string.IsNullOrEmpty(alarmID))
                                 {
                                     // if the alarm was made, get the object
-                                    KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.First(a => a.ID == alarmID);
+                                    KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.FirstOrDefault(a => a.ID == alarmID);
 
-                                    alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
-                                    //alarm.AlarmMargin = warpMargin; // this doesnt seem to work, so we need to put warpMargin into the time
-                                    alarm.Notes = description;
+                                    if (alarm != null)
+                                    {
+                                        alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
+                                        //alarm.AlarmMargin = warpMargin; // this doesnt seem to work, so we need to put warpMargin into the time
+                                        alarm.Notes = description;
+                                    }
+                                    else
+                                    {
+                                        LogError($"KAC Alarm with ID: {alarmID} could not be found.");
+                                    }
+                                }
+                                else
+                                {
+                                    LogError("KAC Alarm could not be created.");
                                 }
                             }
                             else

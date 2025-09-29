@@ -85,7 +85,11 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\AssemblyVersion.cs" />
+    <Compile Include="Properties\AssemblyVersion.cs">
+      <AutoGen>True</AutoGen>
+      <DesignTime>True</DesignTime>
+      <DependentUpon>AssemblyVersion.tt</DependentUpon>
+    </Compile>
     <Compile Include="KACWrapper.cs" />
     <Compile Include="LunarTransferPlanner.cs" />
     <Compile Include="PrincipiaWrapper.cs" />
@@ -93,17 +97,24 @@
     <Compile Include="Tooltip.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Properties\AssemblyVersion.tt">
+      <Generator>TextTemplatingFileGenerator</Generator>
+      <LastGenOutput>AssemblyVersion.cs</LastGenOutput>
+    </None>
     <None Include="LICENSE.md" />
     <None Include="README.md" />
-	<None Include="GameData\LunarTransferPlanner\LunarTransferPlanner.version" />
-	<None Include="GameData\LunarTransferPlanner\Icons\gearGreen.png" />
-	<None Include="GameData\LunarTransferPlanner\Icons\gearWhite.png" />
-	<None Include="GameData\LunarTransferPlanner\Icons\resetGreen.png" />
-	<None Include="GameData\LunarTransferPlanner\Icons\resetWhite.png" />
-	<None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-24.png" />
-	<None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-64.png" />
-	<None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.dll" />
-	<None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.pdb" />
+    <None Include="GameData\LunarTransferPlanner\LunarTransferPlanner.version" />
+    <None Include="GameData\LunarTransferPlanner\Icons\gearGreen.png" />
+    <None Include="GameData\LunarTransferPlanner\Icons\gearWhite.png" />
+    <None Include="GameData\LunarTransferPlanner\Icons\resetGreen.png" />
+    <None Include="GameData\LunarTransferPlanner\Icons\resetWhite.png" />
+    <None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-24.png" />
+    <None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-64.png" />
+    <None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.dll" />
+    <None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.pdb" />
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
@@ -118,14 +129,21 @@
 		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "C:\Users\Clayel\KSP Instances\KSP 1\Kerbal Space Program (1.12.5 STOCKALIKE)\GameData\LunarTransferPlanner\Plugins\"
 	  </PostBuildEvent>
   </PropertyGroup>
-  <Target Name="CheckKSPStatus" BeforeTargets="CoreCompile">
-	<Message Importance="High" Text="Checking if KSP is running..." />
-	<Exec Command="tasklist /FI &quot;IMAGENAME eq KSP_x64.exe&quot;" ConsoleToMSBuild="true">
-	    <Output TaskParameter="ConsoleOutput" PropertyName="KSPProcessList"/>
-	</Exec>
-	<Error Condition="$(KSPProcessList.Contains('KSP_x64.exe'))" Text="Build failed: KSP_x64.exe is running. Please close KSP before building." />
+  <PropertyGroup>
+    <PreBuildEvent>
+    </PreBuildEvent>
+  </PropertyGroup>
+  <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+		<Exec Command="&quot;$(ProgramFiles)\Microsoft Visual Studio\2022\Community\Common7\IDE\TextTransform.exe&quot; &quot;$(ProjectDir)Properties\AssemblyVersion.tt&quot;" />
   </Target>
-	<!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+  <Target Name="CheckKSPStatus" BeforeTargets="CoreCompile">
+    <Message Importance="High" Text="Checking if KSP is running..." />
+    <Exec Command="tasklist /FI &quot;IMAGENAME eq KSP_x64.exe&quot;" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="KSPProcessList" />
+    </Exec>
+    <Error Condition="$(KSPProcessList.Contains('KSP_x64.exe'))" Text="Build failed: KSP_x64.exe is running. Please close KSP before building." />
+  </Target>
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.
   <Target Name="BeforeBuild">
   </Target>

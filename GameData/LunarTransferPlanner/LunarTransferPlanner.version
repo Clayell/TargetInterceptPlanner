@@ -1,10 +1,10 @@
 {
 	"NAME":"Lunar Transfer",
-	"URL":"https://raw.githubusercontent.com/KSP-RO/LunarTransferPlanner/master/GameData/LunarTransferPlanner/LunarTransferPlanner.version",
-	"DOWNLOAD":"https://github.com/KSP-RO/LunarTransferPlanner/releases",
+	"URL":"https://raw.githubusercontent.com/Clayell/LunarTransferPlanner/master/GameData/LunarTransferPlanner/LunarTransferPlanner.version",
+	"DOWNLOAD":"https://github.com/Clayell/LunarTransferPlanner/releases",
 	"VERSION":
 	{
-		"MAJOR":1,
+		"MAJOR":2,
 		"MINOR":0,
 		"PATCH":0,
 		"BUILD":0

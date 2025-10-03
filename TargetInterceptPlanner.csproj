@@ -36,9 +36,9 @@
   </PropertyGroup>
   <!-- Make sure KSPRoot is set as a system variable when building this, it should link to the root folder of your KSP install -->
   <ItemDefinitionGroup>
-	<Reference>
-		<Private>False</Private>
-	</Reference>
+    <Reference>
+      <Private>False</Private>
+    </Reference>
   </ItemDefinitionGroup>
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
@@ -85,11 +85,11 @@
       <DesignTime>True</DesignTime>
       <DependentUpon>AssemblyVersion.tt</DependentUpon>
     </Compile>
-    <Compile Include="KACWrapper.cs" />
-    <Compile Include="TargetInterceptPlanner.cs" />
-    <Compile Include="PrincipiaWrapper.cs" />
-    <Compile Include="Renderers.cs" />
-    <Compile Include="Tooltip.cs" />
+    <Compile Include="Source\KACWrapper.cs" />
+    <Compile Include="Source\TargetInterceptPlanner.cs" />
+    <Compile Include="Source\PrincipiaWrapper.cs" />
+    <Compile Include="Source\Renderers.cs" />
+    <Compile Include="Source\Tooltip.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="GameData\TargetInterceptPlanner\README.md" />

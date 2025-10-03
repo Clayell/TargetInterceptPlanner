@@ -32,7 +32,7 @@ Why use this over simply launching into the same LAN and Inclination as your tar
 
 Keep in mind that this mod assumes you can instantly get into the parking orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit. You may want to use mechjeb to launch into the requested inclination, to account for the initial velocity caused by the rotation of the planet.
 
-Note: As the orbital period of the target approaches the sidereal day length of the planet, the time to the next window approaches infinity. It is impossible to find a launch window for a target in a synchronous orbit. Sorry!
+Note: As the orbital period of the target approaches the sidereal day length of the planet, the time to the next window approaches infinity. It is impossible to find a launch window for a target in a synchronous orbit using this tool. Sorry!
 
 Forum Thread: N/A
 
@@ -54,8 +54,8 @@ Wiki: https://github.com/Clayell/LunarTransferPlanner/wiki
 * Any celestial body from any solar system (including satellites of moons, and technically even from the Surface of the Sun/Kerbol?)
 
 ## Authors
-* [RCrockford](https://github.com/RCrockford) (original author)
-* [Clayel](https://github.com/Clayell) (current maintainer)
+* [RCrockford](https://github.com/RCrockford) (author of original Lunar Transfer Planner)
+* [Clayel](https://github.com/Clayell) (current author)
 
 ## Special Thanks To
 * [Nazfib](https://github.com/Nazfib) ([Southern Latitude fix](https://github.com/KSP-RO/LunarTransferPlanner/pull/8) and Orbit/Angle Renderer from [TWP2](https://github.com/Nazfib/TransferWindowPlanner2))

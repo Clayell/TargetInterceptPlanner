@@ -35,10 +35,14 @@
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
   <!-- Make sure KSPRoot is set as a system variable when building this, it should link to the root folder of your KSP install -->
+  <ItemDefinitionGroup>
+	<Reference>
+		<Private>False</Private>
+	</Reference>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\Assembly-CSharp.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -49,39 +53,30 @@
     <Reference Include="System.Xml" />
     <Reference Include="UnityEngine">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.AnimationModule">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.IMGUIModule">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.InputLegacyModule">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.UI">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.UI.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="UnityEngine.TextRenderingModule">
       <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="ClickThroughBlocker">
       <HintPath>$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll</HintPath>
-      <Private>False</Private>
     </Reference>
     <Reference Include="ToolbarControl">
       <HintPath>$(KSPRoot)\GameData\001_ToolbarControl\Plugins\ToolbarControl.dll</HintPath>
-      <Private>False</Private>
     </Reference>
   </ItemGroup>
   <ItemGroup>

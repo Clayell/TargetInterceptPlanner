@@ -155,7 +155,7 @@ namespace TargetInterceptPlanner
         Rect mainRect = new Rect(100, 100, -1, -1);
         Rect settingsRect = new Rect(100, 100, -1, -1);
         Rect manualOrbitRect = new Rect(100, 100, -1, -1);
-        readonly string mainTitle = "PLACEHOLDER";
+        readonly string mainTitle = "TIP";
         readonly string settingsTitle = "Additional Settings";
         readonly string manualOrbitTitle = "Specify Manual Orbit";
         bool needMainReset = true;
@@ -1451,7 +1451,6 @@ namespace TargetInterceptPlanner
                 {
                     if (eccentricity > 1) { errorStateDV = 2; break; } // if its NaN while eccentricity is above 1, that means the flight time is way too low
                     eccentricity *= 1.25; // increase eccentricity until high enough
-                    //if (eccentricity >= maxEccentricity) { errorStateDV = 2; break; }
                     continue;
                 }
 
@@ -2134,6 +2133,23 @@ namespace TargetInterceptPlanner
             }
         }
 
+        private void ShowErrorStateDV(int errorStateDV)
+        {
+            if (errorStateDV != 0)
+            {
+                string tooltip = "";
+                switch (errorStateDV)
+                {
+                    case 1: tooltip = "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."; break;
+                    case 2: tooltip = $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * GetBodyScaledDV())}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."; break;
+                    case 3: tooltip = "The max iterations was reached and a valid dV cannot be given."; break;
+                    case 4: tooltip = "Eccentricity is exactly equal to 1, a valid maneuver cannot be calculated."; break;
+                    case 5: tooltip = "Phasing Angle is very close to 0 or 360, errors may be large!\nThis error should be incredibly rare and only happen with high eccentricity maneuvers. Open an issue if this isn't the case"; break;
+                }
+                GUILayout.Label(new GUIContent("<b>!!!</b>", tooltip));
+            }
+        }
+
         private void ShowSettings() => ShowSettings(ref showSettings); // this is for the normal settings menu
 
         private void ShowSettings(ref bool button, string tooltip = "Show Settings", bool pushDown = false)
@@ -2540,7 +2556,7 @@ namespace TargetInterceptPlanner
                             break;
                     }
 
-                    if (ResetDefault("Reset to Maximum Flight Time"))
+                    if (ResetDefault($"Reset to Maximum Flight Time of {referenceTimeLabel + (referenceTimeMode == 0 ? " Window" : "")}"))
                     {
                         flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetInclination, useAltBehavior);
                         SetFlightTimeDisplay();
@@ -2619,6 +2635,8 @@ namespace TargetInterceptPlanner
                     double dV0 = launchOrbit0.deltaV;
                     double transferEcc0 = launchOrbit0.eccentricity;
                     int errorStateDV0 = launchOrbit0.errorStateDV;
+                    int errorStateDV1 = launchOrbit1.errorStateDV;
+                    int errorStateDV2 = launchOrbit2.errorStateDV;
 
                     if (Util.MapViewEnabled())
                     {
@@ -2643,19 +2661,7 @@ namespace TargetInterceptPlanner
                     GUILayout.Space(5);
 
                     GUILayout.BeginHorizontal();
-                    if (errorStateDV0 != 0)
-                    {
-                        string tooltip = "";
-                        switch (errorStateDV0)
-                        {
-                            case 1: tooltip = "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."; break;
-                            case 2: tooltip = $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * GetBodyScaledDV())}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."; break;
-                            case 3: tooltip = "The max iterations was reached and a valid dV cannot be given."; break;
-                            case 4: tooltip = "Eccentricity is exactly equal to 1, a valid maneuver cannot be calculated."; break;
-                            case 5: tooltip = "Phasing Angle is very close to 0 or 360, errors may be large!\nThis error should be incredibly rare and only happen with high eccentricity maneuvers. Open an issue if this isn't the case"; break;
-                        }
-                        GUILayout.Label(new GUIContent("<b>!!!</b>", tooltip));
-                    }
+                    ShowErrorStateDV(errorStateDV0);
                     GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"));
                     GUILayout.EndHorizontal();
 
@@ -2700,6 +2706,7 @@ namespace TargetInterceptPlanner
 
                     GUILayout.Space(5);
                     GUILayout.BeginHorizontal();
+                    ShowErrorStateDV(errorStateDV1);
                     GUILayout.Label(new GUIContent("Next Window", windowTooltip));
                     ExpandCollapse(ref expandParking1, "Show Orbit Details");
                     GUILayout.EndHorizontal();
@@ -2721,6 +2728,7 @@ namespace TargetInterceptPlanner
                     {
                         GUILayout.Space(5);
                         GUILayout.BeginHorizontal();
+                        ShowErrorStateDV(errorStateDV2);
                         GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip));
                         ExpandCollapse(ref expandParking2, "Show Orbit Details");
                         GUILayout.EndHorizontal();
@@ -2921,6 +2929,14 @@ namespace TargetInterceptPlanner
                     }
                     ShowSettings();
                     GUILayout.EndHorizontal();
+
+                    if (debugMode)
+                    {
+                        if (GUILayout.Button("Log"))
+                        {
+                            Log($"");
+                        }
+                    }
 
                     if (targetPressed)
                     {
@@ -3183,6 +3199,12 @@ namespace TargetInterceptPlanner
             }
             GUILayout.EndVertical();
             GUILayout.EndHorizontal();
+
+            if (debugMode)
+            {
+                GUILayout.Space(10);
+                GUILayout.Label("Debug Mode ON");
+            }
 
             GUILayout.Space(10);
 

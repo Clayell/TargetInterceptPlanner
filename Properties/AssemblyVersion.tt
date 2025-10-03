@@ -33,7 +33,7 @@
 	//
 	// Update the following with the name of the .version file which is in the root directory
 	//
-	string versionfile = RootDirectory + @"GameData\LunarTransferPlanner\LunarTransferPlanner.version";
+	string versionfile = RootDirectory + @"GameData\TargetInterceptPlanner\TargetInterceptPlanner.version";
 
 
 	if (!File.Exists(versionfile))
@@ -99,6 +99,6 @@ using System.Reflection;
 
 [assembly: AssemblyVersion("<#= major #>.0.0.0")] // only the major version gets changed
 [assembly: AssemblyFileVersion("<#= major #>.<#= minor #>.<#= patch #>.<#= build #>")]
-[assembly: KSPAssembly("LunarTransferPlanner", <#= major #>, <#= minor #>, <#= patch #>)]
+[assembly: KSPAssembly("TargetInterceptPlanner", <#= major #>, <#= minor #>, <#= patch #>)]
 [assembly: KSPAssemblyDependency("ClickThroughBlocker", 1, 0)]
 [assembly: KSPAssemblyDependency("ToolbarController", 1, 0)]

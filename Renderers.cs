@@ -4,7 +4,7 @@
 using System;
 using UnityEngine;
 
-namespace LunarTransferPlanner
+namespace TargetInterceptPlanner
 {
     internal static class RenderUtils
     {
@@ -132,9 +132,9 @@ namespace LunarTransferPlanner
             Material orbitLines = ((MapView)FindObjectOfType(typeof(MapView))).orbitLinesMaterial;
 
             //init all the lines
-            _lineStart = RenderUtils.InitLine(_objLineStart, LunarTransferPlanner.startLineColor, 2, 10, orbitLines);
-            _lineEnd = RenderUtils.InitLine(_objLineEnd, LunarTransferPlanner.endLineColor, 2, 10, orbitLines);
-            _lineArc = RenderUtils.InitLine(_objLineArc, LunarTransferPlanner.arcLineColor, ArcPoints, 10, orbitLines);
+            _lineStart = RenderUtils.InitLine(_objLineStart, TargetInterceptPlanner.startLineColor, 2, 10, orbitLines);
+            _lineEnd = RenderUtils.InitLine(_objLineEnd, TargetInterceptPlanner.endLineColor, 2, 10, orbitLines);
+            _lineArc = RenderUtils.InitLine(_objLineArc, TargetInterceptPlanner.arcLineColor, ArcPoints, 10, orbitLines);
 
             _styleLabel = new GUIStyle
             {
@@ -183,8 +183,8 @@ namespace LunarTransferPlanner
         {
             BodyOrigin = orbit.referenceBody;
             parkingOrbit = orbit;
-            initialAoPRad = launchAoP * LunarTransferPlanner.degToRad;
-            newAoPRad = Util.ClampAngle(launchAoP + phasingAngle, false) * LunarTransferPlanner.degToRad;
+            initialAoPRad = launchAoP * TargetInterceptPlanner.degToRad;
+            newAoPRad = Util.ClampAngle(launchAoP + phasingAngle, false) * TargetInterceptPlanner.degToRad;
             AoPDiff = phasingAngle;
 
             UpdateVectors();
@@ -296,7 +296,7 @@ namespace LunarTransferPlanner
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 
-            if (arcPoint.z > 0 && cameraNear) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{LunarTransferPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
+            if (arcPoint.z > 0 && cameraNear) GUI.Label(new Rect(arcPoint.x - 25, Screen.height - arcPoint.y - 15, 50, 30), new GUIContent($"{TargetInterceptPlanner.FormatDecimals(AoPDiff)}\u00B0", $"Phasing Angle: {AoPDiff}\u00B0"), _styleLabel);
 
             Tooltip.Instance?.RecordTooltip(this.GetHashCode());
             Tooltip.Instance?.ShowTooltip(this.GetHashCode());

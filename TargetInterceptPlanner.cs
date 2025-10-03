@@ -10,21 +10,21 @@ using System.Linq;
 using ToolbarControl_NS;
 using UnityEngine;
 
-namespace LunarTransferPlanner
+namespace TargetInterceptPlanner
 {
     internal static class Util
     {
-        internal static void Log(string message, string prefix = "[LunarTransferPlanner]")
+        internal static void Log(string message, string prefix = "[TargetInterceptPlanner]")
         {
             UnityEngine.Debug.Log($"{prefix}: {message}"); // KSPLog.print does the same thing
         }
 
-        internal static void LogWarning(string message, string prefix = "[LunarTransferPlanner]")
+        internal static void LogWarning(string message, string prefix = "[TargetInterceptPlanner]")
         {
             UnityEngine.Debug.LogWarning($"{prefix}: {message}");
         }
 
-        internal static void LogError(string message, string prefix = "[LunarTransferPlanner]")
+        internal static void LogError(string message, string prefix = "[TargetInterceptPlanner]")
         { // could also do LogWarning
             UnityEngine.Debug.LogError($"{prefix}: {message}");
         }
@@ -132,12 +132,12 @@ namespace LunarTransferPlanner
     {
         void Start()
         {
-            ToolbarControl.RegisterMod("LTP", "Lunar Transfer Planner");
+            ToolbarControl.RegisterMod("TIP", "Target Intercept Planner");
         }
     }
 
     [KSPAddon(KSPAddon.Startup.AllGameScenes, false)]
-    public class LunarTransferPlanner : MonoBehaviour
+    public class TargetInterceptPlanner : MonoBehaviour
     {
         #region Fields
 
@@ -155,7 +155,7 @@ namespace LunarTransferPlanner
         Rect mainRect = new Rect(100, 100, -1, -1);
         Rect settingsRect = new Rect(100, 100, -1, -1);
         Rect manualOrbitRect = new Rect(100, 100, -1, -1);
-        readonly string mainTitle = "Lunar Transfer";
+        readonly string mainTitle = "PLACEHOLDER";
         readonly string settingsTitle = "Additional Settings";
         readonly string manualOrbitTitle = "Specify Manual Orbit";
         bool needMainReset = true;
@@ -312,7 +312,7 @@ namespace LunarTransferPlanner
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
-        readonly static string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/LunarTransferPlanner/PluginData/settings.cfg");
+        readonly static string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/TargetInterceptPlanner/PluginData/settings.cfg");
 
         ToolbarControl toolbarControl = null;
 
@@ -336,7 +336,7 @@ namespace LunarTransferPlanner
             Texture2D LoadImage(string url)
             {
                 Log($"Loaded {url} image");
-                return GameDatabase.Instance.GetTexture("LunarTransferPlanner/Icons/" + url, false);
+                return GameDatabase.Instance.GetTexture("TargetInterceptPlanner/Icons/" + url, false);
             }
 
             gearWhite = LoadImage("gearWhite");
@@ -396,11 +396,11 @@ namespace LunarTransferPlanner
                 toolbarControl = gameObject.AddComponent<ToolbarControl>();
                 toolbarControl.AddToAllToolbars(ToggleWindow, ToggleWindow,
                     ApplicationLauncher.AppScenes.ALWAYS & ~ApplicationLauncher.AppScenes.MAINMENU, // all but main menu
-                    "LTP",
-                    "LTP_Button",
-                    "LunarTransferPlanner/PluginData/ToolbarIcons/button-64",
-                    "LunarTransferPlanner/PluginData/ToolbarIcons/button-24",
-                    "Lunar Transfer Planner"
+                    "TIP",
+                    "TIP_Button",
+                    "TargetInterceptPlanner/PluginData/ToolbarIcons/button-64",
+                    "TargetInterceptPlanner/PluginData/ToolbarIcons/button-24",
+                    "Target Intercept Planner"
                 );
             }
         }
@@ -971,7 +971,7 @@ namespace LunarTransferPlanner
             else
             {
                 LogError("Invalid orbit passed to GetTargetInclination.");
-                throw new ArgumentException("[LunarTransferPlanner] Invalid orbit passed to GetTargetInclination.");
+                return double.NaN;
             }
         }
 
@@ -3168,7 +3168,7 @@ namespace LunarTransferPlanner
             GUILayout.Space(5);
             if (GUILayout.Button(new GUIContent("Wiki", "Open Github Wiki link in a new tab"), GUILayout.Width(45)))
             {
-                Application.OpenURL("https://github.com/Clayell/LunarTransferPlanner/wiki"); // TODO change this link
+                Application.OpenURL("https://github.com/Clayell/TargetInterceptPlanner/wiki");
             }
             GUILayout.EndVertical();
             GUILayout.BeginVertical();

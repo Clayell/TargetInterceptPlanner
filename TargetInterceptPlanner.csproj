@@ -8,8 +8,8 @@
     <ProjectGuid>{8AC7EE97-954B-4430-8259-6C7BE00E6915}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>LunarTransferPlanner</RootNamespace>
-    <AssemblyName>LunarTransferPlanner</AssemblyName>
+    <RootNamespace>TargetInterceptPlanner</RootNamespace>
+    <AssemblyName>TargetInterceptPlanner</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
@@ -91,7 +91,7 @@
       <DependentUpon>AssemblyVersion.tt</DependentUpon>
     </Compile>
     <Compile Include="KACWrapper.cs" />
-    <Compile Include="LunarTransferPlanner.cs" />
+    <Compile Include="TargetInterceptPlanner.cs" />
     <Compile Include="PrincipiaWrapper.cs" />
     <Compile Include="Renderers.cs" />
     <Compile Include="Tooltip.cs" />
@@ -103,15 +103,15 @@
     </None>
     <None Include="LICENSE.md" />
     <None Include="README.md" />
-    <None Include="GameData\LunarTransferPlanner\LunarTransferPlanner.version" />
-    <None Include="GameData\LunarTransferPlanner\Icons\gearGreen.png" />
-    <None Include="GameData\LunarTransferPlanner\Icons\gearWhite.png" />
-    <None Include="GameData\LunarTransferPlanner\Icons\resetGreen.png" />
-    <None Include="GameData\LunarTransferPlanner\Icons\resetWhite.png" />
-    <None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-24.png" />
-    <None Include="GameData\LunarTransferPlanner\PluginData\ToolbarIcons\button-64.png" />
-    <None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.dll" />
-    <None Include="GameData\LunarTransferPlanner\Plugins\LunarTransferPlanner.pdb" />
+    <None Include="GameData\TargetInterceptPlanner\TargetInterceptPlanner.version" />
+    <None Include="GameData\TargetInterceptPlanner\Icons\gearGreen.png" />
+    <None Include="GameData\TargetInterceptPlanner\Icons\gearWhite.png" />
+    <None Include="GameData\TargetInterceptPlanner\Icons\resetGreen.png" />
+    <None Include="GameData\TargetInterceptPlanner\Icons\resetWhite.png" />
+    <None Include="GameData\TargetInterceptPlanner\PluginData\ToolbarIcons\button-24.png" />
+    <None Include="GameData\TargetInterceptPlanner\PluginData\ToolbarIcons\button-64.png" />
+    <None Include="GameData\TargetInterceptPlanner\Plugins\TargetInterceptPlanner.dll" />
+    <None Include="GameData\TargetInterceptPlanner\Plugins\TargetInterceptPlanner.pdb" />
   </ItemGroup>
   <ItemGroup>
     <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
@@ -119,14 +119,14 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
     <PostBuildEvent>
-		  xcopy /y /i "$(TargetPath)" "$(SolutionDir)\GameData\LunarTransferPlanner\Plugins\"
-		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "$(SolutionDir)\GameData\LunarTransferPlanner\Plugins\"
+		  xcopy /y /i "$(TargetPath)" "$(SolutionDir)\GameData\TargetInterceptPlanner\Plugins\"
+		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "$(SolutionDir)\GameData\TargetInterceptPlanner\Plugins\"
 
-		  xcopy /y /i "$(TargetPath)" "$(KSPRoot)\GameData\LunarTransferPlanner\Plugins\"
-		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "$(KSPRoot)\GameData\LunarTransferPlanner\Plugins\"
+		  xcopy /y /i "$(TargetPath)" "$(KSPRoot)\GameData\TargetInterceptPlanner\Plugins\"
+		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "$(KSPRoot)\GameData\TargetInterceptPlanner\Plugins\"
 
-		  xcopy /y /i "$(TargetPath)" "C:\Users\Clayel\KSP Instances\KSP 1\Kerbal Space Program (1.12.5 STOCKALIKE)\GameData\LunarTransferPlanner\Plugins\"
-		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "C:\Users\Clayel\KSP Instances\KSP 1\Kerbal Space Program (1.12.5 STOCKALIKE)\GameData\LunarTransferPlanner\Plugins\"
+		  xcopy /y /i "$(TargetPath)" "C:\Users\Clayel\KSP Instances\KSP 1\Kerbal Space Program (1.12.5 STOCKALIKE)\GameData\TargetInterceptPlanner\Plugins\"
+		  xcopy /y /i "$(TargetDir)$(TargetName).pdb" "C:\Users\Clayel\KSP Instances\KSP 1\Kerbal Space Program (1.12.5 STOCKALIKE)\GameData\TargetInterceptPlanner\Plugins\"
 	  </PostBuildEvent>
   </PropertyGroup>
   <PropertyGroup>
@@ -134,7 +134,7 @@
     </PreBuildEvent>
   </PropertyGroup>
   <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
-		<Exec Command="&quot;$(ProgramFiles)\Microsoft Visual Studio\2022\Community\Common7\IDE\TextTransform.exe&quot; &quot;$(ProjectDir)Properties\AssemblyVersion.tt&quot;" />
+    <Exec Command="&quot;$(ProgramFiles)\Microsoft Visual Studio\2022\Community\Common7\IDE\TextTransform.exe&quot; &quot;$(ProjectDir)Properties\AssemblyVersion.tt&quot;" />
   </Target>
   <Target Name="CheckKSPStatus" BeforeTargets="CoreCompile">
     <Message Importance="High" Text="Checking if KSP is running..." />

@@ -1,6 +1,6 @@
 (while this is still a WIP, use [this guide](https://github.com/KSP-RO/RP-1/wiki/How-To-Install-a-Mod-From-Github#grabbing-a-branchs-source-code-the-less-common-way-to-install) to learn how to install this, and DM @clayel on discord for any issues you encounter)
 
-# Lunar Transfer Planner
+# Target Intercept Planner (TIP)
 
 ### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) from the surface of the celestial body (planet, moon, gas giant, star, black hole, etc.) on which you are currently on.
 
@@ -36,9 +36,9 @@ Note: As the orbital period of the target approaches the sidereal day length of 
 
 Forum Thread: N/A
 
-Source Code: https://github.com/Clayell/LunarTransferPlanner
+Source Code: https://github.com/Clayell/TargetInterceptPlanner
 
-Wiki: https://github.com/Clayell/LunarTransferPlanner/wiki
+Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 
 ## Mod Relationships (using [CKAN](https://github.com/KSP-CKAN/CKAN) is highly recommended)
 
@@ -55,7 +55,7 @@ Wiki: https://github.com/Clayell/LunarTransferPlanner/wiki
 
 ## Authors
 * [RCrockford](https://github.com/RCrockford) (author of original Lunar Transfer Planner)
-* [Clayel](https://github.com/Clayell) (current author)
+* [Clayel](https://github.com/Clayell) (current author of Target Intercept Planner)
 
 ## Special Thanks To
 * [Nazfib](https://github.com/Nazfib) ([Southern Latitude fix](https://github.com/KSP-RO/LunarTransferPlanner/pull/8) and Orbit/Angle Renderer from [TWP2](https://github.com/Nazfib/TransferWindowPlanner2))
@@ -64,4 +64,4 @@ Wiki: https://github.com/Clayell/LunarTransferPlanner/wiki
 * [TriggerAu](https://github.com/TriggerAu) ([KAC Wrapper](https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock/API/KACWrapper.cs))
 
 ## License
-The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/LunarTransferPlanner/blob/2.0.0/LICENSE.md))
+The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/TargetInterceptPlanner/blob/2.0.0/LICENSE.md))

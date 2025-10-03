@@ -1,7 +1,7 @@
 using System;
 using System.Reflection;
 
-namespace LunarTransferPlanner
+namespace TargetInterceptPlanner
 {
     public static class PrincipiaWrapper
     {
@@ -53,9 +53,9 @@ namespace LunarTransferPlanner
             return true;
         }
 
-        private static void Log(string message) => Util.Log(message, "[LTP-PrincipiaWrapper]");
+        private static void Log(string message) => Util.Log(message, "[TIP-PrincipiaWrapper]");
 
-        private static void LogWarning(string message) => Util.LogWarning(message, "[LTP-PrincipiaWrapper]");
+        private static void LogWarning(string message) => Util.LogWarning(message, "[TIP-PrincipiaWrapper]");
 
         public static class Reflection
         {

@@ -1,3 +1,6 @@
+// Inspired by the documentation in https://github.com/mockingbirdnest/Principia/wiki/Interface-for-other-KSP-mods
+
+
 using System;
 using System.Collections.Generic;
 using System.Reflection;

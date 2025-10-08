@@ -383,7 +383,7 @@ namespace TargetInterceptPlanner
             KACWrapper.InitKACWrapper();
             KACInstalled = KACWrapper.APIReady;
 
-            PrincipiaWrapper.InitPrincipiaWrapper();
+            PrincipiaWrapper.Init();
             PrincipiaInstalled = PrincipiaWrapper.APIReady;
 
             Tooltip.RecreateInstance(); // Need to make sure that a new Tooltip instance is created after every scene change
@@ -962,7 +962,7 @@ namespace TargetInterceptPlanner
         {
             if (orbit != null && PrincipiaInstalled)
             {
-                return PrincipiaWrapper.Reflection.GetMemberValue<double>(orbit, "inclination");
+                return PrincipiaWrapper.Reflection.GetFieldOrPropertyValue<double>(orbit, "inclination");
             }
             else if (orbit != null && orbit is Orbit stockOrbit)
             {

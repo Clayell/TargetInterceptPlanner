@@ -121,8 +121,8 @@
 		xcopy /y /i "$(TargetPath)" "$(KSPRoot)\GameData\TargetInterceptPlanner\Plugins\"
 		xcopy /y /i "$(TargetDir)$(TargetName).pdb" "$(KSPRoot)\GameData\TargetInterceptPlanner\Plugins\"
 
-		xcopy /y /i "$(TargetPath)" "C:\Users\Clayel\KSP Instances\Kerbal Space Program 1\KSP (1.12.5 STOCKALIKE)GameData\TargetInterceptPlanner\Plugins\"
-		xcopy /y /i "$(TargetDir)$(TargetName).pdb" "C:\Users\Clayel\KSP Instances\Kerbal Space Program 1\KSP (1.12.5 STOCKALIKE)GameData\TargetInterceptPlanner\Plugins\"
+		xcopy /y /i "$(TargetPath)" "C:\Users\Clayel\KSP Instances\Kerbal Space Program 1\KSP (1.12.5 STOCKALIKE)\GameData\TargetInterceptPlanner\Plugins\"
+		xcopy /y /i "$(TargetDir)$(TargetName).pdb" "C:\Users\Clayel\KSP Instances\Kerbal Space Program 1\KSP (1.12.5 STOCKALIKE)\GameData\TargetInterceptPlanner\Plugins\"
 	</PostBuildEvent>
   </PropertyGroup>
   <PropertyGroup>

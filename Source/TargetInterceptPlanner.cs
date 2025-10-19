@@ -382,8 +382,7 @@ namespace TargetInterceptPlanner
             KACWrapper.InitKACWrapper();
             KACInstalled = KACWrapper.APIReady;
 
-            PrincipiaWrapper.Init();
-            PrincipiaInstalled = PrincipiaWrapper.APIReady;
+            PrincipiaInstalled = PrincipiaWrapper.Init();
 
             Tooltip.RecreateInstance(); // Need to make sure that a new Tooltip instance is created after every scene change
         }

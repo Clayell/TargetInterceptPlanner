@@ -1,60 +1,32 @@
-// Inspired by the documentation in https://github.com/mockingbirdnest/Principia/wiki/Interface-for-other-KSP-mods
-
-
 using System;
-using System.Collections.Generic;
-using System.Reflection;
 
 namespace TargetInterceptPlanner
 {
     public static class PrincipiaWrapper
     {
-        private static Type _principiaType;
-
-        public static object Principia { get; private set; }
-
-        public static bool APIReady => Principia != null;
-
         public static bool Init()
         {
-            _principiaType = null;
-            Principia = null;
+            Log("Attempting to find Principia....");
 
-            Log("Attempting to grab Principia types...");
-
-            // Search for Principia's type
-            AssemblyLoader.loadedAssemblies.TypeOperation(type =>
+            foreach (AssemblyLoader.LoadedAssembly assembly in AssemblyLoader.loadedAssemblies)
             {
-                if (type.FullName == "principia.ksp_plugin_adapter.ExternalInterface")
-                    _principiaType = type;
-            });
-
-            if (_principiaType == null)
-            {
-                Log("Principia type not found.");
-                return false;
+                try
+                {
+                    if (assembly.assembly.GetName().Name == "principia.ksp_plugin_adapter")
+                    {
+                        Log($"Principia found.");
+                        return true;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Error loading Principia: {ex}");
+                }
             }
 
-            Log($"Found Principia version: {_principiaType.Assembly.GetName().Version}");
+            Log($"Principia not found.");
 
-            try
-            {
-                Principia = _principiaType.GetMethod("Get", BindingFlags.Public | BindingFlags.Static)?.Invoke(null, null);
-            }
-            catch (Exception ex)
-            {
-                Log($"Error accessing Principia API: {ex.Message}");
-                return false;
-            }
-
-            if (Principia == null)
-            {
-                Log("Failed to retrieve Principia instance.");
-                return false;
-            }
-
-            Log("Successfully initialized Principia wrapper.");
-            return true;
+            return false;
         }
 
         private static void Log(string message) => Util.Log(message, "[TIP-PrincipiaWrapper]");

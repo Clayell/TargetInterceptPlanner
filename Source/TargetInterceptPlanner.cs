@@ -216,7 +216,6 @@ namespace TargetInterceptPlanner
         string manualModeLabel;
         string manualModeTooltip;
 
-        double targetInclination;
         double currentUT;
         double dayScale; // The ratio of the mainBody's sidereal rotation period to Earth's sidereal rotation period
         double solarDayLength;
@@ -956,23 +955,6 @@ namespace TargetInterceptPlanner
             }
 
             return mainBody.GetWorldSurfacePosition(Latitude, Longitude, 0d);
-        }
-
-        private double GetTargetInclination(object orbit)
-        {
-            if (orbit != null && PrincipiaInstalled)
-            {
-                return PrincipiaWrapper.Reflection.GetFieldOrPropertyValue<double>(orbit, "inclination");
-            }
-            else if (orbit != null && orbit is Orbit stockOrbit)
-            {
-                return stockOrbit.inclination;
-            }
-            else
-            {
-                LogError("Invalid orbit passed to GetTargetInclination.");
-                return double.NaN;
-            }
         }
 
         private readonly struct OrbitData
@@ -2421,14 +2403,13 @@ namespace TargetInterceptPlanner
                     }
 
                     const double epsilon = 1e-9;
-                    targetInclination = GetTargetInclination(targetOrbit); // this works regardless of manual or non-manual target
-                    isLowLatitude = Math.Abs(latitude) <= targetInclination;
+                    isLowLatitude = Math.Abs(latitude) <= targetOrbit.inclination;
                     dayScale = mainBody.rotationPeriod / EarthSiderealDay;
                     CelestialBody homeBody = FlightGlobals.GetHomeBody();
                     solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
                     //targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
 
-                    CheckWindowCache(latitude, longitude, targetInclination);
+                    CheckWindowCache(latitude, longitude, targetOrbit.inclination);
 
                     if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
                     else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
@@ -2502,7 +2483,7 @@ namespace TargetInterceptPlanner
 
                     if (double.IsNaN(flightTime) || (resetToMaxTime && !targetManual && StateChanged("targetMainWindow", targetName))) // initialize on first load or when target changes (we do targetManual elsewhere)
                     {
-                        flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetInclination, useAltBehavior);
+                        flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
                         SetFlightTimeDisplay();
                     }
                     else if (!double.IsNaN(flightTime) && double.IsNaN(flightTime_Adj)) SetFlightTimeDisplay(); // this is true on every scene change
@@ -2558,7 +2539,7 @@ namespace TargetInterceptPlanner
 
                     if (ResetDefault($"Reset to Maximum Flight Time of {referenceTimeLabel + (referenceTimeMode == 0 ? " Window" : "")}"))
                     {
-                        flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetInclination, useAltBehavior);
+                        flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
                         SetFlightTimeDisplay();
                     }
 
@@ -2585,9 +2566,9 @@ namespace TargetInterceptPlanner
 
                     // make sure to call GetCachedLaunchTime after resetting flightTime and clearing caches
 
-                    double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetInclination, useAltBehavior, 0);
+                    double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, 0);
                     double nextLaunchETA = nextLaunchUT - currentUT;
-                    double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetInclination, useAltBehavior, extraWindowNumber - 1);
+                    double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, extraWindowNumber - 1);
                     double extraLaunchETA = extraLaunchUT - currentUT;
 
                     switch (referenceTimeMode) // need to set referenceTime before we use it
@@ -3174,7 +3155,7 @@ namespace TargetInterceptPlanner
                     GUILayout.EndHorizontal();
                 }
             }
-
+            
             GUILayout.Space(5);
             GUILayout.BeginHorizontal();
             GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - (50 + 45))); // this sets the width of the window
@@ -3319,7 +3300,7 @@ namespace TargetInterceptPlanner
                     DrawLine();
 
                     BeginCombined();
-                    GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than {targetName} inclination ({FormatDecimals(targetInclination)}\u00B0)"));
+                    GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than {targetName} inclination ({FormatDecimals(targetOrbit.inclination)}\u00B0)"));
                     MiddleCombined();
                     GUI.enabled = isLowLatitude;
                     useAltBehavior = GUILayout.Toggle(useAltBehavior, "");
@@ -3475,7 +3456,7 @@ namespace TargetInterceptPlanner
                                 double bestError = double.MaxValue;
                                 for (int candidateWindow = 0; candidateWindow <= maxWindows - 1; candidateWindow++)
                                 {
-                                    double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetInclination, useAltBehavior, candidateWindow) - currentUT;
+                                    double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, candidateWindow) - currentUT;
                                     OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, candidateLaunchTime, candidateWindow);
                                     double launchAz = launchOrbit.azimuth;
                                     double launchInc = launchOrbit.inclination;
@@ -3513,7 +3494,7 @@ namespace TargetInterceptPlanner
                             }
                             if (ranSearch)
                             {
-                                double bestLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetInclination, useAltBehavior, extraWindowNumber - 1) - currentUT;
+                                double bestLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, extraWindowNumber - 1) - currentUT;
                                 OrbitData bestOrbit = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, bestLaunchTime, extraWindowNumber - 1);
                                 double bestAngle = bestOrbit.phaseAngle;
                                 double bestTime = bestOrbit.phaseTime;

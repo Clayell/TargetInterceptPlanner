@@ -1,8 +1,8 @@
 // Adapted from RP-1's Tooltip (https://github.com/KSP-RO/RP-1/blob/master/Source/RP0/UI/Tooltip.cs), credit to @siimav
 // to use this:
 // put Tooltip.RecreateInstance(); in Start()
-// put this Tooltip.Instance?.RecordTooltip(id); in the window method
-// put this Tooltip.Instance?.ShowTooltip(id); in OnGUI()
+// put Tooltip.Instance?.RecordTooltip(id); in the window method
+// put Tooltip.Instance?.ShowTooltip(id); in OnGUI()
 //
 // now add "new GUIContent" to the label/box/button/toggle/whatever
 // example: GUILayout.Label(new GUIContent("label", "tooltip"));

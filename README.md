@@ -50,7 +50,7 @@ Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 * Kerbal Alarm Clock (the "Add Alarm" button uses KAC by default if installed)
 
 #### Compatible with:
-* Principia (specifically, the changing inclination of the target's orbit due to Principia)
+* Principia (although not perfectly accurate due to n-body stuff)
 * Any celestial body from any solar system (including satellites of moons, and technically even from the Surface of the Sun/Kerbol?)
 
 ## Authors

@@ -327,8 +327,8 @@ namespace TargetInterceptPlanner
             skin.button.margin = new RectOffset(1, 1, 1, 1);
             skin.box.padding = new RectOffset(2, 2, 2, 2);
             skin.box.margin = new RectOffset(1, 1, 1, 1);
-            skin.textField.margin = new RectOffset(3, 1, 1, 1);
-            skin.textField.padding = new RectOffset(4, 2, 1, 0);
+            skin.textField.margin = new RectOffset(3, 1, 1, 1); // TODO, make left and right uniform
+            skin.textField.padding = new RectOffset(4, 2, 1, 0); // TODO, make left and right uniform
 
             // white: (255, 255, 255) | green: (183, 255, 0) | 16x16
 

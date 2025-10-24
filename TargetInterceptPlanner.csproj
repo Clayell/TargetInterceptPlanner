@@ -51,33 +51,15 @@
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
-    <Reference Include="UnityEngine">
-      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.AnimationModule">
-      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.AnimationModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.IMGUIModule">
-      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.InputLegacyModule">
-      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.InputLegacyModule.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.UI">
-      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.UI.dll</HintPath>
-    </Reference>
-    <Reference Include="UnityEngine.TextRenderingModule">
-      <HintPath>$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath>
-    </Reference>
-    <Reference Include="ClickThroughBlocker">
-      <HintPath>$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll</HintPath>
-    </Reference>
-    <Reference Include="ToolbarControl">
-      <HintPath>$(KSPRoot)\GameData\001_ToolbarControl\Plugins\ToolbarControl.dll</HintPath>
-    </Reference>
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.dll" />
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.AnimationModule.dll" />
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.CoreModule.dll" />
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.IMGUIModule.dll" />
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.InputLegacyModule.dll" />
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.UI.dll" />
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll" />
+    <Reference Include="$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll" />
+    <Reference Include="$(KSPRoot)\GameData\001_ToolbarControl\Plugins\ToolbarControl.dll" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyVersion.cs">

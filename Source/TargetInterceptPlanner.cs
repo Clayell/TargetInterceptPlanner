@@ -3457,10 +3457,6 @@ namespace TargetInterceptPlanner
                                 {
                                     double candidateLaunchTime = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, candidateWindow) - currentUT;
                                     OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, candidateLaunchTime, candidateWindow);
-                                    double launchAz = launchOrbit.azimuth;
-                                    double launchInc = launchOrbit.inclination;
-                                    double launchLAN = launchOrbit.LAN;
-                                    double launchAoP = launchOrbit.AoP;
 
                                     if (double.IsNaN(candidateLaunchTime))
                                     {

@@ -8,7 +8,9 @@ using System.Globalization; // stick to CultureInfo.InvariantCulture
 using System.IO;
 using System.Linq;
 using ToolbarControl_NS;
+using Unity.Profiling;
 using UnityEngine;
+using UnityEngine.Profiling;
 
 namespace TargetInterceptPlanner
 {
@@ -311,9 +313,12 @@ namespace TargetInterceptPlanner
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
-        readonly static string SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/TargetInterceptPlanner/PluginData/settings.cfg");
+
+        static string SettingsPath;
 
         ToolbarControl toolbarControl = null;
+
+        static readonly ProfilerMarker TIPProfiler = new ProfilerMarker("TIPProfiler");
 
         #endregion
         #region GUI Setup
@@ -342,6 +347,8 @@ namespace TargetInterceptPlanner
             gearGreen = LoadImage("gearGreen");
             resetWhite = LoadImage("resetWhite");
             resetGreen = LoadImage("resetGreen");
+
+            SettingsPath = Path.Combine(KSPUtil.ApplicationRootPath, "GameData/TargetInterceptPlanner/PluginData/settings.cfg");
 
             LoadSettings();
 
@@ -2208,911 +2215,914 @@ namespace TargetInterceptPlanner
 
         private void MakeMainWindow(int id)
         {
-            windowWidth = 160;
-            windowState = WindowState.Main;
-
-            try
+            using (TIPProfiler.Auto())
             {
-                currentUT = Planetarium.GetUniversalTime();
+                windowWidth = 160;
+                windowState = WindowState.Main;
 
-                if (FlightGlobals.currentMainBody != null) // this makes it impossible to switch your mainBody in flight map view without physically changing your SOI. TODO?
-                    mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
-                else if (Util.MapViewEnabled() && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
-                    mainBody = MapView.MapCamera.target.celestialBody; // tracking station, technically works for flight map view too but we already checked that
-                else if (FlightGlobals.GetHomeBody() != null)
-                    mainBody = FlightGlobals.GetHomeBody(); // vab/sph, this always gives the home body (could also do Planetarium.fetch.Home)
-                else LogError("CRITICAL ERROR: No main body found!");
-
-                // TODO, implement setting that allows people to switch mainBody in the flight map view instead of being locked to their currentMainBody
-
-                if (StateChanged("mainBody1", mainBody))
+                try
                 {
-                    target = null;
-                    ClearAllCaches();
-                    moons = mainBody?.orbitingBodies?.Where(body => body.orbit.eccentricity < 1d).OrderBy(body => body.bodyName).ToList();
-                    vessels = HighLogic.CurrentGame.flightState.protoVessels?.Where(protoVessel =>
-                    protoVessel != null && mainBody != null && protoVessel.vesselID != FlightGlobals.ActiveVessel?.id && protoVessel.situation == Vessel.Situations.ORBITING && protoVessel.orbitSnapShot?.ReferenceBodyIndex == mainBody.flightGlobalsIndex && protoVessel.orbitSnapShot?.eccentricity < 1d)
-                    .OrderBy(protoVessel => protoVessel.vesselName).ToList();
-                }
+                    currentUT = Planetarium.GetUniversalTime();
 
-                // TODO, instead of ordering alphabetically, order by lowest periapsis? make this a setting
+                    if (FlightGlobals.currentMainBody != null) // this makes it impossible to switch your mainBody in flight map view without physically changing your SOI. TODO?
+                        mainBody = FlightGlobals.currentMainBody; // spacecenter/flight/mapview
+                    else if (Util.MapViewEnabled() && MapView.MapCamera?.target?.celestialBody != null) // if we dont check that its in map view, then the vab/sph body will get overwritten
+                        mainBody = MapView.MapCamera.target.celestialBody; // tracking station, technically works for flight map view too but we already checked that
+                    else if (FlightGlobals.GetHomeBody() != null)
+                        mainBody = FlightGlobals.GetHomeBody(); // vab/sph, this always gives the home body (could also do Planetarium.fetch.Home)
+                    else LogError("CRITICAL ERROR: No main body found!");
 
-                if (StateChanged("mainBody2", mainBody, false)) // do not detect on first access, because we dont want to blank the targetName immediately
-                {
-                    targetName = "";
-                }
+                    // TODO, implement setting that allows people to switch mainBody in the flight map view instead of being locked to their currentMainBody
 
-                moonsInvalid = moons == null || moons.Count == 0;
-                vesselsInvalid = vessels == null || vessels.Count == 0;
-
-                if (mainBody == null)
-                {
-                    GUILayout.Label("CRITICAL ERROR: No main body found!", GUILayout.Width(windowWidth)); // this is really bad
-                    if (StateChanged("errorStateTargets", ref errorStateTargets, 4))
+                    if (StateChanged("mainBody1", mainBody))
                     {
-                        ResetWindow();
-                        //ResetWindow(ref settingsRect);
-
+                        target = null;
                         ClearAllCaches();
-                    }
-                    ShowSettings();
-                }
-                else if (!targetManual && moonsInvalid && vesselsInvalid)
-                {
-                    GUILayout.Label("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                    if (StateChanged("errorStateTargets", ref errorStateTargets, 1))
-                    {
-                        ResetWindow();
-                        //ResetWindow(ref settingsRect);
-
-                        ClearAllCaches();
-                    }
-                    ShowSettings();
-                }
-                else if (!targetManual && targetVessel && vesselsInvalid)
-                {
-                    GUILayout.Label("ERROR: There are no vessels orbiting this planet!", GUILayout.Width(windowWidth));
-                    if (StateChanged("errorStateTargets", ref errorStateTargets, 2))
-                    {
-                        ResetWindow();
-                        //ResetWindow(ref settingsRect);
-                    }
-                    ShowSettings();
-                    GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
-                    // do not switch automatically, this would change the user's settings silently, and they may not want to switch
-                }
-                else if (!targetManual && !targetVessel && moonsInvalid)
-                {
-                    GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.Width(windowWidth));
-                    if (StateChanged("errorStateTargets", ref errorStateTargets, 3))
-                    {
-                        ResetWindow();
-                        //ResetWindow(ref settingsRect);
-
-                        ClearAllCaches();
-                    }
-                    ShowSettings();
-                    GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
-                    // do not switch automatically, this would change the user's settings silently, and they may not want to switch
-                }
-                else
-                {
-                    if (StateChanged("errorStateTargets", ref errorStateTargets, 0))
-                    {
-                        ResetWindow();
-                        //ResetWindow(ref settingsRect);
-
-                        ClearAllCaches();
+                        moons = mainBody?.orbitingBodies?.Where(body => body.orbit.eccentricity < 1d).OrderBy(body => body.bodyName).ToList();
+                        vessels = HighLogic.CurrentGame.flightState.protoVessels?.Where(protoVessel =>
+                        protoVessel != null && mainBody != null && protoVessel.vesselID != FlightGlobals.ActiveVessel?.id && protoVessel.situation == Vessel.Situations.ORBITING && protoVessel.orbitSnapShot?.ReferenceBodyIndex == mainBody.flightGlobalsIndex && protoVessel.orbitSnapShot?.eccentricity < 1d)
+                        .OrderBy(protoVessel => protoVessel.vesselName).ToList();
                     }
 
-                    int count = -1;
+                    // TODO, instead of ordering alphabetically, order by lowest periapsis? make this a setting
 
-                    if (!targetManual)
+                    if (StateChanged("mainBody2", mainBody, false)) // do not detect on first access, because we dont want to blank the targetName immediately
                     {
-                        _ = StateChanged("targetManual", false); // this should have been done already, but just in case
+                        targetName = "";
+                    }
 
-                        ProtoVessel matchingVessel = null;
-                        CelestialBody matchingMoon = null;
+                    moonsInvalid = moons == null || moons.Count == 0;
+                    vesselsInvalid = vessels == null || vessels.Count == 0;
 
-                        if (targetName != "") // this is for loading the target from settings
+                    if (mainBody == null)
+                    {
+                        GUILayout.Label("CRITICAL ERROR: No main body found!", GUILayout.Width(windowWidth)); // this is really bad
+                        if (StateChanged("errorStateTargets", ref errorStateTargets, 4))
                         {
-                            matchingVessel = vessels?.FirstOrDefault(p => p.vesselName == targetName);
-                            matchingMoon = moons?.FirstOrDefault(b => b.bodyName == targetName);
+                            ResetWindow();
+                            //ResetWindow(ref settingsRect);
+
+                            ClearAllCaches();
+                        }
+                        ShowSettings();
+                    }
+                    else if (!targetManual && moonsInvalid && vesselsInvalid)
+                    {
+                        GUILayout.Label("ERROR: There are no moons or vessels orbiting this planet!", GUILayout.Width(windowWidth));
+                        if (StateChanged("errorStateTargets", ref errorStateTargets, 1))
+                        {
+                            ResetWindow();
+                            //ResetWindow(ref settingsRect);
+
+                            ClearAllCaches();
+                        }
+                        ShowSettings();
+                    }
+                    else if (!targetManual && targetVessel && vesselsInvalid)
+                    {
+                        GUILayout.Label("ERROR: There are no vessels orbiting this planet!", GUILayout.Width(windowWidth));
+                        if (StateChanged("errorStateTargets", ref errorStateTargets, 2))
+                        {
+                            ResetWindow();
+                            //ResetWindow(ref settingsRect);
+                        }
+                        ShowSettings();
+                        GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
+                        // do not switch automatically, this would change the user's settings silently, and they may not want to switch
+                    }
+                    else if (!targetManual && !targetVessel && moonsInvalid)
+                    {
+                        GUILayout.Box("ERROR: There are no moons orbiting this planet!", GUILayout.Width(windowWidth));
+                        if (StateChanged("errorStateTargets", ref errorStateTargets, 3))
+                        {
+                            ResetWindow();
+                            //ResetWindow(ref settingsRect);
+
+                            ClearAllCaches();
+                        }
+                        ShowSettings();
+                        GUILayout.Label("If you want to get out of this error, open settings and toggle the \"<i>Target an orbiting Vessel instead of an orbiting Moon</i>\" button.");
+                        // do not switch automatically, this would change the user's settings silently, and they may not want to switch
+                    }
+                    else
+                    {
+                        if (StateChanged("errorStateTargets", ref errorStateTargets, 0))
+                        {
+                            ResetWindow();
+                            //ResetWindow(ref settingsRect);
+
+                            ClearAllCaches();
                         }
 
-                        if (targetVessel)
+                        int count = -1;
+
+                        if (!targetManual)
                         {
-                            if (target == null || StateChanged("targetVessel", targetVessel))
+                            _ = StateChanged("targetManual", false); // this should have been done already, but just in case
+
+                            ProtoVessel matchingVessel = null;
+                            CelestialBody matchingMoon = null;
+
+                            if (targetName != "") // this is for loading the target from settings
                             {
-                                if (matchingVessel != null) target = matchingVessel as ProtoVessel;
-                                else target = vessels?[0] as ProtoVessel;
+                                matchingVessel = vessels?.FirstOrDefault(p => p.vesselName == targetName);
+                                matchingMoon = moons?.FirstOrDefault(b => b.bodyName == targetName);
                             }
-                            count = vessels.Count;
-                        }
-                        else
-                        {
-                            if (target == null || StateChanged("targetVessel", targetVessel))
-                            {
-                                if (matchingMoon != null) target = matchingMoon as CelestialBody;
-                                else target = moons[0] as CelestialBody;
-                            }
-                            count = moons.Count;
-                        }
 
-                        if (target is ProtoVessel vessel)
-                        {
-                            targetName = vessel.vesselName;
-                            if (currentBody == -1)
-                                currentBody = vessels.FindIndex(p => p.vesselName == targetName);
-
-                            if (vessel.orbitSnapShot != null)
+                            if (targetVessel)
                             {
-                                targetOrbit = vessel.orbitSnapShot.Load();
+                                if (target == null || StateChanged("targetVessel", targetVessel))
+                                {
+                                    if (matchingVessel != null) target = matchingVessel as ProtoVessel;
+                                    else target = vessels?[0] as ProtoVessel;
+                                }
+                                count = vessels.Count;
                             }
                             else
                             {
-                                targetOrbit = null; // this is risky, i hope it doesnt happen
-                                LogError("ProtoVessel has no orbit snapshot");
+                                if (target == null || StateChanged("targetVessel", targetVessel))
+                                {
+                                    if (matchingMoon != null) target = matchingMoon as CelestialBody;
+                                    else target = moons[0] as CelestialBody;
+                                }
+                                count = moons.Count;
+                            }
+
+                            if (target is ProtoVessel vessel)
+                            {
+                                targetName = vessel.vesselName;
+                                if (currentBody == -1)
+                                    currentBody = vessels.FindIndex(p => p.vesselName == targetName);
+
+                                if (vessel.orbitSnapShot != null)
+                                {
+                                    targetOrbit = vessel.orbitSnapShot.Load();
+                                }
+                                else
+                                {
+                                    targetOrbit = null; // this is risky, i hope it doesnt happen
+                                    LogError("ProtoVessel has no orbit snapshot");
+                                }
+                            }
+                            else if (target is CelestialBody body)
+                            {
+                                targetOrbit = body?.orbit;
+                                targetName = body?.bodyName;
+                                if (currentBody == -1) currentBody = moons.FindIndex(b => b.bodyName == targetName);
+                            }
+                            else LogError("Unknown target type: " + target.GetType().Name);
+                        }
+                        else
+                        {
+                            if (double.IsNaN(manualEccentricity)) manualEccentricity = 0d;
+                            if (double.IsNaN(manualSMA)) manualSMA = mainBody.Radius + mainBody.atmosphereDepth;
+                            if (double.IsNaN(manualInclination)) manualInclination = 0d;
+                            if (double.IsNaN(manualLAN)) manualLAN = 0d;
+                            if (double.IsNaN(manualAoP)) manualAoP = 0d;
+                            if (double.IsNaN(manualMNA)) manualMNA = 0d;
+
+                            double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
+                            if (double.IsNaN(manualApR)) manualApR = manualSMA * (1d + manualEccentricity);
+                            if (double.IsNaN(ApA_Adj)) ApA_Adj = (manualApR - radiusAdjusted) / 1000d;
+                            if (double.IsNaN(manualPeR)) manualPeR = manualSMA * (1d - manualEccentricity);
+                            if (double.IsNaN(PeA_Adj)) PeA_Adj = (manualPeR - radiusAdjusted) / 1000d;
+                            if (double.IsNaN(manualPeriod)) manualPeriod = tau * Math.Sqrt(Math.Pow(manualSMA, 3) / mainBody.gravParameter);
+                            if (double.IsNaN(period_Adj)) period_Adj = manualPeriod;
+
+                            if (StateChanged("targetManual", true)) // || StateChanged("mainBodyManualTarget", mainBody) // dont think this is needed
+                            { // Init and SetOrbit murder FPS, so they should only be called when absolutely necessary (like 200 FPS drop if done every frame)
+                                targetOrbit = new Orbit
+                                {
+                                    eccentricity = manualEccentricity,
+                                    semiMajorAxis = manualSMA,
+                                    inclination = manualInclination,
+                                    LAN = manualLAN,
+                                    argumentOfPeriapsis = manualAoP,
+                                    meanAnomalyAtEpoch = manualMNA,
+                                    epoch = currentUT,
+                                    referenceBody = mainBody,
+                                };
+                                targetOrbit.Init();
+
+                                Log("Manual Orbit Initialized");
+                            } // we handle changes of manual targetOrbit in the orbit selector screen
+
+                            targetName = "[Manual Target]";
+                        }
+
+                        const double epsilon = 1e-9;
+                        isLowLatitude = Math.Abs(latitude) <= targetOrbit.inclination;
+                        dayScale = mainBody.rotationPeriod / EarthSiderealDay;
+                        CelestialBody homeBody = FlightGlobals.GetHomeBody();
+                        solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
+                        //targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
+
+                        CheckWindowCache(latitude, longitude, targetOrbit.inclination);
+
+                        if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
+                        else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
+
+                        if (!targetManual)
+                        {
+                            GUILayout.Space(5);
+
+                            if (count > 1) // only display target selector screen if theres multiple targets
+                            {
+                                if (currentBody == -1) currentBody = 0; // currentBody should already be set, but just in case
+                                if (currentBody > count - 1) currentBody = count - 1; // this can happen when switching mainBody or when a vessel is destroyed
+
+                                GUILayout.BeginHorizontal();
+                                GUILayout.Box(new GUIContent(TextOverspill(targetName, 80, GUI.skin.box), targetName), GUILayout.MinWidth(80));
+
+                                if (GUILayout.Button("<", GUILayout.MinWidth(20)))
+                                {
+                                    currentBody--;
+                                    if (currentBody < 0) currentBody = count - 1;
+                                }
+
+                                if (GUILayout.Button(">", GUILayout.MinWidth(20)))
+                                {
+                                    currentBody++;
+                                    if (currentBody > count - 1) currentBody = 0;
+                                }
+                                GUILayout.EndHorizontal();
+                                if (targetVessel) target = vessels[currentBody];
+                                else target = moons[currentBody]; // cant do ternary for this
+                                GUILayout.Space(5);
+                            }
+
+                            if (StateChanged("displayTargetSelector", count > 1))
+                            {
+                                ResetWindow();
                             }
                         }
-                        else if (target is CelestialBody body)
+                        else
                         {
-                            targetOrbit = body?.orbit;
-                            targetName = body?.bodyName;
-                            if (currentBody == -1) currentBody = moons.FindIndex(b => b.bodyName == targetName);
-                        }
-                        else LogError("Unknown target type: " + target.GetType().Name);
-                    }
-                    else
-                    {
-                        if (double.IsNaN(manualEccentricity)) manualEccentricity = 0d;
-                        if (double.IsNaN(manualSMA)) manualSMA = mainBody.Radius + mainBody.atmosphereDepth;
-                        if (double.IsNaN(manualInclination)) manualInclination = 0d;
-                        if (double.IsNaN(manualLAN)) manualLAN = 0d;
-                        if (double.IsNaN(manualAoP)) manualAoP = 0d;
-                        if (double.IsNaN(manualMNA)) manualMNA = 0d;
-
-                        double radiusAdjusted = useCenterDistance ? 0d : mainBody.Radius;
-                        if (double.IsNaN(manualApR)) manualApR = manualSMA * (1d + manualEccentricity);
-                        if (double.IsNaN(ApA_Adj)) ApA_Adj = (manualApR - radiusAdjusted) / 1000d;
-                        if (double.IsNaN(manualPeR)) manualPeR = manualSMA * (1d - manualEccentricity);
-                        if (double.IsNaN(PeA_Adj)) PeA_Adj = (manualPeR - radiusAdjusted) / 1000d;
-                        if (double.IsNaN(manualPeriod)) manualPeriod = tau * Math.Sqrt(Math.Pow(manualSMA, 3) / mainBody.gravParameter);
-                        if (double.IsNaN(period_Adj)) period_Adj = manualPeriod;
-
-                        if (StateChanged("targetManual", true)) // || StateChanged("mainBodyManualTarget", mainBody) // dont think this is needed
-                        { // Init and SetOrbit murder FPS, so they should only be called when absolutely necessary (like 200 FPS drop if done every frame)
-                            targetOrbit = new Orbit
-                            {
-                                eccentricity = manualEccentricity,
-                                semiMajorAxis = manualSMA,
-                                inclination = manualInclination,
-                                LAN = manualLAN,
-                                argumentOfPeriapsis = manualAoP,
-                                meanAnomalyAtEpoch = manualMNA,
-                                epoch = currentUT,
-                                referenceBody = mainBody,
-                            };
-                            targetOrbit.Init();
-
-                            Log("Manual Orbit Initialized");
-                        } // we handle changes of manual targetOrbit in the orbit selector screen
-
-                        targetName = "[Manual Target]";
-                    }
-
-                    const double epsilon = 1e-9;
-                    isLowLatitude = Math.Abs(latitude) <= targetOrbit.inclination;
-                    dayScale = mainBody.rotationPeriod / EarthSiderealDay;
-                    CelestialBody homeBody = FlightGlobals.GetHomeBody();
-                    solarDayLength = useHomeSolarDay ? homeBody.solarDayLength : mainBody.solarDayLength;
-                    //targetAltitude = targetOrbit != null ? targetOrbit.GetRadiusAtUT(currentUT) : double.NaN;
-
-                    CheckWindowCache(latitude, longitude, targetOrbit.inclination);
-
-                    if (requireSurfaceVessel) inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null && (FlightGlobals.ActiveVessel.Landed || FlightGlobals.ActiveVessel.Splashed);
-                    else inVessel = HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null; // this needs to be set here, as settings window isnt always open
-
-                    if (!targetManual)
-                    {
-                        GUILayout.Space(5);
-
-                        if (count > 1) // only display target selector screen if theres multiple targets
-                        {
-                            if (currentBody == -1) currentBody = 0; // currentBody should already be set, but just in case
-                            if (currentBody > count - 1) currentBody = count - 1; // this can happen when switching mainBody or when a vessel is destroyed
-
                             GUILayout.BeginHorizontal();
-                            GUILayout.Box(new GUIContent(TextOverspill(targetName, 80, GUI.skin.box), targetName), GUILayout.MinWidth(80));
-
-                            if (GUILayout.Button("<", GUILayout.MinWidth(20)))
-                            {
-                                currentBody--;
-                                if (currentBody < 0) currentBody = count - 1;
-                            }
-
-                            if (GUILayout.Button(">", GUILayout.MinWidth(20)))
-                            {
-                                currentBody++;
-                                if (currentBody > count - 1) currentBody = 0;
-                            }
+                            GUILayout.Label(new GUIContent("<b>Manual Target</b>", $"Manual Target Mode is on, open the orbit specifier to specify the orbit{(PrincipiaInstalled ? "\nThe manual orbit specifier does not take into account perturbations from Principia" : "")}"));
+                            GUILayout.FlexibleSpace();
+                            ShowSettings(ref showManualOrbit, manualOrbitTitle, true);
                             GUILayout.EndHorizontal();
-                            if (targetVessel) target = vessels[currentBody];
-                            else target = moons[currentBody]; // cant do ternary for this
+
                             GUILayout.Space(5);
                         }
 
-                        if (StateChanged("displayTargetSelector", count > 1))
-                        {
-                            ResetWindow();
-                        }
-                    }
-                    else
-                    {
                         GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("<b>Manual Target</b>", $"Manual Target Mode is on, open the orbit specifier to specify the orbit{(PrincipiaInstalled ? "\nThe manual orbit specifier does not take into account perturbations from Principia" : "")}"));
-                        GUILayout.FlexibleSpace();
-                        ShowSettings(ref showManualOrbit, manualOrbitTitle, true);
+                        if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>!!!</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
+                        GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : (useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as"))} launch location"));
+                        ExpandCollapse(ref expandLatLong, "Set manual latitude and longitude");
                         GUILayout.EndHorizontal();
 
-                        GUILayout.Space(5);
-                    }
-
-                    GUILayout.BeginHorizontal();
-                    if (mainBody != homeBody && (!useVesselPosition || !inVessel) && !expandLatLong) GUILayout.Label(new GUIContent("<b>!!!</b>", $"Using latitude/longitude of the Space Center on a body that is not {homeBody.bodyName}!"));
-                    GUILayout.Label(new GUIContent($"Latitude: <b>{FormatDecimals(latitude)}\u00B0</b>", $"{latitude}\u00B0\nCurrently using {(expandLatLong ? "manual" : (useVesselPosition && inVessel ? "Active Vessel as" : "Space Center as"))} launch location"));
-                    ExpandCollapse(ref expandLatLong, "Set manual latitude and longitude");
-                    GUILayout.EndHorizontal();
-
-                    if (expandLatLong)
-                    {
-                        GUILayout.Space(6); // weird spacing
-                        MakeNumberEditField("latitude", ref latitude, 1d, -90d, 90d, true);
-                        GUILayout.Space(5);
-                        GUILayout.Label(new GUIContent($"Longitude: <b>{FormatDecimals(longitude)}\u00B0</b>", $"{longitude}\u00B0"));
-                        MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d, true);
-                        //GUILayout.Space(5);
-                        //GUILayout.Label(new GUIContent($"Altitude: <b>{FormatDecimals(altitude)}</b>", "Altitude of launch location (in meters)"));
-                        //MakeNumberEditField("altitude", ref altitude, 100d, -mainBody.Radius + 5d, targetOrbit.PeA - 5d); // this is a laughably large range, but its the only way to make sure it can cover altitudes below and above sea level
-                        launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0d);
-                    }
-                    else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
-
-                    //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
-
-                    if (double.IsNaN(flightTime) || (resetToMaxTime && !targetManual && StateChanged("targetMainWindow", targetName))) // initialize on first load or when target changes (we do targetManual elsewhere)
-                    {
-                        flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
-                        SetFlightTimeDisplay();
-                    }
-                    else if (!double.IsNaN(flightTime) && double.IsNaN(flightTime_Adj)) SetFlightTimeDisplay(); // this is true on every scene change
-
-                    GUILayout.Space(5);
-                    
-                    GUILayout.BeginHorizontal();
-                    GUILayout.Label(new GUIContent("Flight Time", $"Time after launch until intercept with the target\nClick the button to the right to change the unit"));
-                    GUILayout.BeginVertical();
-                    GUILayout.Space(5);
-                    if (GUILayout.Button(new GUIContent($"{flightTimeLabel}", flightTimeTooltip), GUILayout.Width(20))) flightTimeMode = (flightTimeMode + 1) % 4;
-                    GUILayout.EndVertical();
-
-                    switch (flightTimeMode) // TODO, round solarDayLength to prevent excessive decimals?
-                    {
-                        case 0:
-                            flightTimeLabel = "d";
-                            flightTimeTooltip = $"Currently using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days\nClick to change flight time unit to hours";
-                            if (StateChanged("flightTimeMode", flightTimeMode, false))
-                            {
-                                flightTime_Adj /= solarDayLength;
-                            }
-                            flightTime = flightTime_Adj * solarDayLength;
-                            break;
-                        case 1:
-                            flightTimeLabel = "h";
-                            flightTimeTooltip = "Currently using hours\nClick to change flight time unit to minutes";
-                            if (StateChanged("flightTimeMode", flightTimeMode, false))
-                            {
-                                flightTime_Adj *= solarDayLength / (60d * 60d);
-                            }
-                            flightTime = flightTime_Adj * 60d * 60d;
-                            break;
-                        case 2:
-                            flightTimeLabel = " m";
-                            flightTimeTooltip = "Currently using minutes\nClick to change flight time unit to seconds";
-                            if (StateChanged("flightTimeMode", flightTimeMode, false))
-                            {
-                                flightTime_Adj *= 60d;
-                            }
-                            flightTime = flightTime_Adj * 60d;
-                            break;
-                        case 3:
-                            flightTimeLabel = "s";
-                            flightTimeTooltip = $"Currently using seconds\nClick to change flight time unit to {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days";
-                            if (StateChanged("flightTimeMode", flightTimeMode, false))
-                            {
-                                flightTime_Adj *= 60d;
-                            }
-                            flightTime = flightTime_Adj;
-                            break;
-                    }
-
-                    if (ResetDefault($"Reset to Maximum Flight Time of {referenceTimeLabel + (referenceTimeMode == 0 ? " Window" : "")}"))
-                    {
-                        flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
-                        SetFlightTimeDisplay();
-                    }
-
-                    ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
-
-                    GUILayout.EndHorizontal();
-
-                    MakeNumberEditField("flightTime", ref flightTime_Adj, 0.1d, epsilon, double.MaxValue);
-                    if (StateChanged("flightTime", flightTime)) ClearAllCaches();
-
-                    GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s (Total Flight Time)"), GUILayout.MinWidth(100));
-
-                    if (expandAltitude)
-                    {
-                        GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"));
-                        MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : epsilon, Math.Max(targetOrbit.PeA / 1000d, mainBody.atmosphereDepth / 1000d)); // PeA updates every frame so we don't need to ask Principia
-                        if (StateChanged("parkingAltitude", parkingAltitude)) // clear all but window cache
+                        if (expandLatLong)
                         {
-                            launchOrbitCache.Clear();
-                            ClearAllOrbitDisplays();
-                            ClearAngleRenderer();
+                            GUILayout.Space(6); // weird spacing
+                            MakeNumberEditField("latitude", ref latitude, 1d, -90d, 90d, true);
+                            GUILayout.Space(5);
+                            GUILayout.Label(new GUIContent($"Longitude: <b>{FormatDecimals(longitude)}\u00B0</b>", $"{longitude}\u00B0"));
+                            MakeNumberEditField("longitude", ref longitude, 1d, -180d, 180d, true);
+                            //GUILayout.Space(5);
+                            //GUILayout.Label(new GUIContent($"Altitude: <b>{FormatDecimals(altitude)}</b>", "Altitude of launch location (in meters)"));
+                            //MakeNumberEditField("altitude", ref altitude, 100d, -mainBody.Radius + 5d, targetOrbit.PeA - 5d); // this is a laughably large range, but its the only way to make sure it can cover altitudes below and above sea level
+                            launchPos = mainBody.GetWorldSurfacePosition(latitude, longitude, 0d);
                         }
-                    }
+                        else launchPos = GetLaunchPos(mainBody, ref latitude, ref longitude, useVesselPosition);
 
-                    // make sure to call GetCachedLaunchTime after resetting flightTime and clearing caches
+                        //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
-                    double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, 0);
-                    double nextLaunchETA = nextLaunchUT - currentUT;
-                    double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, extraWindowNumber - 1);
-                    double extraLaunchETA = extraLaunchUT - currentUT;
-
-                    switch (referenceTimeMode) // need to set referenceTime before we use it
-                    {
-                        case 0:
-                            referenceTimeLabel = "Launch Now";
-                            referenceTimeTooltip = "Change reference time to Next Launch Window";
-                            referenceTime = 0d;
-                            referenceWindowNumber = null;
-                            break;
-                        case 1:
-                            referenceTimeLabel = "Next Window";
-                            referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
-                            referenceTime = nextLaunchETA;
-                            referenceWindowNumber = 0;
-                            break;
-                        case 2:
-                            referenceTimeLabel = $"Window {extraWindowNumber}";
-                            referenceTimeTooltip = "Change reference time to the Launch Now Window";
-                            referenceTime = extraLaunchETA;
-                            referenceWindowNumber = extraWindowNumber - 1;
-                            break;
-                    }
-
-                    OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, referenceTime, referenceWindowNumber);
-                    OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, nextLaunchETA, 0);
-                    OrbitData launchOrbit2 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, extraLaunchETA, extraWindowNumber - 1);
-
-                    const double tolerance = 1e-6; // avoid floating point misses, this is needed because launchOrbit.azimuth isnt exact like targetLaunchAzimuth
-
-                    double launchAz0 = Util.RoundCheck(launchOrbit0.azimuth, tolerance);
-                    double launchInc0 = launchOrbit0.inclination;
-                    double displayInc0 = ConvertInc(launchOrbit0);
-                    double launchAz1 = Util.RoundCheck(launchOrbit1.azimuth, tolerance);
-                    double launchInc1 = launchOrbit1.inclination;
-                    //double displayInc1 = ConvertInc(launchOrbit1); // unused
-                    double launchAz2 = Util.RoundCheck(launchOrbit2.azimuth, tolerance);
-                    double launchInc2 = launchOrbit2.inclination;
-                    //double displayInc2 = ConvertInc(launchOrbit2); // unused
-
-                    double launchLAN0 = launchOrbit0.LAN;
-                    double launchAoP0 = launchOrbit0.AoP;
-                    double phaseTime0 = launchOrbit0.phaseTime;
-                    double phaseAngle0 = launchOrbit0.phaseAngle;
-                    double dV0 = launchOrbit0.deltaV;
-                    double transferEcc0 = launchOrbit0.eccentricity;
-                    int errorStateDV0 = launchOrbit0.errorStateDV;
-                    int errorStateDV1 = launchOrbit1.errorStateDV;
-                    int errorStateDV2 = launchOrbit2.errorStateDV;
-
-                    if (Util.MapViewEnabled())
-                    {
-                        if (StateChanged("referenceTimeMode", referenceTimeMode))
+                        if (double.IsNaN(flightTime) || (resetToMaxTime && !targetManual && StateChanged("targetMainWindow", targetName))) // initialize on first load or when target changes (we do targetManual elsewhere)
                         {
-                            ClearAllOrbitDisplays();
-                            ClearAngleRenderer();
+                            flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
+                            SetFlightTimeDisplay();
                         }
-                        else if (ValueChanged("launchLAN0", launchLAN0, 1e-1)) // 1e-1 resets it about every minute or so when using Launch Now
-                        { // resetting the angle renderer every frame (if using launchNow) is ridiculously laggy, but this is probably unfixable? TODO
-                            ClearAllOrbitDisplays();
-                            ClearAngleRenderer();
-                        }
-                        else if (ValueChanged("transferEcc0", transferEcc0, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer); // 1e-5 resets it about every minute or so when using Launch Now
-                    }
+                        else if (!double.IsNaN(flightTime) && double.IsNaN(flightTime_Adj)) SetFlightTimeDisplay(); // this is true on every scene change
 
-                    bool inSpecialWarp = warpState == 2 || warpState == 3;
-                    bool specialWarpActive = warpState == 1 || inSpecialWarp;
-                    if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarpSelected && !inSpecialWarp) warpState = 1;
-                    else if (!inSpecialWarp && !specialWarpWait) warpState = 0;
-
-                    GUILayout.Space(5);
-
-                    GUILayout.BeginHorizontal();
-                    ShowErrorStateDV(errorStateDV0);
-                    GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"));
-                    GUILayout.EndHorizontal();
-
-                    GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent($"{FormatDecimals(dV0)} m/s", $"Eccentricity of {(!double.IsNaN(transferEcc0) ? (transferEcc0 > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(transferEcc0)}"), GUILayout.MinWidth(100));
-
-                    GUILayout.Space(5);
-
-                    GUILayout.BeginHorizontal();
-
-                    GUILayout.BeginVertical();
-                    GUILayout.Space(5);
-                    if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(105))) referenceTimeMode = (referenceTimeMode + 1) % (expandExtraWindow ? 3 : 2);
-                    GUILayout.EndVertical();
-
-                    GUILayout.BeginVertical();
-                    GUILayout.Space(5);
-                    if (GUILayout.Button(new GUIContent(showAzimuth ? "Az." : "In.", showAzimuth ? "Launch to this azimuth to get into the target parking orbit\nClick to change to inclination" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)\nClick to change to azimuth"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
-                    GUILayout.EndVertical();
-
-                    ExpandCollapse(ref expandParking0, "Show Orbit Details");
-                    GUILayout.EndHorizontal();
-
-                    GUILayout.Space(5);
-                    if (showAzimuth)
-                    {
-                        GUILayout.Box(new GUIContent($"{FormatDecimals(launchAz0)}\u00B0", $"Azimuth\n{FormatDecimals(launchAz0 * degToRad)} rads, this is {(launchAz0 <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
-                    }
-                    else
-                    {
-                        GUILayout.Box(new GUIContent($"{FormatDecimals(displayInc0)}\u00B0", $"Inclination\n{FormatDecimals(displayInc0 * degToRad)} rads, this is {(launchAz0 <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
-                    }
-
-                    if (expandParking0)
-                    {
-                        ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0, flightTime);
-                    }
-
-                    string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(launchAz1 - 90d) < epsilon ?
-                        "Launch Easterly at this time to get into the required parking orbit" :
-                        $"Launch at this time at this {(showAzimuth ? "azimuth" : "inclination")} to get into the required parking orbit";
-
-                    GUILayout.Space(5);
-                    GUILayout.BeginHorizontal();
-                    ShowErrorStateDV(errorStateDV1);
-                    GUILayout.Label(new GUIContent("Next Window", windowTooltip));
-                    ExpandCollapse(ref expandParking1, "Show Orbit Details");
-                    GUILayout.EndHorizontal();
-
-                    GUILayout.Space(5);
-                    GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {FormatDecimals(nextLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
-
-                    // we need this outside for alarm description
-                    double launchLAN1 = launchOrbit1.LAN;
-                    double launchAoP1 = launchOrbit1.AoP;
-                    double phaseTime1 = launchOrbit1.phaseTime;
-                    double phaseAngle1 = launchOrbit1.phaseAngle;
-                    if (expandParking1)
-                    {
-                        ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1, flightTime);
-                    }
-
-                    if (expandExtraWindow)
-                    {
                         GUILayout.Space(5);
+
                         GUILayout.BeginHorizontal();
-                        ShowErrorStateDV(errorStateDV2);
-                        GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip));
-                        ExpandCollapse(ref expandParking2, "Show Orbit Details");
-                        GUILayout.EndHorizontal();
-
+                        GUILayout.Label(new GUIContent("Flight Time", $"Time after launch until intercept with the target\nClick the button to the right to change the unit"));
+                        GUILayout.BeginVertical();
                         GUILayout.Space(5);
-                        GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {FormatDecimals(extraLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
+                        if (GUILayout.Button(new GUIContent($"{flightTimeLabel}", flightTimeTooltip), GUILayout.Width(20))) flightTimeMode = (flightTimeMode + 1) % 4;
+                        GUILayout.EndVertical();
 
-                        if (expandParking2)
+                        switch (flightTimeMode) // TODO, round solarDayLength to prevent excessive decimals?
                         {
-                            double launchLAN2 = launchOrbit2.LAN;
-                            double launchAoP2 = launchOrbit2.AoP;
-                            double phaseTime2 = launchOrbit2.phaseTime;
-                            double phaseAngle2 = launchOrbit2.phaseAngle;
-                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2, flightTime);
-                        }
-                    }
-
-                    GUILayout.Space(5);
-                    GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.Width(windowWidth)); // this sets the width of the window
-                    MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
-
-                    GUILayout.Space(10);
-                    GUILayout.BeginHorizontal();
-                    bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", $"Add Alarm for {(useAltAlarm && expandExtraWindow ? $"Window {extraWindowNumber}" : "Next Window")} to {(KACInstalled && useKAC ? "Kerbal Alarm Clock" : "stock Alarm Clock")}"), GUILayout.MinWidth(80));
-
-                    if (addAlarm)
-                    {
-                        string title = ""; // might need to check for overspill in title?
-                        string description = "";
-                        double time = double.NaN;
-
-                        void DescribeD(string identifier, string unit, double value) => description += !double.IsNaN(value) ? $"{identifier}: {FormatDecimals(value)}{unit}\n" : "";
-                        void DescribeI(string identifier, string unit, int value) => description += $"{identifier}: {value}{unit}\n";
-                        void DescribeB(string identifier, bool value) => description += $"{identifier}: {value}\n";
-
-                        if (!double.IsNaN(nextLaunchUT) && (!useAltAlarm || (useAltAlarm && expandExtraWindow && extraWindowNumber == 1)))
-                        {
-                            title = $"Next {targetName} Launch Window";
-                            time = nextLaunchUT - warpMargin;
-                            DescribeI("Window Number", "", 1);
-                        }
-                        else if (useAltAlarm && expandExtraWindow && !double.IsNaN(extraLaunchUT))
-                        {
-                            title = $"{targetName} Launch Window {extraWindowNumber}";
-                            time = extraLaunchUT - warpMargin;
-                            DescribeI("Window Number", "", extraWindowNumber);
-                        }
-
-                        DescribeD("Window UT", "s", time + warpMargin);
-                        DescribeD("Warp Margin", "s", warpMargin);
-                        DescribeD("Latitude", "\u00B0", latitude);
-                        DescribeD("Longitude", "\u00B0", longitude);
-                        DescribeD("Flight Time", "s", flightTime);
-                        if (flightTime_Adj != flightTime) DescribeD("Flight Time Formatted", flightTimeLabel, flightTime_Adj);
-                        DescribeD("Required delta-V", "m/s", dV0);
-                        DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
-                        DescribeD("Launch Inclination", "\u00B0", launchInc1); // this is the true inclination, not the display
-                        DescribeD("Launch Azimuth", "\u00B0", launchAz1);
-                        DescribeD("Phasing Time", "s", phaseTime1);
-                        DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
-                        DescribeD("Parking Orbit LAN", "\u00B0", launchLAN1);
-                        DescribeD("Parking Orbit AoP", "\u00B0", launchAoP1);
-                        DescribeB("Special Warp Active", specialWarpActive);
-
-                        description = description.TrimEnd('\n');
-
-                        if (title != "" && time != double.NaN)
-                        {
-                            // alarm type should be raw because this isn't really a maneuver or transfer alarm, its a launch time alarm
-                            // TODO, add an alarm for the maneuver? we do have the add maneuver button already though...
-                            if (KACInstalled && useKAC)
-                            {
-                                string alarmID = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, title, time);
-                                if (!string.IsNullOrEmpty(alarmID))
+                            case 0:
+                                flightTimeLabel = "d";
+                                flightTimeTooltip = $"Currently using {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days\nClick to change flight time unit to hours";
+                                if (StateChanged("flightTimeMode", flightTimeMode, false))
                                 {
-                                    // if the alarm was made, get the object
-                                    KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.FirstOrDefault(a => a.ID == alarmID);
+                                    flightTime_Adj /= solarDayLength;
+                                }
+                                flightTime = flightTime_Adj * solarDayLength;
+                                break;
+                            case 1:
+                                flightTimeLabel = "h";
+                                flightTimeTooltip = "Currently using hours\nClick to change flight time unit to minutes";
+                                if (StateChanged("flightTimeMode", flightTimeMode, false))
+                                {
+                                    flightTime_Adj *= solarDayLength / (60d * 60d);
+                                }
+                                flightTime = flightTime_Adj * 60d * 60d;
+                                break;
+                            case 2:
+                                flightTimeLabel = " m";
+                                flightTimeTooltip = "Currently using minutes\nClick to change flight time unit to seconds";
+                                if (StateChanged("flightTimeMode", flightTimeMode, false))
+                                {
+                                    flightTime_Adj *= 60d;
+                                }
+                                flightTime = flightTime_Adj * 60d;
+                                break;
+                            case 3:
+                                flightTimeLabel = "s";
+                                flightTimeTooltip = $"Currently using seconds\nClick to change flight time unit to {(useHomeSolarDay ? homeBody.bodyName : mainBody.bodyName)} solar days";
+                                if (StateChanged("flightTimeMode", flightTimeMode, false))
+                                {
+                                    flightTime_Adj *= 60d;
+                                }
+                                flightTime = flightTime_Adj;
+                                break;
+                        }
 
-                                    if (alarm != null)
+                        if (ResetDefault($"Reset to Maximum Flight Time of {referenceTimeLabel + (referenceTimeMode == 0 ? " Window" : "")}"))
+                        {
+                            flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
+                            SetFlightTimeDisplay();
+                        }
+
+                        ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
+
+                        GUILayout.EndHorizontal();
+
+                        MakeNumberEditField("flightTime", ref flightTime_Adj, 0.1d, epsilon, double.MaxValue);
+                        if (StateChanged("flightTime", flightTime)) ClearAllCaches();
+
+                        GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s (Total Flight Time)"), GUILayout.MinWidth(100));
+
+                        if (expandAltitude)
+                        {
+                            GUILayout.Label(new GUIContent("Parking Orbit (km)", "Planned altitude of the circular parking orbit before the maneuver"));
+                            MakeNumberEditField("parkingAltitude", ref parkingAltitude, 5d, mainBody.atmosphere ? mainBody.atmosphereDepth / 1000d : epsilon, Math.Max(targetOrbit.PeA / 1000d, mainBody.atmosphereDepth / 1000d)); // PeA updates every frame so we don't need to ask Principia
+                            if (StateChanged("parkingAltitude", parkingAltitude)) // clear all but window cache
+                            {
+                                launchOrbitCache.Clear();
+                                ClearAllOrbitDisplays();
+                                ClearAngleRenderer();
+                            }
+                        }
+
+                        // make sure to call GetCachedLaunchTime after resetting flightTime and clearing caches
+
+                        double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, 0);
+                        double nextLaunchETA = nextLaunchUT - currentUT;
+                        double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, extraWindowNumber - 1);
+                        double extraLaunchETA = extraLaunchUT - currentUT;
+
+                        switch (referenceTimeMode) // need to set referenceTime before we use it
+                        {
+                            case 0:
+                                referenceTimeLabel = "Launch Now";
+                                referenceTimeTooltip = "Change reference time to Next Launch Window";
+                                referenceTime = 0d;
+                                referenceWindowNumber = null;
+                                break;
+                            case 1:
+                                referenceTimeLabel = "Next Window";
+                                referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
+                                referenceTime = nextLaunchETA;
+                                referenceWindowNumber = 0;
+                                break;
+                            case 2:
+                                referenceTimeLabel = $"Window {extraWindowNumber}";
+                                referenceTimeTooltip = "Change reference time to the Launch Now Window";
+                                referenceTime = extraLaunchETA;
+                                referenceWindowNumber = extraWindowNumber - 1;
+                                break;
+                        }
+
+                        OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, referenceTime, referenceWindowNumber);
+                        OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, nextLaunchETA, 0);
+                        OrbitData launchOrbit2 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, extraLaunchETA, extraWindowNumber - 1);
+
+                        const double tolerance = 1e-6; // avoid floating point misses, this is needed because launchOrbit.azimuth isnt exact like targetLaunchAzimuth
+
+                        double launchAz0 = Util.RoundCheck(launchOrbit0.azimuth, tolerance);
+                        double launchInc0 = launchOrbit0.inclination;
+                        double displayInc0 = ConvertInc(launchOrbit0);
+                        double launchAz1 = Util.RoundCheck(launchOrbit1.azimuth, tolerance);
+                        double launchInc1 = launchOrbit1.inclination;
+                        //double displayInc1 = ConvertInc(launchOrbit1); // unused
+                        double launchAz2 = Util.RoundCheck(launchOrbit2.azimuth, tolerance);
+                        double launchInc2 = launchOrbit2.inclination;
+                        //double displayInc2 = ConvertInc(launchOrbit2); // unused
+
+                        double launchLAN0 = launchOrbit0.LAN;
+                        double launchAoP0 = launchOrbit0.AoP;
+                        double phaseTime0 = launchOrbit0.phaseTime;
+                        double phaseAngle0 = launchOrbit0.phaseAngle;
+                        double dV0 = launchOrbit0.deltaV;
+                        double transferEcc0 = launchOrbit0.eccentricity;
+                        int errorStateDV0 = launchOrbit0.errorStateDV;
+                        int errorStateDV1 = launchOrbit1.errorStateDV;
+                        int errorStateDV2 = launchOrbit2.errorStateDV;
+
+                        if (Util.MapViewEnabled())
+                        {
+                            if (StateChanged("referenceTimeMode", referenceTimeMode))
+                            {
+                                ClearAllOrbitDisplays();
+                                ClearAngleRenderer();
+                            }
+                            else if (ValueChanged("launchLAN0", launchLAN0, 1e-1)) // 1e-1 resets it about every minute or so when using Launch Now
+                            { // resetting the angle renderer every frame (if using launchNow) is ridiculously laggy, but this is probably unfixable? TODO
+                                ClearAllOrbitDisplays();
+                                ClearAngleRenderer();
+                            }
+                            else if (ValueChanged("transferEcc0", transferEcc0, 1e-5)) ClearOrbitDisplay(ref _transferOrbitRenderer); // 1e-5 resets it about every minute or so when using Launch Now
+                        }
+
+                        bool inSpecialWarp = warpState == 2 || warpState == 3;
+                        bool specialWarpActive = warpState == 1 || inSpecialWarp;
+                        if (nextLaunchETA >= mainBody.rotationPeriod && PrincipiaInstalled && specialWarpSelected && !inSpecialWarp) warpState = 1;
+                        else if (!inSpecialWarp && !specialWarpWait) warpState = 0;
+
+                        GUILayout.Space(5);
+
+                        GUILayout.BeginHorizontal();
+                        ShowErrorStateDV(errorStateDV0);
+                        GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"));
+                        GUILayout.EndHorizontal();
+
+                        GUILayout.Space(5);
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(dV0)} m/s", $"Eccentricity of {(!double.IsNaN(transferEcc0) ? (transferEcc0 > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(transferEcc0)}"), GUILayout.MinWidth(100));
+
+                        GUILayout.Space(5);
+
+                        GUILayout.BeginHorizontal();
+
+                        GUILayout.BeginVertical();
+                        GUILayout.Space(5);
+                        if (GUILayout.Button(new GUIContent(referenceTimeLabel, referenceTimeTooltip), GUILayout.Width(105))) referenceTimeMode = (referenceTimeMode + 1) % (expandExtraWindow ? 3 : 2);
+                        GUILayout.EndVertical();
+
+                        GUILayout.BeginVertical();
+                        GUILayout.Space(5);
+                        if (GUILayout.Button(new GUIContent(showAzimuth ? "Az." : "In.", showAzimuth ? "Launch to this azimuth to get into the target parking orbit\nClick to change to inclination" : "Launch to this inclination to get into the target parking orbit (positive = North, negative = South, regardless of latitude sign)\nClick to change to azimuth"), GUILayout.Width(25))) showAzimuth = !showAzimuth;
+                        GUILayout.EndVertical();
+
+                        ExpandCollapse(ref expandParking0, "Show Orbit Details");
+                        GUILayout.EndHorizontal();
+
+                        GUILayout.Space(5);
+                        if (showAzimuth)
+                        {
+                            GUILayout.Box(new GUIContent($"{FormatDecimals(launchAz0)}\u00B0", $"Azimuth\n{FormatDecimals(launchAz0 * degToRad)} rads, this is {(launchAz0 <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                        }
+                        else
+                        {
+                            GUILayout.Box(new GUIContent($"{FormatDecimals(displayInc0)}\u00B0", $"Inclination\n{FormatDecimals(displayInc0 * degToRad)} rads, this is {(launchAz0 <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
+                        }
+
+                        if (expandParking0)
+                        {
+                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0, flightTime);
+                        }
+
+                        string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(launchAz1 - 90d) < epsilon ?
+                            "Launch Easterly at this time to get into the required parking orbit" :
+                            $"Launch at this time at this {(showAzimuth ? "azimuth" : "inclination")} to get into the required parking orbit";
+
+                        GUILayout.Space(5);
+                        GUILayout.BeginHorizontal();
+                        ShowErrorStateDV(errorStateDV1);
+                        GUILayout.Label(new GUIContent("Next Window", windowTooltip));
+                        ExpandCollapse(ref expandParking1, "Show Orbit Details");
+                        GUILayout.EndHorizontal();
+
+                        GUILayout.Space(5);
+                        GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {FormatDecimals(nextLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
+
+                        // we need this outside for alarm description
+                        double launchLAN1 = launchOrbit1.LAN;
+                        double launchAoP1 = launchOrbit1.AoP;
+                        double phaseTime1 = launchOrbit1.phaseTime;
+                        double phaseAngle1 = launchOrbit1.phaseAngle;
+                        if (expandParking1)
+                        {
+                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1, flightTime);
+                        }
+
+                        if (expandExtraWindow)
+                        {
+                            GUILayout.Space(5);
+                            GUILayout.BeginHorizontal();
+                            ShowErrorStateDV(errorStateDV2);
+                            GUILayout.Label(new GUIContent($"Window {extraWindowNumber}", "Extra Window: " + windowTooltip));
+                            ExpandCollapse(ref expandParking2, "Show Orbit Details");
+                            GUILayout.EndHorizontal();
+
+                            GUILayout.Space(5);
+                            GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {FormatDecimals(extraLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
+
+                            if (expandParking2)
+                            {
+                                double launchLAN2 = launchOrbit2.LAN;
+                                double launchAoP2 = launchOrbit2.AoP;
+                                double phaseTime2 = launchOrbit2.phaseTime;
+                                double phaseAngle2 = launchOrbit2.phaseAngle;
+                                ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2, flightTime);
+                            }
+                        }
+
+                        GUILayout.Space(5);
+                        GUILayout.Label(new GUIContent("Warp Margin (sec)", "The time difference from the launch window that the warp will stop at"), GUILayout.Width(windowWidth)); // this sets the width of the window
+                        MakeNumberEditField("warpMargin", ref warpMargin, 5d, 0d, double.MaxValue);
+
+                        GUILayout.Space(10);
+                        GUILayout.BeginHorizontal();
+                        bool addAlarm = GUILayout.Button(new GUIContent(" Add Alarm", $"Add Alarm for {(useAltAlarm && expandExtraWindow ? $"Window {extraWindowNumber}" : "Next Window")} to {(KACInstalled && useKAC ? "Kerbal Alarm Clock" : "stock Alarm Clock")}"), GUILayout.MinWidth(80));
+
+                        if (addAlarm)
+                        {
+                            string title = ""; // might need to check for overspill in title?
+                            string description = "";
+                            double time = double.NaN;
+
+                            void DescribeD(string identifier, string unit, double value) => description += !double.IsNaN(value) ? $"{identifier}: {FormatDecimals(value)}{unit}\n" : "";
+                            void DescribeI(string identifier, string unit, int value) => description += $"{identifier}: {value}{unit}\n";
+                            void DescribeB(string identifier, bool value) => description += $"{identifier}: {value}\n";
+
+                            if (!double.IsNaN(nextLaunchUT) && (!useAltAlarm || (useAltAlarm && expandExtraWindow && extraWindowNumber == 1)))
+                            {
+                                title = $"Next {targetName} Launch Window";
+                                time = nextLaunchUT - warpMargin;
+                                DescribeI("Window Number", "", 1);
+                            }
+                            else if (useAltAlarm && expandExtraWindow && !double.IsNaN(extraLaunchUT))
+                            {
+                                title = $"{targetName} Launch Window {extraWindowNumber}";
+                                time = extraLaunchUT - warpMargin;
+                                DescribeI("Window Number", "", extraWindowNumber);
+                            }
+
+                            DescribeD("Window UT", "s", time + warpMargin);
+                            DescribeD("Warp Margin", "s", warpMargin);
+                            DescribeD("Latitude", "\u00B0", latitude);
+                            DescribeD("Longitude", "\u00B0", longitude);
+                            DescribeD("Flight Time", "s", flightTime);
+                            if (flightTime_Adj != flightTime) DescribeD("Flight Time Formatted", flightTimeLabel, flightTime_Adj);
+                            DescribeD("Required delta-V", "m/s", dV0);
+                            DescribeD("Parking Orbit Altitude", "km", parkingAltitude);
+                            DescribeD("Launch Inclination", "\u00B0", launchInc1); // this is the true inclination, not the display
+                            DescribeD("Launch Azimuth", "\u00B0", launchAz1);
+                            DescribeD("Phasing Time", "s", phaseTime1);
+                            DescribeD("Phasing Angle", "\u00B0", phaseAngle1);
+                            DescribeD("Parking Orbit LAN", "\u00B0", launchLAN1);
+                            DescribeD("Parking Orbit AoP", "\u00B0", launchAoP1);
+                            DescribeB("Special Warp Active", specialWarpActive);
+
+                            description = description.TrimEnd('\n');
+
+                            if (title != "" && time != double.NaN)
+                            {
+                                // alarm type should be raw because this isn't really a maneuver or transfer alarm, its a launch time alarm
+                                // TODO, add an alarm for the maneuver? we do have the add maneuver button already though...
+                                if (KACInstalled && useKAC)
+                                {
+                                    string alarmID = KACWrapper.KAC.CreateAlarm(KACWrapper.KACAPI.AlarmTypeEnum.Raw, title, time);
+                                    if (!string.IsNullOrEmpty(alarmID))
                                     {
-                                        alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
-                                        //alarm.AlarmMargin = warpMargin; // this doesnt seem to work, so we need to put warpMargin into the time
-                                        alarm.Notes = description;
+                                        // if the alarm was made, get the object
+                                        KACWrapper.KACAPI.KACAlarm alarm = KACWrapper.KAC.Alarms.FirstOrDefault(a => a.ID == alarmID);
+
+                                        if (alarm != null)
+                                        {
+                                            alarm.AlarmAction = KACWrapper.KACAPI.AlarmActionEnum.KillWarp;
+                                            //alarm.AlarmMargin = warpMargin; // this doesnt seem to work, so we need to put warpMargin into the time
+                                            alarm.Notes = description;
+                                        }
+                                        else
+                                        {
+                                            LogError($"KAC Alarm with ID: {alarmID} could not be found.");
+                                        }
                                     }
                                     else
                                     {
-                                        LogError($"KAC Alarm with ID: {alarmID} could not be found.");
+                                        LogError("KAC Alarm could not be created.");
                                     }
                                 }
                                 else
                                 {
-                                    LogError("KAC Alarm could not be created.");
+                                    AlarmTypeRaw alarm = new AlarmTypeRaw
+                                    {
+                                        title = title,
+                                        description = description,
+                                        ut = time,
+                                        //eventOffset = warpMargin, // this doesnt seem to work, so we need to put warpMargin into the time
+                                    };
+                                    AlarmClockScenario.AddAlarm(alarm);
                                 }
+                            }
+                        }
+
+                        bool inWarp() => TimeWarp.CurrentRate > 1d;
+
+                        bool toggleWarp = GUILayout.Button(new GUIContent(inWarp() || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
+                        GUILayout.EndHorizontal();
+
+                        if (specialWarpActive)
+                        {
+                            BeginCenter(false);
+                            GUILayout.Label(new GUIContent("Special Warp", "See the settings for an in-depth explanation, this CANNOT be halted once started"));
+                            EndCenter(false);
+                        }
+
+                        // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of the above label for some reason (always with BeginCenter or EndCenter)
+                        // its harmless as far as I can tell, but i couldnt figure out a way to actually catch it
+
+                        if (StateChanged("specialWarpActive", specialWarpActive))
+                        {
+                            ResetWindow();
+                        }
+
+                        if (toggleWarp)
+                        {
+                            if (inWarp())
+                            {
+                                TimeWarp.fetch.CancelAutoWarp();
+                                TimeWarp.SetRate(0, true);
                             }
                             else
                             {
-                                AlarmTypeRaw alarm = new AlarmTypeRaw
+                                if (warpState == 1)
                                 {
-                                    title = title,
-                                    description = description,
-                                    ut = time,
-                                    //eventOffset = warpMargin, // this doesnt seem to work, so we need to put warpMargin into the time
-                                };
-                                AlarmClockScenario.AddAlarm(alarm);
+                                    Log("Special warp 1 in progress");
+                                    TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
+                                    TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
+                                    warpState = 2;
+                                    specialWarpWait = true;
+                                }
+                                else
+                                {
+                                    TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin);
+                                }
                             }
                         }
-                    }
 
-                    bool inWarp() => TimeWarp.CurrentRate > 1d;
-
-                    bool toggleWarp = GUILayout.Button(new GUIContent(inWarp() || inSpecialWarp ? "Stop Warp" : "Warp", "Warp to the Next Window, taking into account the Warp Margin"), GUILayout.MinWidth(80));
-                    GUILayout.EndHorizontal();
-
-                    if (specialWarpActive)
-                    {
-                        BeginCenter(false);
-                        GUILayout.Label(new GUIContent("Special Warp", "See the settings for an in-depth explanation, this CANNOT be halted once started"));
-                        EndCenter(false);
-                    }
-
-                    // the error "Getting control 2's position in a group with only 2 controls when doing repaint..." is thrown when changing the visibility of the above label for some reason (always with BeginCenter or EndCenter)
-                    // its harmless as far as I can tell, but i couldnt figure out a way to actually catch it
-
-                    if (StateChanged("specialWarpActive", specialWarpActive))
-                    {
-                        ResetWindow();
-                    }
-
-                    if (toggleWarp)
-                    {
-                        if (inWarp())
+                        if (specialWarpWait && !inWarp())
                         {
+                            waitingTime = currentUT;
+                            //Log($"waitingTime: {waitingTime}");
+                            windowCache.Clear(); // make sure we have an up to date time
+                            specialWarpWait = false;
+                        }
+
+                        if (warpState == 2 && !inWarp() && currentUT > waitingTime + 0.5d)
+                        {
+                            Log("Special warp 2 in progress");
                             TimeWarp.fetch.CancelAutoWarp();
-                            TimeWarp.SetRate(0, true);
+                            TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
+                            TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + 3600d * dayScale)); // warp to within an hour
+                            warpState = 3;
+                            specialWarpWait = true;
+                        }
+
+                        if (warpState == 3 && !inWarp() && currentUT > waitingTime + 0.5d)
+                        {
+                            Log("Special warp 3 in progress");
+                            TimeWarp.fetch.CancelAutoWarp();
+                            TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin); // now warp to final
+                            warpState = 0;
+                            specialWarpWait = false;
+                        }
+
+                        GUILayout.BeginHorizontal();
+                        bool targetPressed;
+                        bool focusPressed;
+                        if (Util.MapViewEnabled() && !targetManual) // if in map view, map view carries over to editor sometimes so just double-check
+                        {
+                            bool enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && HighLogic.LoadedSceneIsFlight; // ControlTypes.TARGETING will be 'locked' when the game isnt in focus or paused, but its not actually locked. not sure how i can fix this, its just visual tho
+                            GUI.enabled = enabled;
+                            targetPressed = GUILayout.Button(new GUIContent(targetSet ? "Unset" : "Target", $"{$"Target {targetName}{(enabled ? "" : "\nTarget Switching is Locked, must be in flight")}"}"), GUILayout.MinWidth(70));
+                            GUI.enabled = true;
+                            focusPressed = GUILayout.Button(new GUIContent("Focus", $"Focus {targetName}"), GUILayout.MinWidth(70));
                         }
                         else
                         {
-                            if (warpState == 1)
+                            bool enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && HighLogic.LoadedSceneIsFlight; // ControlTypes.TARGETING will be 'locked' when the game isnt in focus or paused, but its not actually locked. not sure how i can fix this, its just visual tho
+                            GUI.enabled = enabled && !targetManual;
+                            targetPressed = GUILayout.Button(new GUIContent(targetManual ? "[Manual Target]" : (targetSet ? "Unset Target" : TextOverspill($"Target {targetName}", 140, GUI.skin.button)), $"{(targetManual ? "Manual Target Mode:\nTargeting Disabled" : $"Target {targetName}{(enabled ? "" : "\nTarget Switching is Locked, must be in flight")}")}"), GUILayout.MinWidth(140));
+                            GUI.enabled = true;
+                            focusPressed = false; // not in map view, so cant focus
+                        }
+                        ShowSettings();
+                        GUILayout.EndHorizontal();
+
+                        if (debugMode)
+                        {
+                            if (GUILayout.Button("Log"))
                             {
-                                Log("Special warp 1 in progress");
-                                TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
-                                TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + mainBody.rotationPeriod)); // warp to within a day
-                                warpState = 2;
-                                specialWarpWait = true;
+                                Log($"");
+                            }
+                        }
+
+                        if (targetPressed)
+                        {
+                            if (!targetSet)
+                            {
+                                targetSet = true;
+                                if (target is ProtoVessel protoTarget)
+                                {
+                                    Vessel vesselTarget = FlightGlobals.Vessels.FirstOrDefault(v => v.id == protoTarget.vesselID);
+                                    if (vesselTarget != null) FlightGlobals.fetch.SetVesselTarget(vesselTarget);
+                                    else LogError("Could not load ProtoVessel"); // this shouldnt happen because we should be in the flight scene
+                                }
+                                else if (target is CelestialBody bodyTarget)
+                                    FlightGlobals.fetch.SetVesselTarget(bodyTarget);
+                                else LogError("Unknown target type passed to targetSet: " + target.GetType().Name);
                             }
                             else
                             {
-                                TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin);
+                                targetSet = false;
+                                FlightGlobals.fetch.SetVesselTarget(null);
                             }
                         }
-                    }
 
-                    if (specialWarpWait && !inWarp())
-                    {
-                        waitingTime = currentUT;
-                        //Log($"waitingTime: {waitingTime}");
-                        windowCache.Clear(); // make sure we have an up to date time
-                        specialWarpWait = false;
-                    }
-
-                    if (warpState == 2 && !inWarp() && currentUT > waitingTime + 0.5d)
-                    {
-                        Log("Special warp 2 in progress");
-                        TimeWarp.fetch.CancelAutoWarp();
-                        TimeWarp.SetRate(5, true); // set to >1x to delay next-stage check
-                        TimeWarp.fetch.WarpTo(nextLaunchUT - (warpMargin + 3600d * dayScale)); // warp to within an hour
-                        warpState = 3;
-                        specialWarpWait = true;
-                    }
-
-                    if (warpState == 3 && !inWarp() && currentUT > waitingTime + 0.5d)
-                    {
-                        Log("Special warp 3 in progress");
-                        TimeWarp.fetch.CancelAutoWarp();
-                        TimeWarp.fetch.WarpTo(nextLaunchUT - warpMargin); // now warp to final
-                        warpState = 0;
-                        specialWarpWait = false;
-                    }
-
-                    GUILayout.BeginHorizontal();
-                    bool targetPressed;
-                    bool focusPressed;
-                    if (Util.MapViewEnabled() && !targetManual) // if in map view, map view carries over to editor sometimes so just double-check
-                    {
-                        bool enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && HighLogic.LoadedSceneIsFlight; // ControlTypes.TARGETING will be 'locked' when the game isnt in focus or paused, but its not actually locked. not sure how i can fix this, its just visual tho
-                        GUI.enabled = enabled;
-                        targetPressed = GUILayout.Button(new GUIContent(targetSet ? "Unset" : "Target", $"{$"Target {targetName}{(enabled ? "" : "\nTarget Switching is Locked, must be in flight")}"}"), GUILayout.MinWidth(70));
-                        GUI.enabled = true;
-                        focusPressed = GUILayout.Button(new GUIContent("Focus", $"Focus {targetName}"), GUILayout.MinWidth(70));
-                    }
-                    else
-                    {
-                        bool enabled = InputLockManager.IsUnlocked(ControlTypes.TARGETING) && HighLogic.LoadedSceneIsFlight; // ControlTypes.TARGETING will be 'locked' when the game isnt in focus or paused, but its not actually locked. not sure how i can fix this, its just visual tho
-                        GUI.enabled = enabled && !targetManual;
-                        targetPressed = GUILayout.Button(new GUIContent(targetManual ? "[Manual Target]" : (targetSet ? "Unset Target" : TextOverspill($"Target {targetName}", 140, GUI.skin.button)), $"{(targetManual ? "Manual Target Mode:\nTargeting Disabled" : $"Target {targetName}{(enabled ? "" : "\nTarget Switching is Locked, must be in flight")}")}"), GUILayout.MinWidth(140));
-                        GUI.enabled = true;
-                        focusPressed = false; // not in map view, so cant focus
-                    }
-                    ShowSettings();
-                    GUILayout.EndHorizontal();
-
-                    if (debugMode)
-                    {
-                        if (GUILayout.Button("Log"))
+                        if (focusPressed)
                         {
-                            Log($"");
-                        }
-                    }
-
-                    if (targetPressed)
-                    {
-                        if (!targetSet)
-                        {
-                            targetSet = true;
                             if (target is ProtoVessel protoTarget)
                             {
                                 Vessel vesselTarget = FlightGlobals.Vessels.FirstOrDefault(v => v.id == protoTarget.vesselID);
-                                if (vesselTarget != null) FlightGlobals.fetch.SetVesselTarget(vesselTarget);
-                                else LogError("Could not load ProtoVessel"); // this shouldnt happen because we should be in the flight scene
+                                if (vesselTarget != null) PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
+                                else LogError("Could not load ProtoVessel"); // this shouldnt happen because we should be in the map view
                             }
                             else if (target is CelestialBody bodyTarget)
-                                FlightGlobals.fetch.SetVesselTarget(bodyTarget);
-                            else LogError("Unknown target type passed to targetSet: " + target.GetType().Name);
+                                PlanetariumCamera.fetch.SetTarget(bodyTarget.MapObject);
+                            else LogError("Unknown target type passed to focusSet: " + target.GetType().Name);
+
+                            // lol, who put Vessel as mapObject and CelestialBody as MapObject?
                         }
-                        else
-                        {
-                            targetSet = false;
-                            FlightGlobals.fetch.SetVesselTarget(null);
-                        }
-                    }
 
-                    if (focusPressed)
-                    {
-                        if (target is ProtoVessel protoTarget)
-                        {
-                            Vessel vesselTarget = FlightGlobals.Vessels.FirstOrDefault(v => v.id == protoTarget.vesselID);
-                            if (vesselTarget != null) PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
-                            else LogError("Could not load ProtoVessel"); // this shouldnt happen because we should be in the map view
-                        }
-                        else if (target is CelestialBody bodyTarget)
-                            PlanetariumCamera.fetch.SetTarget(bodyTarget.MapObject);
-                        else LogError("Unknown target type passed to focusSet: " + target.GetType().Name);
-
-                        // lol, who put Vessel as mapObject and CelestialBody as MapObject?
-                    }
-
-                    if (Util.MapViewEnabled())
-                    {
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Show Parking Orbit", $"Show Parking Orbit for the Next Launch Window in Map View"));
-                        GUILayout.FlexibleSpace();
-                        BeginCenter();
-                        displayParking = GUILayout.Toggle(displayParking, "");
-                        EndCenter();
-                        GUILayout.EndHorizontal();
-
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Show Transfer Orbit", $"Show Transfer Orbit for the Next Launch Window in Map View{(double.IsNaN(transferEcc0) || double.IsNaN(dV0) ? "\nError: Trajectory is invalid" : "")}"));
-                        GUILayout.FlexibleSpace();
-                        BeginCenter();
-                        displayTransfer = GUILayout.Toggle(displayTransfer, "");
-                        EndCenter();
-                        GUILayout.EndHorizontal();
-
-                        if (targetManual)
+                        if (Util.MapViewEnabled())
                         {
                             GUILayout.BeginHorizontal();
-                            GUILayout.Label(new GUIContent("Show Manual Orbit", "Show Manual Target Orbit in Map View"));
+                            GUILayout.Label(new GUIContent("Show Parking Orbit", $"Show Parking Orbit for the Next Launch Window in Map View"));
                             GUILayout.FlexibleSpace();
                             BeginCenter();
-                            displayManual = GUILayout.Toggle(displayManual, "");
+                            displayParking = GUILayout.Toggle(displayParking, "");
+                            EndCenter();
+                            GUILayout.EndHorizontal();
+
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Label(new GUIContent("Show Transfer Orbit", $"Show Transfer Orbit for the Next Launch Window in Map View{(double.IsNaN(transferEcc0) || double.IsNaN(dV0) ? "\nError: Trajectory is invalid" : "")}"));
+                            GUILayout.FlexibleSpace();
+                            BeginCenter();
+                            displayTransfer = GUILayout.Toggle(displayTransfer, "");
+                            EndCenter();
+                            GUILayout.EndHorizontal();
+
+                            if (targetManual)
+                            {
+                                GUILayout.BeginHorizontal();
+                                GUILayout.Label(new GUIContent("Show Manual Orbit", "Show Manual Target Orbit in Map View"));
+                                GUILayout.FlexibleSpace();
+                                BeginCenter();
+                                displayManual = GUILayout.Toggle(displayManual, "");
+                                EndCenter();
+                                GUILayout.EndHorizontal();
+                            }
+
+                            GUILayout.BeginHorizontal();
+                            GUILayout.Label(new GUIContent("Show Phasing Angle", "Show Phasing Angle for the Next Launch Window in Map View"));
+                            GUILayout.FlexibleSpace();
+                            BeginCenter();
+                            GUI.enabled = displayParking;
+                            displayPhasing = GUILayout.Toggle(displayPhasing, new GUIContent("", displayParking ? "" : "The Parking Orbit needs to be enabled for this to be shown"));
+                            GUI.enabled = true;
                             EndCenter();
                             GUILayout.EndHorizontal();
                         }
 
-                        GUILayout.BeginHorizontal();
-                        GUILayout.Label(new GUIContent("Show Phasing Angle", "Show Phasing Angle for the Next Launch Window in Map View"));
-                        GUILayout.FlexibleSpace();
-                        BeginCenter();
-                        GUI.enabled = displayParking;
-                        displayPhasing = GUILayout.Toggle(displayPhasing, new GUIContent("", displayParking ? "" : "The Parking Orbit needs to be enabled for this to be shown"));
-                        GUI.enabled = true;
-                        EndCenter();
-                        GUILayout.EndHorizontal();
-                    }
-
-                    if (StateChanged("RendererButtons", Util.MapViewEnabled()))
-                    {
-                        ResetWindow();
-                        ClearAllOrbitDisplays();
-                        ClearAngleRenderer();
-                    }
-
-                    if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
-                    {
-                        GUI.enabled = FlightGlobals.ActiveVessel.situation == Vessel.Situations.ORBITING;
-                        if (GUILayout.Button(new GUIContent("Make Node", $"Make Maneuver Node in parking orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING ? "\nMust be in orbit" : "")}")) && !double.IsNaN(dV0) && !double.IsNaN(phaseTime0))
+                        if (StateChanged("RendererButtons", Util.MapViewEnabled()))
                         {
-                            ManeuverNode node = FlightGlobals.ActiveVessel.patchedConicSolver.AddManeuverNode(currentUT + referenceTime + phaseTime0);
-                            node.DeltaV = new Vector3d(0, 0, dV0);
-                            node.solver.UpdateFlightPlan();
-                        }
-                        GUI.enabled = true;
-                    }
-
-                    if (debugMode && HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
-                    {
-                        if (GUILayout.Button("Set Orbit"))
-                        {
-                            FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), launchInc0, launchLAN0, 0d, launchAoP0, 0d);
-                        }
-                    }
-
-                    if (StateChanged("InFlight", HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null))
-                    {
-                        ResetWindow();
-                    }
-
-                    if (displayParking && Util.MapViewEnabled() && !needCacheClear)
-                    {
-                        Orbit parkingOrbit = new Orbit
-                        {
-                            inclination = launchInc0,
-                            eccentricity = epsilon, // just to make periapsis visible
-                            semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
-                            LAN = launchLAN0,
-                            argumentOfPeriapsis = launchAoP0,
-                            meanAnomalyAtEpoch = 0d,
-                            epoch = currentUT + referenceTime,
-                            referenceBody = mainBody,
-                        };
-
-                        if (_parkingOrbitRenderer == null)
-                        {
-                            _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, parkingColor);
+                            ResetWindow();
+                            ClearAllOrbitDisplays();
+                            ClearAngleRenderer();
                         }
 
-                        if (displayPhasing && (_phasingAngleRenderer == null || _phasingAngleRenderer.IsHidden) && !double.IsNaN(phaseAngle0))
+                        if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
                         {
-                            parkingOrbit.Init(); // we need to do this to access GetOrbitNormal() in UpdateVectors()
-                            parkingOrbit.UpdateFromUT(currentUT + referenceTime); // dont think we need to do this, but just to be safe
-
-                            _phasingAngleRenderer?.Hide(false);
-                            _phasingAngleRenderer = null;
-
-                            _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
-
-                            _phasingAngleRenderer.Draw(parkingOrbit, launchAoP0, phaseAngle0, !justResetAngle);
+                            GUI.enabled = FlightGlobals.ActiveVessel.situation == Vessel.Situations.ORBITING;
+                            if (GUILayout.Button(new GUIContent("Make Node", $"Make Maneuver Node in parking orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING ? "\nMust be in orbit" : "")}")) && !double.IsNaN(dV0) && !double.IsNaN(phaseTime0))
+                            {
+                                ManeuverNode node = FlightGlobals.ActiveVessel.patchedConicSolver.AddManeuverNode(currentUT + referenceTime + phaseTime0);
+                                node.DeltaV = new Vector3d(0, 0, dV0);
+                                node.solver.UpdateFlightPlan();
+                            }
+                            GUI.enabled = true;
                         }
-                    }
-                    else if (!displayParking && _parkingOrbitRenderer != null)
-                    {
-                        ClearOrbitDisplay(ref _parkingOrbitRenderer);
-                    }
 
-                    if ((!displayParking || !displayPhasing) && _phasingAngleRenderer != null && !_phasingAngleRenderer.IsHiding)
-                    {
-                        ClearAngleRenderer(true);
-                    }
-
-                    if (displayTransfer && _transferOrbitRenderer == null && Util.MapViewEnabled() && !needCacheClear && !double.IsNaN(transferEcc0) && !double.IsNaN(dV0))
-                    {
-                        Orbit transferOrbit = new Orbit
+                        if (debugMode && HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
                         {
-                            inclination = launchInc0,
-                            eccentricity = transferEcc0,
-                            semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - transferEcc0),
-                            LAN = launchLAN0,
-                            argumentOfPeriapsis = Util.ClampAngle(launchAoP0 + phaseAngle0, false),
-                            meanAnomalyAtEpoch = 0d,
-                            epoch = currentUT + referenceTime + phaseTime0,
-                            referenceBody = mainBody,
-                        };
+                            if (GUILayout.Button("Set Orbit"))
+                            {
+                                FlightGlobals.fetch.SetShipOrbit(mainBody.flightGlobalsIndex, epsilon, mainBody.Radius + (parkingAltitude * 1000d), launchInc0, launchLAN0, 0d, launchAoP0, 0d);
+                            }
+                        }
 
-                        //Vector3d targetPos = targetOrbit.getPositionAtUT(currentUT + referenceTime + flightTime);
-                        //transferOrbit.Init();
-                        //transferOrbit.UpdateFromUT(currentUT + referenceTime + phaseTime0);
-                        //Vector3d futurePos = transferOrbit.getPositionAtUT(currentUT + referenceTime + flightTime);
-                        //Log($"targetPos: {targetPos}, futurePos: {futurePos}, distance: {Vector3d.Distance(targetPos, futurePos)}");
+                        if (StateChanged("InFlight", HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null))
+                        {
+                            ResetWindow();
+                        }
 
-                        _transferOrbitRenderer = OrbitRendererHack.Setup(transferOrbit, transferColor);
-                    }
-                    else if (!displayTransfer && _transferOrbitRenderer != null)
-                    {
-                        ClearOrbitDisplay(ref _transferOrbitRenderer);
-                    }
+                        if (displayParking && Util.MapViewEnabled() && !needCacheClear)
+                        {
+                            Orbit parkingOrbit = new Orbit
+                            {
+                                inclination = launchInc0,
+                                eccentricity = epsilon, // just to make periapsis visible
+                                semiMajorAxis = mainBody.Radius + (parkingAltitude * 1000d),
+                                LAN = launchLAN0,
+                                argumentOfPeriapsis = launchAoP0,
+                                meanAnomalyAtEpoch = 0d,
+                                epoch = currentUT + referenceTime,
+                                referenceBody = mainBody,
+                            };
 
-                    if (displayManual && _manualOrbitRenderer == null && Util.MapViewEnabled() && targetManual && !needCacheClear)
-                    {
-                        _manualOrbitRenderer = OrbitRendererHack.Setup(targetOrbit, manualColor);
-                    }
-                    else if ((!displayManual || !targetManual) && _manualOrbitRenderer != null)
-                    {
-                        ClearOrbitDisplay(ref _manualOrbitRenderer);
+                            if (_parkingOrbitRenderer == null)
+                            {
+                                _parkingOrbitRenderer = OrbitRendererHack.Setup(parkingOrbit, parkingColor);
+                            }
+
+                            if (displayPhasing && (_phasingAngleRenderer == null || _phasingAngleRenderer.IsHidden) && !double.IsNaN(phaseAngle0))
+                            {
+                                parkingOrbit.Init(); // we need to do this to access GetOrbitNormal() in UpdateVectors()
+                                parkingOrbit.UpdateFromUT(currentUT + referenceTime); // dont think we need to do this, but just to be safe
+
+                                _phasingAngleRenderer?.Hide(false);
+                                _phasingAngleRenderer = null;
+
+                                _phasingAngleRenderer = MapView.MapCamera.gameObject.AddComponent<MapAngleRenderer>();
+
+                                _phasingAngleRenderer.Draw(parkingOrbit, launchAoP0, phaseAngle0, !justResetAngle);
+                            }
+                        }
+                        else if (!displayParking && _parkingOrbitRenderer != null)
+                        {
+                            ClearOrbitDisplay(ref _parkingOrbitRenderer);
+                        }
+
+                        if ((!displayParking || !displayPhasing) && _phasingAngleRenderer != null && !_phasingAngleRenderer.IsHiding)
+                        {
+                            ClearAngleRenderer(true);
+                        }
+
+                        if (displayTransfer && _transferOrbitRenderer == null && Util.MapViewEnabled() && !needCacheClear && !double.IsNaN(transferEcc0) && !double.IsNaN(dV0))
+                        {
+                            Orbit transferOrbit = new Orbit
+                            {
+                                inclination = launchInc0,
+                                eccentricity = transferEcc0,
+                                semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - transferEcc0),
+                                LAN = launchLAN0,
+                                argumentOfPeriapsis = Util.ClampAngle(launchAoP0 + phaseAngle0, false),
+                                meanAnomalyAtEpoch = 0d,
+                                epoch = currentUT + referenceTime + phaseTime0,
+                                referenceBody = mainBody,
+                            };
+
+                            //Vector3d targetPos = targetOrbit.getPositionAtUT(currentUT + referenceTime + flightTime);
+                            //transferOrbit.Init();
+                            //transferOrbit.UpdateFromUT(currentUT + referenceTime + phaseTime0);
+                            //Vector3d futurePos = transferOrbit.getPositionAtUT(currentUT + referenceTime + flightTime);
+                            //Log($"targetPos: {targetPos}, futurePos: {futurePos}, distance: {Vector3d.Distance(targetPos, futurePos)}");
+
+                            _transferOrbitRenderer = OrbitRendererHack.Setup(transferOrbit, transferColor);
+                        }
+                        else if (!displayTransfer && _transferOrbitRenderer != null)
+                        {
+                            ClearOrbitDisplay(ref _transferOrbitRenderer);
+                        }
+
+                        if (displayManual && _manualOrbitRenderer == null && Util.MapViewEnabled() && targetManual && !needCacheClear)
+                        {
+                            _manualOrbitRenderer = OrbitRendererHack.Setup(targetOrbit, manualColor);
+                        }
+                        else if ((!displayManual || !targetManual) && _manualOrbitRenderer != null)
+                        {
+                            ClearOrbitDisplay(ref _manualOrbitRenderer);
+                        }
                     }
                 }
-            }
-            finally
-            {
-                Tooltip.Instance?.RecordTooltip(id);
-                GUI.DragWindow();
-                needCacheClear = false;
-                justResetAngle = false;
-                ResetWindow(ref needMainReset, ref mainRect);
+                finally
+                {
+                    Tooltip.Instance?.RecordTooltip(id);
+                    GUI.DragWindow();
+                    needCacheClear = false;
+                    justResetAngle = false;
+                    ResetWindow(ref needMainReset, ref mainRect);
+                }
             }
         }
 

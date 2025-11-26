@@ -10,7 +10,6 @@ using System.Linq;
 using ToolbarControl_NS;
 using Unity.Profiling;
 using UnityEngine;
-using UnityEngine.Profiling;
 
 namespace TargetInterceptPlanner
 {
@@ -494,6 +493,8 @@ namespace TargetInterceptPlanner
 
         private void SaveSettings()
         {
+            Log($"Saving settings...");
+            
             ConfigNode settings = new ConfigNode("SETTINGS");
 
             Dictionary<string, object> settingValues = new Dictionary<string, object>
@@ -626,8 +627,9 @@ namespace TargetInterceptPlanner
             }
 
             File.WriteAllLines(SettingsPath, lines); // save all lines, including those with comments, back to file
-        }
 
+            Log($"Saved settings");
+        }
 
         private void LoadSettings()
         {
@@ -637,6 +639,8 @@ namespace TargetInterceptPlanner
                 ConfigNode settings = root.GetNode("SETTINGS");
                 if (settings != null)
                 {
+                    Log("Loading settings...");
+                    
                     void Read<T>(ref T field, string name) => Util.TryReadValue(ref field, settings, name);
 
                     float x1 = mainRect.xMin, y1 = mainRect.yMin;
@@ -754,6 +758,8 @@ namespace TargetInterceptPlanner
                             }
                         }
                     }
+
+                    Log("Loaded settings");
                 }
             }
         }
@@ -2215,6 +2221,8 @@ namespace TargetInterceptPlanner
 
         private void MakeMainWindow(int id)
         {
+            //TIPProfiler.Begin();
+
             using (TIPProfiler.Auto())
             {
                 windowWidth = 160;
@@ -3124,6 +3132,8 @@ namespace TargetInterceptPlanner
                     ResetWindow(ref needMainReset, ref mainRect);
                 }
             }
+
+            //TIPProfiler.End();
         }
 
         #endregion

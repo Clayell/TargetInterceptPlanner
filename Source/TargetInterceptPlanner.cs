@@ -318,7 +318,7 @@ namespace TargetInterceptPlanner
 
         ToolbarControl toolbarControl = null;
 
-        static readonly ProfilerMarker TIPProfiler = new ProfilerMarker("TIPProfiler");
+        static readonly ProfilerMarker TIPProfiler = new ProfilerMarker("TIPProfiler"); // https://gist.github.com/gotmachine/d973adcb9ae413386291170fa346d043
 
         #endregion
         #region GUI Setup

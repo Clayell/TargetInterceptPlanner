@@ -1310,8 +1310,8 @@ namespace TargetInterceptPlanner
             // TODO, we could allow multiple revolutions if we changed the mins and maxes (0 + 360 * n, 180 + 360 * n, etc.)
 
             double bestAngle;
-            double bestAngle1 = GoldenSectionSearch(0d, 180d - epsilon, epsilon, DistanceError, true);
-            double bestAngle2 = GoldenSectionSearch(180d + epsilon, 360d, epsilon, DistanceError, true);
+            double bestAngle1 = GoldenSectionSearch(0d, 180d - epsilon, epsilon, DistanceError);
+            double bestAngle2 = GoldenSectionSearch(180d + epsilon, 360d, epsilon, DistanceError);
 
             if (DistanceError(bestAngle1) < DistanceError(bestAngle2)) bestAngle = bestAngle1;
             else bestAngle = bestAngle2;

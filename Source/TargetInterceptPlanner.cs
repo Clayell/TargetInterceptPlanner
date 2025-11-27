@@ -1438,7 +1438,7 @@ namespace TargetInterceptPlanner
 
             //Log($"flightTime: {flightTime}, absolute max time: {CalculateTimeOfHohmannManeuver(true).totalTime}");
 
-            if (flightTime > CalculateTimeOfHohmannManeuver(true).totalTime) // we dont need to calculate with really high flight times if they're already above the absolute max
+            if (flightTime > CalculateAbsoluteMaxTime()) // we dont need to calculate with really high flight times if they're already above the absolute max
             {
                 errorStateDV = 1;
             }
@@ -1506,11 +1506,13 @@ namespace TargetInterceptPlanner
             return (t1, t1 + orbitPeriod);
         }
 
+        private double CalculateAbsoluteMaxTime() => CalculateTimeOfHohmannManeuver(true).totalTime;
+
         private double CalculateMaxFlightTime(Vector3d launchPos, double latitude, double longitude, double targetInclination, bool useAltBehavior)
         { // targets with an eccentricity of 1 have already been filtered out
             const double epsilon = 1e-9;
             double candidateFlightTime = solarDayLength; // completely arbitrary
-            double absoluteMaxTime = CalculateTimeOfHohmannManeuver(true).totalTime; // this will almost always give a NaN later on unless the orbit is perfectly circular
+            double absoluteMaxTime = CalculateAbsoluteMaxTime(); // this will almost always give a NaN later on unless the orbit is perfectly circular
 
             if (referenceTimeMode == 0)
             {

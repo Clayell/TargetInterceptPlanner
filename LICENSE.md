@@ -1,12 +1,12 @@
 The MIT License (MIT)
 
-Copyright (c) 2014, David Tregoning (TriggerAu)
+Copyright (c) 2014, David Tregoning (TriggerAu) for KACWrapper
 
-Copyright (c) 2022 RCrockford
+Copyright (c) 2023, Martin Reverda (Nazfib) for TWP2 Renderer
 
-Copyright (c) 2023 Martin Reverda (Nazfib)
+Copyright (c) 2022 - 2025, RCrockford
 
-Copyright (c) 2025 - present Clayel (Clayell)
+Copyright (c) 2025 - present, Clayel (Clayell)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

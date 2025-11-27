@@ -1436,7 +1436,7 @@ namespace TargetInterceptPlanner
 
             //Log("\n\n\n\nbeginning loop");
 
-            //Log($"flightTime: {flightTime}, absolute max time: {CalculateTimeOfHohmannManeuver(true).totalTime}");
+            //Log($"flightTime: {flightTime}, absolute max time: {CalculateAbsoluteMaxTime()}");
 
             if (flightTime > CalculateAbsoluteMaxTime()) // we dont need to calculate with really high flight times if they're already above the absolute max
             {
@@ -2236,7 +2236,7 @@ namespace TargetInterceptPlanner
         {
             //TIPProfiler.Begin();
 
-            using (TIPProfiler.Auto())
+            using (TIPProfiler.Auto()) // this gets ignored if not building with the profiler
             {
                 windowWidth = 160;
                 windowState = WindowState.Main;

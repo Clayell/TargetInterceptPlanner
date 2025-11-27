@@ -1271,7 +1271,7 @@ namespace TargetInterceptPlanner
                 double phasingTime = orbitPeriod * (phasingAngle / 360d);
                 if (flightTime > phasingTime)
                 {
-                    meanAnomaly = meanMotion * (flightTime - phasingTime);
+                    meanAnomaly = meanMotion * (flightTime - phasingTime); // we're not clamping this to tau, as doing so leads to crashes somehow
                 }
                 else
                 {
@@ -1291,10 +1291,12 @@ namespace TargetInterceptPlanner
                     referenceBody = mainBody,
                 };
 
+                //Log($"inclination: {inclination}, transferEcc: {transferEcc}, transferSMA: {transferSMA}, LAN: {LAN}, argumentOfPeriapsis: {Util.ClampAngle(AoP + phasingAngle, false)}, epoch: {epoch}, meanAnomaly: {meanAnomaly}, flightTime: {flightTime}");
+
                 transferOrbit.Init();
                 transferOrbit.UpdateFromUT(epoch);
 
-                double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, transferEcc, epsilon);
+                double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, transferEcc, epsilon); // a very large meanAnomaly will lead to a crash here, we prevent this beforehand by discarding large flight times in CalculatePhasingAndDeltaV
                 Vector3d futurePos = transferOrbit.getPositionFromEccAnomaly(eccAnomaly);
                 //Vector3d futurePos2 = transferOrbit.getPositionAtUT(startUT + flightTime); // this is less accurate because we cant set our own epsilon
 
@@ -1308,8 +1310,8 @@ namespace TargetInterceptPlanner
             // TODO, we could allow multiple revolutions if we changed the mins and maxes (0 + 360 * n, 180 + 360 * n, etc.)
 
             double bestAngle;
-            double bestAngle1 = GoldenSectionSearch(0d, 180d - epsilon, epsilon, DistanceError);
-            double bestAngle2 = GoldenSectionSearch(180d + epsilon, 360d, epsilon, DistanceError);
+            double bestAngle1 = GoldenSectionSearch(0d, 180d - epsilon, epsilon, DistanceError, true);
+            double bestAngle2 = GoldenSectionSearch(180d + epsilon, 360d, epsilon, DistanceError, true);
 
             if (DistanceError(bestAngle1) < DistanceError(bestAngle2)) bestAngle = bestAngle1;
             else bestAngle = bestAngle2;
@@ -1365,8 +1367,8 @@ namespace TargetInterceptPlanner
                 transferOrbit.Init();
                 transferOrbit.UpdateFromUT(startUT);
 
-                meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(SMA, 3))) * postManeuverTime;
-                double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, eccentricity, epsilon);
+                meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(SMA, 3))) * postManeuverTime; // we're not clamping this to tau, as doing so leads to crashes somehow
+                double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, eccentricity, epsilon); // a very large meanAnomaly will lead to a crash here, we prevent this beforehand by discarding large flight times in CalculatePhasingAndDeltaV
                 Vector3d futurePos = transferOrbit.getPositionFromEccAnomaly(eccAnomaly);
                 //Vector3d futurePos2 = transferOrbit.getPositionAtUT(targetTime); // this is less accurate because we cant set our own epsilon
 
@@ -1419,7 +1421,7 @@ namespace TargetInterceptPlanner
         {
             // TODO, this isn't perfectly accurate for rendezvous with celestial bodies, as their gravity can slightly change the trajectory and therefore the deltaV/phasing time needed (especially with Principia)
             // (this is probably unfixable without serious re-factoring of this, the worst case I can think of would be pluto to charon)
-            
+
             //Stopwatch stopwatch = Stopwatch.StartNew();
 
             const double epsilon = 1e-9;
@@ -1434,29 +1436,38 @@ namespace TargetInterceptPlanner
 
             //Log("\n\n\n\nbeginning loop");
 
-            for (int i = 0; i < maxIterations; i++)
-            //for (; i < maxIterations; i++)
+            //Log($"flightTime: {flightTime}, absolute max time: {CalculateTimeOfHohmannManeuver(true).totalTime}");
+
+            if (flightTime > CalculateTimeOfHohmannManeuver(true).totalTime) // we dont need to calculate with really high flight times if they're already above the absolute max
             {
-                double lastEcc = eccentricity;
-
-                (phasingTime, phasingAngle) = CalculateTimeBeforeManeuver(flightTime, startUT, eccentricity, inclination, LAN, AoP);
-
-                if (double.IsNaN(phasingTime) || double.IsNaN(phasingAngle))
+                errorStateDV = 1;
+            }
+            else
+            {
+                for (int i = 0; i < maxIterations; i++)
+                //for (; i < maxIterations; i++)
                 {
-                    if (eccentricity > 1) { errorStateDV = 2; break; } // if its NaN while eccentricity is above 1, that means the flight time is way too low
-                    eccentricity *= 1.25; // increase eccentricity until high enough
-                    continue;
-                }
+                    double lastEcc = eccentricity;
 
-                (dV, eccentricity, errorStateDV) = CalculateDV(flightTime - phasingTime, startUT + phasingTime, inclination, LAN, Util.ClampAngle(AoP + phasingAngle, false));
+                    (phasingTime, phasingAngle) = CalculateTimeBeforeManeuver(flightTime, startUT, eccentricity, inclination, LAN, AoP);
 
-                if (errorStateDV != 0 || Math.Abs(eccentricity - lastEcc) < epsilon) break;
+                    if (double.IsNaN(phasingTime) || double.IsNaN(phasingAngle))
+                    {
+                        if (eccentricity > 1) { errorStateDV = 2; break; } // if its NaN while eccentricity is above 1, that means the flight time is way too low
+                        eccentricity *= 1.25; // increase eccentricity until high enough
+                        continue;
+                    }
 
-                if (i == maxIterations - 1)
-                {
-                    LogWarning($"CalculatePhasingAndDeltaV ran over maxIterations ({maxIterations})");
-                    errorStateDV = 3;
-                    break;
+                    (dV, eccentricity, errorStateDV) = CalculateDV(flightTime - phasingTime, startUT + phasingTime, inclination, LAN, Util.ClampAngle(AoP + phasingAngle, false));
+
+                    if (errorStateDV != 0 || Math.Abs(eccentricity - lastEcc) < epsilon) break;
+
+                    if (i == maxIterations - 1)
+                    {
+                        LogWarning($"CalculatePhasingAndDeltaV ran over maxIterations ({maxIterations})");
+                        errorStateDV = 3;
+                        break;
+                    }
                 }
             }
 
@@ -2559,12 +2570,13 @@ namespace TargetInterceptPlanner
                             SetFlightTimeDisplay();
                         }
 
+                        if (StateChanged("flightTime", flightTime)) ClearAllCaches();
+
                         ExpandCollapse(ref expandAltitude, "Set parking orbit altitude");
 
                         GUILayout.EndHorizontal();
 
                         MakeNumberEditField("flightTime", ref flightTime_Adj, 0.1d, epsilon, double.MaxValue);
-                        if (StateChanged("flightTime", flightTime)) ClearAllCaches();
 
                         GUILayout.Box(new GUIContent(FormatTime(flightTime), $"{FormatDecimals(flightTime)}s (Total Flight Time)"), GUILayout.MinWidth(100));
 

@@ -255,11 +255,12 @@ namespace TargetInterceptPlanner
         double referenceTime = 0d;
         int? referenceWindowNumber = null;
 
-        double targetLaunchAzimuth = 90d; // due east (TODO, change this to target inclination? would need to be initialized later)
+        double targetLaunchAzimuth = 90d; // due east
         double targetLaunchInclination = double.NaN;
         double targetPhasingAngle = 180d;
         double targetPhasingTime = double.NaN;
         bool showAzimuth = false;
+        bool showRotatedValues = false; // Show the launch azimuth/inclination needed to account for the rotation speed of the body
         bool expandExtraWindow = true; // Show the extra window chooser
         int extraWindowNumber = 2; // counting from 1
         bool useWindowOptimizer = false; // Optimize for a certain phasing angle/time
@@ -543,6 +544,7 @@ namespace TargetInterceptPlanner
                 { "latitude", latitude },
                 { "longitude", longitude },
                 { "showAzimuth", showAzimuth },
+                { "showRotatedValues", showRotatedValues },
                 { "expandExtraWindow", expandExtraWindow },
                 { "referenceTimeMode", referenceTimeMode },
                 { "extraWindowNumber", extraWindowNumber },
@@ -693,6 +695,7 @@ namespace TargetInterceptPlanner
                     Read(ref latitude, "latitude");
                     Read(ref longitude, "longitude");
                     Read(ref showAzimuth, "showAzimuth");
+                    Read(ref showRotatedValues, "showRotatedValues");
                     Read(ref expandExtraWindow, "expandExtraWindow");
                     Read(ref referenceTimeMode, "referenceTimeMode");
                     Read(ref extraWindowNumber, "extraWindowNumber");
@@ -2145,7 +2148,7 @@ namespace TargetInterceptPlanner
             if (errorStateDV != 0)
             {
                 string tooltip = "";
-                switch (errorStateDV)
+                switch (errorStateDV) // TODO, make sure it is clear that these errors are per window
                 {
                     case 1: tooltip = "The delta-V is below the minimum possible to reach the target. Try reducing your flight time or increasing your parking altitude."; break;
                     case 2: tooltip = $"The delta-V is above the maximum allowed for this body ({FormatDecimals(maxDeltaVScaled * GetBodyScaledDV())}). Try increasing maxDeltaVScaled in settings, or increasing your flight time."; break;
@@ -3367,7 +3370,7 @@ namespace TargetInterceptPlanner
                         useKAC = GUILayout.Toggle(useKAC, "");
                         EndCombined();
                     }
-                    
+
                     // we could make it impossible to add a stock alarm when stock alarm clock disabler is installed, but its unnecessary and fails cleanly anyway
 
                     if (PrincipiaInstalled)
@@ -3550,6 +3553,19 @@ namespace TargetInterceptPlanner
 
                     DrawLine();
 
+                    BeginCombined();
+                    GUILayout.Label(new GUIContent($"Show Rotated Azimuth and Inclination", $"This shows the Azimuth and Inclination that takes the rotation speed of {mainBody.bodyName} into account. Use it if not using something like MechJeb's Ascent Guidance, which does this automatically for any inclination you put in."));
+                    MiddleCombined();
+                    showRotatedValues = GUILayout.Toggle(showRotatedValues, "");
+                    EndCombined();
+
+                    //if (StateChanged("showRotatedValues", showRotatedValues))
+                    //{
+                    //    ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
+                    //}
+
+                    DrawLine();
+
                     // azimuth to inclination formulas derived from https://www.astronomicalreturns.com/p/section-46-interesting-orbital.html
                     // sin(azimuth) = cos(inclination) / cos(latitude)
                     // cos(inclination) = cos(latitude) * sin(azimuth)
@@ -3558,7 +3574,7 @@ namespace TargetInterceptPlanner
                     string inclinationTooltip = $"Your latitude of {FormatDecimals(latitude)}\u00B0 is the default, which is directly east. Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively.";
                     double cosLat = Util.ClampEpsilon(Math.Cos(latitude * degToRad), latitude);
 
-                    double ResetTargetInclination() => ConvertInc(targetLaunchAzimuth, Math.Acos(cosLat * Math.Sin(targetLaunchAzimuth * degToRad)) * radToDeg);
+                    double AzimuthToInclination(double azimuth) => ConvertInc(azimuth, Math.Acos(cosLat * Math.Sin(azimuth * degToRad)) * radToDeg);
 
                     bool SwitchDirections()
                     {
@@ -3578,7 +3594,25 @@ namespace TargetInterceptPlanner
                         GUILayout.EndVertical();
                     }
 
-                    if (double.IsNaN(targetLaunchInclination)) targetLaunchInclination = ResetTargetInclination();
+                    double CalculateRotatedAzimuth()
+                    {
+                        // sourced from https://www.orbiterwiki.org/wiki/Launch_Azimuth#Rotation_of_the_Earth
+
+                        if (mainBody.rotationPeriod == 0) return targetLaunchAzimuth;
+
+                        double orbitalVelocity = Math.Sqrt(mainBody.gravParameter / (mainBody.Radius + parkingAltitude * 1000d));
+
+                        double earthRotVelocity = cosLat * tau * mainBody.Radius / mainBody.rotationPeriod;
+
+                        double rotX = orbitalVelocity * Math.Sin(targetLaunchAzimuth * degToRad) - earthRotVelocity;
+                        double rotY = orbitalVelocity * Math.Cos(targetLaunchAzimuth * degToRad);
+
+                        double rotatedAzimuth = Math.Atan2(rotX, rotY) * radToDeg;
+
+                        return rotatedAzimuth;
+                    }
+
+                    if (double.IsNaN(targetLaunchInclination)) targetLaunchInclination = AzimuthToInclination(targetLaunchAzimuth);
 
                     if (showAzimuth)
                     {
@@ -3591,7 +3625,7 @@ namespace TargetInterceptPlanner
 
                         MakeNumberEditField("targetLaunchAzimuth", ref targetLaunchAzimuth, 1d, 0d, 360d, true);
 
-                        targetLaunchInclination = ResetTargetInclination(); // continuously update value
+                        targetLaunchInclination = AzimuthToInclination(targetLaunchAzimuth); // continuously update value
 
                         GUILayout.Space(5);
 
@@ -3632,7 +3666,7 @@ namespace TargetInterceptPlanner
                         if (unreachable)
                         {
                             GUILayout.Space(5);
-                            GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {FormatDecimals(targetLaunchInclination)}\u00B0 is unreachable from your latitude of {FormatDecimals(latitude)}\u00B0, so it has been automatically converted to the nearest reachable inclination. ({FormatDecimals(ResetTargetInclination())}\u00B0)"));
+                            GUILayout.Label(new GUIContent("Unreachable", $"The Target Inclination of {FormatDecimals(targetLaunchInclination)}\u00B0 is unreachable from your latitude of {FormatDecimals(latitude)}\u00B0, so it has been automatically converted to the nearest reachable inclination. ({FormatDecimals(AzimuthToInclination(targetLaunchAzimuth))}\u00B0)"));
                             GUILayout.FlexibleSpace();
                         }
                         GUILayout.EndHorizontal();
@@ -3651,6 +3685,29 @@ namespace TargetInterceptPlanner
                     {
                         ClearAllCaches(); // this doesn't always result in new minimums, intentional (especially if switching from prograde to retrograde or vice versa, itll always be the same time)
                         // TODO, this is re-animating the phasing angle renderer, fix
+                    }
+
+                    if (showRotatedValues)
+                    {
+                        GUILayout.Space(5);
+
+                        double rotatedAzimuth = CalculateRotatedAzimuth();
+
+                        BeginCombined();
+                        GUILayout.Label(new GUIContent("Rotated Azimuth", "Range is 0\u00B0 to 360\u00B0, where 0\u00B0 and 180\u00B0 are North and South respectively."));
+                        MiddleCombined(true);
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(rotatedAzimuth)}\u00B0", $"{rotatedAzimuth}\u00B0"), GUILayout.MaxWidth(100));
+                        EndCombined(true);
+
+                        GUILayout.Space(5);
+
+                        double rotatedInclination = AzimuthToInclination(rotatedAzimuth);
+
+                        BeginCombined();
+                        GUILayout.Label(new GUIContent("Rotated Inclination", "Range is -180\u00B0 to 180\u00B0, where +90\u00B0 and -90\u00B0 are North and South respectively."));
+                        MiddleCombined(true);
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(rotatedInclination)}\u00B0", $"{rotatedInclination}\u00B0"), GUILayout.MaxWidth(100));
+                        EndCombined(true);
                     }
 
                     GUILayout.Space(10);

@@ -2595,6 +2595,12 @@ namespace TargetInterceptPlanner
                                 ClearAllOrbitDisplays();
                                 ClearAngleRenderer();
                             }
+
+                            GUILayout.Space(5);
+                            GUILayout.Label("Orbital Velocity");
+
+                            double orbitalVelocity = Math.Sqrt(mainBody.gravParameter / (mainBody.Radius + parkingAltitude * 1000d));
+                            GUILayout.Box(new GUIContent($"{FormatDecimals(orbitalVelocity)} m/s", $"{orbitalVelocity} m/s"));
                         }
 
                         // make sure to call GetCachedLaunchTime after resetting flightTime and clearing caches
@@ -2679,7 +2685,6 @@ namespace TargetInterceptPlanner
                         GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"));
                         GUILayout.EndHorizontal();
 
-                        GUILayout.Space(5);
                         GUILayout.Box(new GUIContent($"{FormatDecimals(dV0)} m/s", $"Eccentricity of {(!double.IsNaN(transferEcc0) ? (transferEcc0 > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(transferEcc0)}"), GUILayout.MinWidth(100));
 
                         GUILayout.Space(5);
@@ -2699,7 +2704,6 @@ namespace TargetInterceptPlanner
                         ExpandCollapse(ref expandParking0, "Show Orbit Details");
                         GUILayout.EndHorizontal();
 
-                        GUILayout.Space(5);
                         if (showAzimuth)
                         {
                             GUILayout.Box(new GUIContent($"{FormatDecimals(launchAz0)}\u00B0", $"Azimuth\n{FormatDecimals(launchAz0 * degToRad)} rads, this is {(launchAz0 <= 180d ? "prograde" : "retrograde")}"), GUILayout.MinWidth(100));
@@ -2714,7 +2718,7 @@ namespace TargetInterceptPlanner
                             ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0, flightTime);
                         }
 
-                        string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(launchAz1 - 90d) < epsilon ?
+                        string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(launchAz1 - 90d) < epsilon ? // TODO, add westerly
                             "Launch Easterly at this time to get into the required parking orbit" :
                             $"Launch at this time at this {(showAzimuth ? "azimuth" : "inclination")} to get into the required parking orbit";
 
@@ -2725,7 +2729,6 @@ namespace TargetInterceptPlanner
                         ExpandCollapse(ref expandParking1, "Show Orbit Details");
                         GUILayout.EndHorizontal();
 
-                        GUILayout.Space(5);
                         GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {FormatDecimals(nextLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
 
                         // we need this outside for alarm description
@@ -2747,7 +2750,6 @@ namespace TargetInterceptPlanner
                             ExpandCollapse(ref expandParking2, "Show Orbit Details");
                             GUILayout.EndHorizontal();
 
-                            GUILayout.Space(5);
                             GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {FormatDecimals(extraLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
 
                             if (expandParking2)
@@ -3594,24 +3596,6 @@ namespace TargetInterceptPlanner
                         GUILayout.EndVertical();
                     }
 
-                    double CalculateRotatedAzimuth()
-                    {
-                        // sourced from https://www.orbiterwiki.org/wiki/Launch_Azimuth#Rotation_of_the_Earth
-
-                        if (mainBody.rotationPeriod == 0) return targetLaunchAzimuth;
-
-                        double orbitalVelocity = Math.Sqrt(mainBody.gravParameter / (mainBody.Radius + parkingAltitude * 1000d));
-
-                        double earthRotVelocity = cosLat * tau * mainBody.Radius / mainBody.rotationPeriod;
-
-                        double rotX = orbitalVelocity * Math.Sin(targetLaunchAzimuth * degToRad) - earthRotVelocity;
-                        double rotY = orbitalVelocity * Math.Cos(targetLaunchAzimuth * degToRad);
-
-                        double rotatedAzimuth = Util.ClampAngle(Math.Atan2(rotX, rotY), true) * radToDeg;
-
-                        return rotatedAzimuth;
-                    }
-
                     if (double.IsNaN(targetLaunchInclination)) targetLaunchInclination = AzimuthToInclination(targetLaunchAzimuth);
 
                     if (showAzimuth)
@@ -3685,6 +3669,24 @@ namespace TargetInterceptPlanner
                     {
                         ClearAllCaches(); // this doesn't always result in new minimums, intentional (especially if switching from prograde to retrograde or vice versa, itll always be the same time)
                         // TODO, this is re-animating the phasing angle renderer, fix
+                    }
+
+                    double CalculateRotatedAzimuth()
+                    {
+                        // sourced from https://www.orbiterwiki.org/wiki/Launch_Azimuth#Rotation_of_the_Earth
+
+                        if (mainBody.rotationPeriod == 0) return targetLaunchAzimuth;
+
+                        double orbitalVelocity = Math.Sqrt(mainBody.gravParameter / (mainBody.Radius + parkingAltitude * 1000d));
+
+                        double earthRotVelocity = cosLat * tau * mainBody.Radius / mainBody.rotationPeriod;
+
+                        double rotX = orbitalVelocity * Math.Sin(targetLaunchAzimuth * degToRad) - earthRotVelocity;
+                        double rotY = orbitalVelocity * Math.Cos(targetLaunchAzimuth * degToRad);
+
+                        double rotatedAzimuth = Util.ClampAngle(Math.Atan2(rotX, rotY), true) * radToDeg;
+
+                        return rotatedAzimuth;
                     }
 
                     if (showRotatedValues)

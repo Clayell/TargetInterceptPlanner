@@ -261,6 +261,7 @@ namespace TargetInterceptPlanner
         double targetPhasingTime = double.NaN;
         bool showAzimuth = false;
         bool showRotatedValues = false; // Show the launch azimuth/inclination needed to account for the rotation speed of the body
+        bool useAlternateDefaultValues = false; // Set default azimuth/inclination to be based on the target's inclination instead of due east
         bool expandExtraWindow = true; // Show the extra window chooser
         int extraWindowNumber = 2; // counting from 1
         bool useWindowOptimizer = false; // Optimize for a certain phasing angle/time
@@ -545,6 +546,7 @@ namespace TargetInterceptPlanner
                 { "longitude", longitude },
                 { "showAzimuth", showAzimuth },
                 { "showRotatedValues", showRotatedValues },
+                { "useAlternateDefaultValues", useAlternateDefaultValues },
                 { "expandExtraWindow", expandExtraWindow },
                 { "referenceTimeMode", referenceTimeMode },
                 { "extraWindowNumber", extraWindowNumber },
@@ -696,6 +698,7 @@ namespace TargetInterceptPlanner
                     Read(ref longitude, "longitude");
                     Read(ref showAzimuth, "showAzimuth");
                     Read(ref showRotatedValues, "showRotatedValues");
+                    Read(ref useAlternateDefaultValues, "useAlternateDefaultValues");
                     Read(ref expandExtraWindow, "expandExtraWindow");
                     Read(ref referenceTimeMode, "referenceTimeMode");
                     Read(ref extraWindowNumber, "extraWindowNumber");
@@ -1391,7 +1394,7 @@ namespace TargetInterceptPlanner
 
             if (Math.Abs(bestEccentricity - maxEccentricity) <= epsilon * 10d) // eccentricity too high (need to use a higher epsilon here bc of GSS)
             {
-                //Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN. (bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity})");
+                Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN. (bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity})");
                 errorStateDV = 2;
             }
             else if (bestEccentricity < 1 && meanAnomaly > Math.PI && postManeuverTime >= (CalculateTimeOfHohmannManeuver(false).postTime / 2d)) // eccentricity too low
@@ -1456,7 +1459,12 @@ namespace TargetInterceptPlanner
 
                     if (double.IsNaN(phasingTime) || double.IsNaN(phasingAngle))
                     {
-                        if (eccentricity > 1) { errorStateDV = 2; break; } // if its NaN while eccentricity is above 1, that means the flight time is way too low
+                        if (eccentricity > 1) // if its NaN while eccentricity is above 1, that means the flight time is way too low
+                        {
+                            //Log("NaN while eccentricity is above 1, setting errorStateDV to 2");
+                            errorStateDV = 2;
+                            break;
+                        }
                         eccentricity *= 1.25; // increase eccentricity until high enough
                         continue;
                     }
@@ -3338,7 +3346,7 @@ namespace TargetInterceptPlanner
                     DrawLine();
 
                     BeginCombined();
-                    GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than {targetName} inclination ({FormatDecimals(targetOrbit.inclination)}\u00B0)"));
+                    GUILayout.Label(new GUIContent($"Find the Global Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error instead of the Local Minimum of the {(showAzimuth ? "azimuth" : "inclination")} error", $"Ignored if latitude is higher than target's inclination ({FormatDecimals(targetOrbit.inclination)}\u00B0)"));
                     MiddleCombined();
                     GUI.enabled = isLowLatitude;
                     useAltBehavior = GUILayout.Toggle(useAltBehavior, "");
@@ -3568,6 +3576,14 @@ namespace TargetInterceptPlanner
 
                     DrawLine();
 
+                    BeginCombined();
+                    GUILayout.Label(new GUIContent($"Use Target's Inclination as Default {(showAzimuth ? "Azimuth" : "Inclination")}", $"Instead of the default being due east, this will make the reset button match your {(showAzimuth ? "azimuth" : "inclination")} with the target's inclination ({FormatDecimals(targetOrbit.inclination)}\u00B0), if possible."));
+                    MiddleCombined();
+                    useAlternateDefaultValues = GUILayout.Toggle(useAlternateDefaultValues, "");
+                    EndCombined();
+
+                    DrawLine();
+
                     // azimuth to inclination formulas derived from https://www.astronomicalreturns.com/p/section-46-interesting-orbital.html
                     // sin(azimuth) = cos(inclination) / cos(latitude)
                     // cos(inclination) = cos(latitude) * sin(azimuth)
@@ -3577,6 +3593,13 @@ namespace TargetInterceptPlanner
                     double cosLat = Util.ClampEpsilon(Math.Cos(latitude * degToRad), latitude);
 
                     double AzimuthToInclination(double azimuth) => ConvertInc(azimuth, Math.Acos(cosLat * Math.Sin(azimuth * degToRad)) * radToDeg);
+
+                    double RealInclinationToAzimuth(double inclination)
+                    {
+                        double sinAz = Math.Cos(inclination * degToRad) / cosLat;
+                        sinAz = Util.Clamp(sinAz, -1d, 1d);
+                        return Math.Asin(sinAz) * radToDeg;
+                    }
 
                     bool SwitchDirections()
                     {
@@ -3604,7 +3627,7 @@ namespace TargetInterceptPlanner
                         GUILayout.Label(new GUIContent("Target Launch", azimuthTooltip + " Changing the Target Launch Azimuth may not change the launch window time, this is normal and expected."));
                         SwitchAzimuthInclination();
                         if (SwitchDirections()) targetLaunchAzimuth = Util.ClampAngle(targetLaunchAzimuth + 180d, false);
-                        ResetDefault(ref targetLaunchAzimuth, 90d);
+                        ResetDefault(ref targetLaunchAzimuth, useAlternateDefaultValues ? RealInclinationToAzimuth(targetOrbit.inclination) : 90d);
                         GUILayout.EndHorizontal();
 
                         MakeNumberEditField("targetLaunchAzimuth", ref targetLaunchAzimuth, 1d, 0d, 360d, true);
@@ -3629,7 +3652,7 @@ namespace TargetInterceptPlanner
                             targetLaunchInclination = Util.ClampAngle(targetLaunchInclination - 180d, false);
                             if (targetLaunchInclination > 180d) targetLaunchInclination -= 360d; // do not clamp
                         }
-                        ResetDefault(ref targetLaunchInclination, latitude);
+                        ResetDefault(ref targetLaunchInclination, useAlternateDefaultValues ? AzimuthToInclination(RealInclinationToAzimuth(targetOrbit.inclination)) : latitude);
                         GUILayout.EndHorizontal();
 
                         GUILayout.BeginHorizontal();

@@ -3607,7 +3607,7 @@ namespace TargetInterceptPlanner
                         double rotX = orbitalVelocity * Math.Sin(targetLaunchAzimuth * degToRad) - earthRotVelocity;
                         double rotY = orbitalVelocity * Math.Cos(targetLaunchAzimuth * degToRad);
 
-                        double rotatedAzimuth = Math.Atan2(rotX, rotY) * radToDeg;
+                        double rotatedAzimuth = Util.ClampAngle(Math.Atan2(rotX, rotY), true) * radToDeg;
 
                         return rotatedAzimuth;
                     }

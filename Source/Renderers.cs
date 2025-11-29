@@ -1,8 +1,12 @@
 ﻿// Adapted from TWP2 with permission (https://github.com/Nazfib/TransferWindowPlanner2/tree/main/TransferWindowPlanner2/UI/Rendering), thanks Nazfib!
 
 
+using HarmonyLib;
 using System;
+using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
+using Vectrosity;
 
 namespace TargetInterceptPlanner
 {
@@ -181,8 +185,36 @@ namespace TargetInterceptPlanner
 
         internal void Draw(Orbit orbit, double launchAoP, double phasingAngle, bool visibilityChanged)
         {
+            double epsilon = 1e-9;
+
             BodyOrigin = orbit.referenceBody;
-            parkingOrbit = orbit;
+
+            if (orbit.inclination > epsilon && Math.Abs(orbit.inclination - 180d) > epsilon)
+            {
+                parkingOrbit = orbit;
+            }
+            else
+            {
+                double newInclination;
+                if (orbit.inclination <= epsilon) newInclination = epsilon;
+                else newInclination = 180d - epsilon;
+
+                parkingOrbit = new Orbit
+                {
+                    inclination = newInclination,
+                    eccentricity = orbit.eccentricity,
+                    semiMajorAxis = orbit.semiMajorAxis,
+                    LAN = orbit.LAN,
+                    argumentOfPeriapsis = orbit.argumentOfPeriapsis,
+                    meanAnomalyAtEpoch = orbit.meanAnomalyAtEpoch,
+                    epoch = orbit.epoch,
+                    referenceBody = orbit.referenceBody,
+                };
+
+                parkingOrbit.Init();
+                parkingOrbit.UpdateFromUT(orbit.epoch);
+            }
+
             initialAoPRad = launchAoP * TargetInterceptPlanner.degToRad;
             newAoPRad = Util.ClampAngle(launchAoP + phasingAngle, false) * TargetInterceptPlanner.degToRad;
             AoPDiff = phasingAngle;
@@ -308,11 +340,14 @@ namespace TargetInterceptPlanner
         // Ugly hack: Creating a new class derived from OrbitTargetRenderer does not work - the orbit lags behind the camera
         // movement when panning. Therefore, we need to use one of the built-in classes designed for rendering orbits: those
         // inheriting from OrbitTargetRenderer. Only the ContractOrbitRenderer is available without the DLC.
-        private readonly ContractOrbitRenderer _renderer;
+        internal ContractOrbitRenderer _renderer;
 
-        private OrbitRendererHack(ContractOrbitRenderer renderer)
+        internal static readonly Dictionary<OrbitRendererBase, OrbitRendererHack> hacks = new Dictionary<OrbitRendererBase, OrbitRendererHack>();
+
+        internal OrbitRendererHack(ContractOrbitRenderer renderer)
         {
             _renderer = renderer;
+            hacks[_renderer] = this;
         }
 
         internal static OrbitRendererHack Setup(Orbit orbit, Color color)
@@ -323,6 +358,7 @@ namespace TargetInterceptPlanner
             // Agent, which we can't provide (it's a protected field of the Contract class).
             // So, the full workaround is this: provide a default-initialized Contract to the Setup method, then immediately
             // set it to null before the caption update methods can make use of it.
+
             ContractOrbitRenderer renderer = ContractOrbitRenderer.Setup(new Contracts.Contract(), orbit); // activedraw seems to be not used at all
             renderer.SetColor(color);
             renderer.contract = null;
@@ -332,6 +368,150 @@ namespace TargetInterceptPlanner
         internal void Cleanup()
         {
             _renderer.Cleanup();
+            hacks.Remove(_renderer);
+        }
+    }
+
+    [HarmonyPatch(typeof(OrbitRendererBase))]
+    public static class OrbitRendererBasePatches
+    {
+        internal static readonly FieldInfo lineOpacityField = AccessTools.Field(typeof(OrbitRendererBase), "lineOpacity");
+
+        // forces hyperbolic orbits to not fade away over time
+
+        [HarmonyPatch("SplineOpacityUpdate")]
+        [HarmonyPrefix]
+        internal static bool Prefix_SplineOpacityUpdate(OrbitRendererBase __instance)
+        {
+            if (!OrbitRendererHack.hacks.ContainsKey(__instance)) return true;
+
+            MapObject target = PlanetariumCamera.fetch?.target;
+            CelestialBody tgt = target?.celestialBody ?? target?.orbit?.referenceBody;
+
+            if (__instance.driver == null)
+            {
+                Util.LogWarning("OrbitDriver is null!");
+                return true;
+            }
+
+            Orbit orbit = __instance.driver.orbit;
+
+            if (orbit == null)
+            {
+                Util.LogWarning("Orbit is null!");
+                return true;
+            }
+
+            if (__instance.IsRenderableOrbit(orbit, tgt))
+            {
+                lineOpacityField?.SetValue(__instance, 1f);
+            }
+            else
+            {
+                Util.LogWarning("Orbit is not renderable!");
+                return true;
+            }
+
+            return false;
+        }
+
+        // the code that determines how long to draw hyperbolic orbits is NOT in Orbit.DrawOrbit(), but instead in OrbitRendererBase.UpdateSpline()
+        // Orbit.DrawOrbit() doesnt seem to ever get called? very strange
+
+        internal static readonly FieldInfo orbitPointsField = AccessTools.Field(typeof(OrbitRendererBase), "orbitPoints");
+        internal static readonly FieldInfo orbitLineField = AccessTools.Field(typeof(OrbitRendererBase), "orbitLine");
+        internal const double drawAngle = 5d; // TODO, change this to be based on meanAnomaly? actually it seems pretty long already, original is Math.Acos(-1d / orbit.eccentricity)
+
+        // massively increases how long hyperbolic orbits are drawn for
+
+        [HarmonyPatch("UpdateSpline")]
+        [HarmonyPrefix]
+        internal static bool Prefix_UpdateSpline(OrbitRendererBase __instance)
+        {
+            if (!OrbitRendererHack.hacks.ContainsKey(__instance)) return true;
+
+            if (__instance.driver == null)
+            {
+                Util.LogWarning("OrbitDriver is null!");
+                return true;
+            }
+
+            Orbit orbit = __instance.driver.orbit;
+
+            if (orbit == null)
+            {
+                Util.LogWarning("Orbit is null!");
+                return true;
+            }
+
+            if (orbitPointsField == null)
+            {
+                Util.LogWarning("orbitPointsField is null!");
+                return true;
+            }
+
+            if (orbitLineField == null)
+            {
+                Util.LogWarning("orbitLineField is null!");
+                return true;
+            }
+
+            Vector3d[] orbitPoints = (Vector3d[])orbitPointsField.GetValue(__instance);
+            VectorLine orbitLine = (VectorLine)orbitLineField.GetValue(__instance);
+
+            if (orbit == null)
+            {
+                Util.LogWarning("orbitField returned null Orbit!");
+                return true;
+            }
+
+            if (orbitPoints == null)
+            {
+                Util.LogWarning("orbitPointsField returned null Vector3d[]!");
+                return true;
+            }
+
+            if (orbitLine == null)
+            {
+                Util.LogWarning("orbitLineField returned null VectorLine!");
+                return true;
+            }
+
+            if (orbit.eccentricity >= 1)
+            {
+                Util.Log($"Math.Acos(-1d / orbit.eccentricity): {Math.Acos(-1d / orbit.eccentricity)}");
+                
+                double st = -drawAngle;
+                double end = drawAngle;
+                double rng = end - st;
+                double itv = rng / (double)(orbitPoints.Length - 1);
+                int num3 = orbitPoints.Length;
+                for (int i = 0; i < num3; i++)
+                {
+                    orbitPoints[i] = orbit.getPositionFromEccAnomalyWithSemiMinorAxis(st + itv * (double)i, orbit.semiMinorAxis);
+                }
+
+                ScaledSpace.LocalToScaledSpace(orbitPoints, orbitLine.points3);
+
+                orbitLine.drawEnd = orbitLine.points3.Count - 2;
+
+                return false;
+            }
+            else
+            {
+                return true;
+            }
+        }
+    }
+
+
+    [KSPAddon(KSPAddon.Startup.Instantly, true)]
+    public class HarmonyPatcher : MonoBehaviour
+    {
+        internal void Start()
+        {
+            var harmony = new Harmony("TargetInterceptPlanner.HarmonyPatcher");
+            harmony.PatchAll();
         }
     }
 }

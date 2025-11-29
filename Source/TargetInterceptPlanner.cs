@@ -1258,12 +1258,13 @@ namespace TargetInterceptPlanner
             if (double.IsNaN(transferEcc) || transferEcc == 1d) return (double.NaN, double.NaN);
 
             const double epsilon = 1e-9;
+            const double tolerance = 1e-6; // bigger than GSS epsilon to avoid misses
 
             double gravParameter = mainBody.gravParameter;
-            double parkingRadius = mainBody.Radius + parkingAltitude * 1000d;
-            double orbitPeriod = tau * Math.Sqrt(Math.Pow(parkingRadius, 3) / gravParameter);
+            double r0 = mainBody.Radius + parkingAltitude * 1000d;
+            double orbitPeriod = tau * Math.Sqrt(Math.Pow(r0, 3) / gravParameter);
 
-            double transferSMA = parkingRadius / (1 - transferEcc);
+            double transferSMA = r0 / (1 - transferEcc);
 
             double meanMotion = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(transferSMA, 3))); // Abs for hyperbolic
 
@@ -1278,6 +1279,7 @@ namespace TargetInterceptPlanner
                 if (flightTime > phasingTime)
                 {
                     meanAnomaly = meanMotion * (flightTime - phasingTime); // we're not clamping this to tau, as doing so leads to crashes somehow
+                    //if (transferEcc < 1 && meanAnomaly > tau) meanAnomaly = tau;
                 }
                 else
                 {
@@ -1319,16 +1321,20 @@ namespace TargetInterceptPlanner
             double bestAngle1 = GoldenSectionSearch(0d, 180d - epsilon, epsilon, DistanceError);
             double bestAngle2 = GoldenSectionSearch(180d + epsilon, 360d, epsilon, DistanceError);
 
-            if (DistanceError(bestAngle1) < DistanceError(bestAngle2)) bestAngle = bestAngle1;
+            if (DistanceError(bestAngle1) < DistanceError(bestAngle2) || Math.Abs(bestAngle2 - 360d) < tolerance || Math.Abs(bestAngle2 - 180d) < tolerance) bestAngle = bestAngle1;
             else bestAngle = bestAngle2;
 
             double bestTime = orbitPeriod * (bestAngle / 360d);
 
             meanAnomaly = meanMotion * (flightTime - bestTime);
 
-            //Log($"DistanceError bestAngle: {DistanceError(bestAngle)}, bestAngle: {bestAngle}, DistanceError bestAngle1: {DistanceError(bestAngle1)}, bestAngle1: {bestAngle1}, DistanceError bestAngle2: {DistanceError(bestAngle2)}, bestAngle2: {bestAngle2}\nbestTime: {bestTime}, meanAnomaly: {meanAnomaly}, transferEcc: {transferEcc}, flightTime: {flightTime}");
+            //Log($"\nmeanAnomaly: {meanAnomaly}, DistanceError bestAngle: {DistanceError(bestAngle)}, bestAngle: {bestAngle}, DistanceError(bestAngle1): {DistanceError(bestAngle1)}, bestAngle1: {bestAngle1}, DistanceError(bestAngle2): {DistanceError(bestAngle2)}, bestAngle2: {bestAngle2}\nbestTime: {bestTime}, transferEcc: {transferEcc}, flightTime: {flightTime}, r0: {r0}, transferSMA: {transferSMA}, meanMotion: {meanMotion}, gravParameter: {gravParameter}, postManeuverTime: {flightTime - bestTime}, real mean anomaly?: {meanMotion * (flightTime - bestTime)}");
 
-            if ((transferEcc < 1d && meanAnomaly > Math.PI) || flightTime <= bestTime || double.IsNaN(bestAngle1) || double.IsNaN(bestAngle2)) { /*Log($"Returning NaN!");*/ return (double.NaN, double.NaN); }
+            if (flightTime <= bestTime || transferEcc < 1d && meanAnomaly > Math.PI || double.IsNaN(bestAngle) || double.IsNaN(DistanceError(bestAngle)) || Math.Abs(bestAngle - 180d) < tolerance || bestAngle < tolerance)
+            { 
+                //Log($"Returning NaN!"); 
+                return (double.NaN, double.NaN);
+            }
             // mean anomaly is past apoapsis so eccentricity is too low or flight time is too low or either of the angles are NaN, return NaN
 
             return (bestTime, bestAngle);
@@ -1374,6 +1380,7 @@ namespace TargetInterceptPlanner
                 transferOrbit.UpdateFromUT(startUT);
 
                 meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(SMA, 3))) * postManeuverTime; // we're not clamping this to tau, as doing so leads to crashes somehow
+                //if (eccentricity < 1 && meanAnomaly > tau) meanAnomaly = tau;
                 double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, eccentricity, epsilon); // a very large meanAnomaly will lead to a crash here, we prevent this beforehand by discarding large flight times in CalculatePhasingAndDeltaV
                 Vector3d futurePos = transferOrbit.getPositionFromEccAnomaly(eccAnomaly);
                 //Vector3d futurePos2 = transferOrbit.getPositionAtUT(targetTime); // this is less accurate because we cant set our own epsilon
@@ -1385,33 +1392,34 @@ namespace TargetInterceptPlanner
 
             double bestEccentricity = GoldenSectionSearch(epsilon, maxEccentricity, epsilon, DistanceError);
 
-            if (bestEccentricity == 1) errorStateDV = 4;
+            //if (bestEccentricity == 1) errorStateDV = 4;
 
-            //double distanceError = DistanceError(bestEccentricity);
+            double distanceError = DistanceError(bestEccentricity);
 
             double aBest = r0 / (1 - bestEccentricity);
             meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(aBest, 3))) * postManeuverTime;
+            double meanMotion = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(aBest, 3)));
 
-            if (Math.Abs(bestEccentricity - maxEccentricity) <= epsilon * 10d) // eccentricity too high (need to use a higher epsilon here bc of GSS)
-            {
-                Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN. (bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity})");
-                errorStateDV = 2;
-            }
-            else if (bestEccentricity < 1 && meanAnomaly > Math.PI && postManeuverTime >= (CalculateTimeOfHohmannManeuver(false).postTime / 2d)) // eccentricity too low
-            { // check against hohmann maneuver time at PeR to make sure we have a sensible manuever time
-                //Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
-                errorStateDV = 1;
-            }
+            //if (Math.Abs(bestEccentricity - maxEccentricity) <= epsilon * 10d) // eccentricity too high (need to use a higher epsilon here bc of GSS)
+            //{
+            //    Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN. (bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity})");
+            //    errorStateDV = 2;
+            //}
+            //else if (bestEccentricity < 1 && meanAnomaly > Math.PI && postManeuverTime >= (CalculateTimeOfHohmannManeuver(false).postTime / 2d)) // eccentricity too low
+            //{ // check against hohmann maneuver time at PeR to make sure we have a sensible manuever time
+            //    //Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
+            //    errorStateDV = 1;
+            //}
 
             double dV = Math.Sqrt((bestEccentricity + 1) * gravParameter / r0) - Math.Sqrt(gravParameter / r0);
 
-            //Log($"dV: {dV}, bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity}, meanAnomaly: {meanAnomaly}, errorStateDV: {errorStateDV}, distanceError: {distanceError}, aBest: {aBest}, r0: {r0}, postManeuverTime: {postManeuverTime}, gravParameter: {gravParameter}");
+            //Log($"dV: {dV}, bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity}, meanAnomaly: {meanAnomaly}, errorStateDV: {errorStateDV}, distanceError: {distanceError}\naBest: {aBest}, r0: {r0}, gravParameter: {gravParameter}, postManeuverTime: {postManeuverTime}, startUT: {startUT} inclination: {inclination}, LAN: {LAN} AoP: {AoP}, meanMotion: {meanMotion}");
 
             //Log($"BEFORE WIPE: dV: {dV}, bestEccentricity: {bestEccentricity}, meanAnomaly: {meanAnomaly}");
 
             if (errorStateDV != 0)
             {
-                dV = bestEccentricity = double.NaN;
+                //dV = bestEccentricity = double.NaN;
             }
 
             //stopwatch.Stop();
@@ -1440,9 +1448,16 @@ namespace TargetInterceptPlanner
             int errorStateDV = -1;
             //int i = 0;
 
-            //Log("\n\n\n\nbeginning loop");
+            double gravParameter = mainBody.gravParameter;
+            double r0 = mainBody.Radius + parkingAltitude * 1000d;
+            double maxPossibleDV = maxDeltaVScaled * GetBodyScaledDV();
+            double maxVelocity = Math.Sqrt(gravParameter / r0) + maxPossibleDV;
+            double maxEccentricity = (r0 * maxVelocity * maxVelocity / gravParameter) - 1;
 
-            //Log($"flightTime: {flightTime}, absolute max time: {CalculateAbsoluteMaxTime()}");
+            double minEccentricity = CalculateTimeOfHohmannManeuver(false).eccentricity;
+            //double minDV = Math.Sqrt((minEccentricity + 1) * gravParameter / r0) - Math.Sqrt(gravParameter / r0);
+
+            //Log($"\n\n\n\nbeginning loop, flightTime: {flightTime}, absolute max time: {CalculateAbsoluteMaxTime()}, startTime: {startTime}, inclination: {inclination}, LAN: {LAN}, AoP: {AoP}");
 
             if (flightTime > CalculateAbsoluteMaxTime()) // we dont need to calculate with really high flight times if they're already above the absolute max
             {
@@ -1461,6 +1476,7 @@ namespace TargetInterceptPlanner
                     {
                         if (eccentricity > 1) // if its NaN while eccentricity is above 1, that means the flight time is way too low
                         {
+                            //Log("NaN while eccentricity is above 1");
                             //Log("NaN while eccentricity is above 1, setting errorStateDV to 2");
                             errorStateDV = 2;
                             break;
@@ -1471,7 +1487,23 @@ namespace TargetInterceptPlanner
 
                     (dV, eccentricity, errorStateDV) = CalculateDV(flightTime - phasingTime, startUT + phasingTime, inclination, LAN, Util.ClampAngle(AoP + phasingAngle, false));
 
-                    if (errorStateDV != 0 || Math.Abs(eccentricity - lastEcc) < epsilon) break;
+                    //if (errorStateDV != 0 || Math.Abs(eccentricity - lastEcc) < epsilon) break;
+                    if (Math.Abs(eccentricity - lastEcc) < epsilon) break;
+
+                    if ((lastEcc > 1 && eccentricity < 1))
+                    {
+                        //Log($"Switching between hyperbolic and eccentric! lastEcc: {lastEcc}, eccentricity: {eccentricity}");
+                        errorStateDV = 1;
+                        break;
+                    }
+
+                    if (eccentricity < minEccentricity)
+                    {
+                        //Log($"Eccentricity was below minimum! eccentricity: {eccentricity}, minEccentricity: {minEccentricity}"); // gets falsely triggered with small flight times when it escapes previous loop
+                        //eccentricity = minEccentricity;
+                        //errorStateDV = 1;
+                        //break;
+                    }
 
                     if (i == maxIterations - 1)
                     {
@@ -1480,6 +1512,20 @@ namespace TargetInterceptPlanner
                         break;
                     }
                 }
+            }
+
+            double SMA = r0 / (1 - eccentricity);
+            double meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(SMA, 3))) * flightTime - phasingTime;
+
+            if (Math.Abs(eccentricity - maxEccentricity) <= epsilon * 10d) // eccentricity too high (need to use a higher epsilon here bc of GSS)
+            {
+                //Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN. (eccentricity: {eccentricity}, maxEccentricity: {maxEccentricity})");
+                errorStateDV = 2;
+            }
+            else if (eccentricity < 1 && meanAnomaly > Math.PI && flightTime - phasingTime >= (CalculateTimeOfHohmannManeuver(false).postTime / 2d)) // eccentricity too low
+            { // check against hohmann maneuver time at PeR to make sure we have a sensible manuever time
+                //Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
+                errorStateDV = 1;
             }
 
             //stopwatch.Stop();
@@ -1500,9 +1546,9 @@ namespace TargetInterceptPlanner
             return (phasingTime, phasingAngle, dV, eccentricity, errorStateDV);
         }
 
-        private (double postTime, double totalTime) CalculateTimeOfHohmannManeuver(bool useApR)
+        private (double postTime, double totalTime, double eccentricity) CalculateTimeOfHohmannManeuver(bool useApR)
         { // The formulas are from http://www.braeunig.us/space/orbmech.htm
-            if (targetOrbit == null) return (double.NaN, double.NaN);
+            if (targetOrbit == null) return (double.NaN, double.NaN, double.NaN);
 
             double altitude = useApR ? targetOrbit.ApR : targetOrbit.PeR;
             double r0 = parkingAltitude * 1000d + mainBody.Radius;
@@ -1511,10 +1557,10 @@ namespace TargetInterceptPlanner
             double a = (r0 + altitude) / 2d;
             double t1 = Math.PI * Math.Sqrt(Math.Pow(a, 3) / gravParameter);
 
-            //double e = (altitude - r0) / (altitude + r0);
+            double e = (altitude - r0) / (altitude + r0);
             double orbitPeriod = tau * Math.Sqrt(Math.Pow(r0, 3) / gravParameter);
 
-            return (t1, t1 + orbitPeriod);
+            return (t1, t1 + orbitPeriod, e);
         }
 
         private double CalculateAbsoluteMaxTime() => CalculateTimeOfHohmannManeuver(true).totalTime;
@@ -1522,7 +1568,7 @@ namespace TargetInterceptPlanner
         private double CalculateMaxFlightTime(Vector3d launchPos, double latitude, double longitude, double targetInclination, bool useAltBehavior)
         { // targets with an eccentricity of 1 have already been filtered out
             const double epsilon = 1e-9;
-            double candidateFlightTime = solarDayLength; // completely arbitrary
+            double candidateFlightTime = double.NaN;
             double absoluteMaxTime = CalculateAbsoluteMaxTime(); // this will almost always give a NaN later on unless the orbit is perfectly circular
 
             if (referenceTimeMode == 0)
@@ -1566,15 +1612,11 @@ namespace TargetInterceptPlanner
                     double candidateLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, time, targetInclination, useAltBehavior, referenceWindowNumber.Value, true);
                     double candidateLaunchETA = candidateLaunchUT - currentUT;
 
-                    int errorStateDV;
+                    int errorStateDV = -1;
                     if (!double.IsNaN(candidateLaunchETA))
                     {
                         OrbitData launchOrbit = GetCachedLaunchOrbit(launchPos, latitude, longitude, time, candidateLaunchETA, referenceWindowNumber.Value);
                         errorStateDV = launchOrbit.errorStateDV;
-                    }
-                    else
-                    {
-                        errorStateDV = -1;
                     }
 
                     windowCache.Clear(); // we're only use GetCachedLaunchTime for the window number logic
@@ -2615,8 +2657,14 @@ namespace TargetInterceptPlanner
 
                         double nextLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, 0);
                         double nextLaunchETA = nextLaunchUT - currentUT;
-                        double extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, extraWindowNumber - 1);
-                        double extraLaunchETA = extraLaunchUT - currentUT;
+
+                        double extraLaunchUT = double.NaN;
+                        double extraLaunchETA = double.NaN;
+                        if (expandExtraWindow)
+                        {
+                            extraLaunchUT = GetCachedLaunchTime(launchPos, latitude, longitude, flightTime, targetOrbit.inclination, useAltBehavior, extraWindowNumber - 1);
+                            extraLaunchETA = extraLaunchUT - currentUT;
+                        }
 
                         switch (referenceTimeMode) // need to set referenceTime before we use it
                         {
@@ -2628,7 +2676,7 @@ namespace TargetInterceptPlanner
                                 break;
                             case 1:
                                 referenceTimeLabel = "Next Window";
-                                referenceTimeTooltip = $"Change reference time to Launch Window {extraWindowNumber}";
+                                referenceTimeTooltip = expandExtraWindow ? $"Change reference time to Launch Window {extraWindowNumber}" : "Change reference time to the Launch Now Window";
                                 referenceTime = nextLaunchETA;
                                 referenceWindowNumber = 0;
                                 break;
@@ -2640,9 +2688,10 @@ namespace TargetInterceptPlanner
                                 break;
                         }
 
+                        if (double.IsNaN(referenceTime)) referenceTime = nextLaunchETA; // forced switch of referenceTimeMode from 2 to 1 when expandExtraWindow is turned off
+
                         OrbitData launchOrbit0 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, referenceTime, referenceWindowNumber);
                         OrbitData launchOrbit1 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, nextLaunchETA, 0);
-                        OrbitData launchOrbit2 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, extraLaunchETA, extraWindowNumber - 1);
 
                         const double tolerance = 1e-6; // avoid floating point misses, this is needed because launchOrbit.azimuth isnt exact like targetLaunchAzimuth
 
@@ -2651,10 +2700,7 @@ namespace TargetInterceptPlanner
                         double displayInc0 = ConvertInc(launchOrbit0);
                         double launchAz1 = Util.RoundCheck(launchOrbit1.azimuth, tolerance);
                         double launchInc1 = launchOrbit1.inclination;
-                        //double displayInc1 = ConvertInc(launchOrbit1); // unused
-                        double launchAz2 = Util.RoundCheck(launchOrbit2.azimuth, tolerance);
-                        double launchInc2 = launchOrbit2.inclination;
-                        //double displayInc2 = ConvertInc(launchOrbit2); // unused
+                        double displayInc1 = ConvertInc(launchOrbit1); // unused
 
                         double launchLAN0 = launchOrbit0.LAN;
                         double launchAoP0 = launchOrbit0.AoP;
@@ -2664,7 +2710,6 @@ namespace TargetInterceptPlanner
                         double transferEcc0 = launchOrbit0.eccentricity;
                         int errorStateDV0 = launchOrbit0.errorStateDV;
                         int errorStateDV1 = launchOrbit1.errorStateDV;
-                        int errorStateDV2 = launchOrbit2.errorStateDV;
 
                         if (Util.MapViewEnabled())
                         {
@@ -2751,6 +2796,13 @@ namespace TargetInterceptPlanner
 
                         if (expandExtraWindow)
                         {
+                            OrbitData launchOrbit2 = GetCachedLaunchOrbit(launchPos, latitude, longitude, flightTime, extraLaunchETA, extraWindowNumber - 1);
+
+                            double launchAz2 = Util.RoundCheck(launchOrbit2.azimuth, tolerance);
+                            double launchInc2 = launchOrbit2.inclination;
+                            double displayInc2 = ConvertInc(launchOrbit2); // unused
+                            int errorStateDV2 = launchOrbit2.errorStateDV;
+
                             GUILayout.Space(5);
                             GUILayout.BeginHorizontal();
                             ShowErrorStateDV(errorStateDV2);
@@ -3259,7 +3311,7 @@ namespace TargetInterceptPlanner
                     DrawLine();
 
                     BeginCombined();
-                    GUILayout.Label("Select an orbit to target manually");
+                    GUILayout.Label("Target a orbit manually instead of a vessel or moon's orbit");
                     MiddleCombined();
                     targetManual = GUILayout.Toggle(targetManual, "");
                     EndCombined();
@@ -3309,7 +3361,7 @@ namespace TargetInterceptPlanner
 
                     if (errorStateTargets == 2 || errorStateTargets == 3) GUILayout.Label("<b><i>TOGGLE THIS TO GET OUT OF ERROR</i></b>");
                     BeginCombined();
-                    GUILayout.Label("Target an orbiting Vessel instead of an orbiting Moon");
+                    GUILayout.Label("Target an orbiting vessel instead of an orbiting moon");
                     MiddleCombined();
                     targetVessel = GUILayout.Toggle(targetVessel, "");
                     EndCombined();
@@ -3408,6 +3460,8 @@ namespace TargetInterceptPlanner
                     {
                         ResetWindow(WindowState.Main);
                         //ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
+
+                        if (!expandExtraWindow && referenceTimeMode == 2) referenceTimeMode = 1;
                     }
 
                     if (expandExtraWindow)
@@ -3432,10 +3486,7 @@ namespace TargetInterceptPlanner
                         //{
                         //    ResetWindow(ref settingsRect); // this isnt needed with the scroll bar
                         //}
-                    }
-
-                    if (expandExtraWindow)
-                    {
+                    
                         DrawLine();
 
                         if (!useWindowOptimizer)
@@ -3605,7 +3656,7 @@ namespace TargetInterceptPlanner
                     {
                         GUILayout.BeginVertical();
                         GUILayout.Space(5);
-                        bool pressed = GUILayout.Button(new GUIContent("Switch", $"Switch from {(targetLaunchAzimuth <= 180d ? "Prograde to Retrograde" : "Retrograde to Prograde")}"), GUILayout.Width(60));
+                        bool pressed = GUILayout.Button(new GUIContent("Switch Directions", $"Switch from {(targetLaunchAzimuth <= 180d ? "Prograde to Retrograde" : "Retrograde to Prograde")}"), GUILayout.Width(60));
                         GUILayout.EndVertical();
 
                         return pressed;

@@ -10,4 +10,5 @@ using System.Reflection;
 [assembly: AssemblyFileVersion("2.0.0.0")]
 [assembly: KSPAssembly("TargetInterceptPlanner", 2, 0, 0)]
 [assembly: KSPAssemblyDependency("ClickThroughBlocker", 1, 0)]
+[assembly: KSPAssemblyDependency("HarmonyKSP", 1, 0)]
 [assembly: KSPAssemblyDependency("ToolbarController", 1, 0)]

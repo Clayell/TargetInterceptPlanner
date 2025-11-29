@@ -59,6 +59,7 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\Assembly-CSharp.dll" />
+	<Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\Assembly-CSharp-firstpass.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.AnimationModule.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.CoreModule.dll" />
@@ -67,6 +68,7 @@
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.UI.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll" />
     <Reference Include="$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll" />
+	<Reference Include="$(KSPRoot)\GameData\000_Harmony\0Harmony.dll" />
     <Reference Include="$(KSPRoot)\GameData\001_ToolbarControl\Plugins\ToolbarControl.dll" />
   </ItemGroup>
   <ItemGroup>

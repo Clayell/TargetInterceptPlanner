@@ -44,6 +44,7 @@ Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 
 #### Required:
 * ClickThroughBlocker
+* Harmony2
 * ToolbarController
 
 #### Recommended:

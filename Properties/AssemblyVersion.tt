@@ -102,4 +102,5 @@ using System.Reflection;
 [assembly: AssemblyFileVersion("<#= major #>.<#= minor #>.<#= patch #>.<#= build #>")]
 [assembly: KSPAssembly("TargetInterceptPlanner", <#= major #>, <#= minor #>, <#= patch #>)]
 [assembly: KSPAssemblyDependency("ClickThroughBlocker", 1, 0)]
+[assembly: KSPAssemblyDependency("HarmonyKSP", 1, 0)]
 [assembly: KSPAssemblyDependency("ToolbarController", 1, 0)]

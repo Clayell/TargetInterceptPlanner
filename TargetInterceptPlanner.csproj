@@ -95,6 +95,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="GameData\TargetInterceptPlanner\README.md" />
+    <None Include="git-scripts\hooks\pre-commit" />
     <None Include="Properties\AssemblyVersion.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>AssemblyVersion.cs</LastGenOutput>

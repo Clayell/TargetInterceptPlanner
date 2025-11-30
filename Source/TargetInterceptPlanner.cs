@@ -26,7 +26,7 @@ namespace TargetInterceptPlanner
         }
 
         internal static void LogError(string message, string prefix = "[TargetInterceptPlanner]")
-        { // could also do LogWarning
+        {
             UnityEngine.Debug.LogError($"{prefix}: {message}");
         }
 
@@ -908,7 +908,7 @@ namespace TargetInterceptPlanner
 
             stopwatch.Stop();
 
-            if (enableLogging) Log($"GSS for {errorFunc.Method.Name}, i: {i}, result: {(upperBound + lowerBound) / 2d}, upperBound: {upperBound}, lowerBound: {lowerBound}, left: {left}, eLeft: {errorFunc(left)}, right: {right}, eRight: {errorFunc(right)}, time: {stopwatch.Elapsed.Seconds}s");
+            if (enableLogging) Log($"GSS for {errorFunc.Method.Name}, i: {i}, time: {stopwatch.Elapsed.TotalSeconds}s, result: {(upperBound + lowerBound) / 2d}, upperBound: {upperBound}, lowerBound: {lowerBound}, left: {left}, eLeft: {errorFunc(left)}, right: {right}, eRight: {errorFunc(right)}");
 
             return (upperBound + lowerBound) / 2d;
         }
@@ -1255,6 +1255,8 @@ namespace TargetInterceptPlanner
             // We can't just do some vector and quaternion math to get the phasing angle, because the maneuver is only directly opposite the future targetPos when the maneuver is a hohmann transfer (max flight time)
             // With less flight time, you have to move the maneuver further along
 
+            //Stopwatch stopwatch = Stopwatch.StartNew();
+
             if (double.IsNaN(transferEcc) || transferEcc == 1d) return (double.NaN, double.NaN);
 
             const double epsilon = 1e-9;
@@ -1273,8 +1275,20 @@ namespace TargetInterceptPlanner
             double targetTime = startUT + flightTime;
             Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime);
 
+            Orbit transferOrbit = new Orbit
+            {
+                inclination = inclination,
+                eccentricity = transferEcc,
+                semiMajorAxis = transferSMA,
+                LAN = LAN,
+                meanAnomalyAtEpoch = 0d,
+                referenceBody = mainBody
+            };
+
             double DistanceError(double phasingAngle)
             {
+                //Stopwatch stopwatchDistanceError = Stopwatch.StartNew();
+
                 double phasingTime = orbitPeriod * (phasingAngle / 360d);
                 if (flightTime > phasingTime)
                 {
@@ -1287,30 +1301,40 @@ namespace TargetInterceptPlanner
                 }
                 double epoch = startUT + phasingTime;
 
-                Orbit transferOrbit = new Orbit
-                {
-                    inclination = inclination,
-                    eccentricity = transferEcc,
-                    semiMajorAxis = transferSMA,
-                    LAN = LAN,
-                    argumentOfPeriapsis = Util.ClampAngle(AoP + phasingAngle, false),
-                    meanAnomalyAtEpoch = 0d,
-                    epoch = epoch,
-                    referenceBody = mainBody,
-                };
+                //Log($"CalculateTimeBeforeManeuver stopwatchDistanceError1: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
+
+                transferOrbit.argumentOfPeriapsis = Util.ClampAngle(AoP + phasingAngle, false);
+                transferOrbit.epoch = epoch;
+
+                //Log($"CalculateTimeBeforeManeuver stopwatchDistanceError2: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
 
                 //Log($"inclination: {inclination}, transferEcc: {transferEcc}, transferSMA: {transferSMA}, LAN: {LAN}, argumentOfPeriapsis: {Util.ClampAngle(AoP + phasingAngle, false)}, epoch: {epoch}, meanAnomaly: {meanAnomaly}, flightTime: {flightTime}");
 
                 transferOrbit.Init();
                 transferOrbit.UpdateFromUT(epoch);
 
+                if (double.IsNaN(meanAnomaly) || double.IsNaN(transferEcc))
+                {
+                    //Log($"A value is NaN! meanAnomaly: {meanAnomaly}, transferEcc: {transferEcc}");
+                }
+
+                //Log($"CalculateTimeBeforeManeuver stopwatchDistanceError3: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
+
                 double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, transferEcc, epsilon); // a very large meanAnomaly will lead to a crash here, we prevent this beforehand by discarding large flight times in CalculatePhasingAndDeltaV
+
+                //Log($"CalculateTimeBeforeManeuver stopwatchDistanceError4: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
+
                 Vector3d futurePos = transferOrbit.getPositionFromEccAnomaly(eccAnomaly);
                 //Vector3d futurePos2 = transferOrbit.getPositionAtUT(startUT + flightTime); // this is less accurate because we cant set our own epsilon
 
-                //Log($"PHASING ANGLE: targetPos: {targetPos}, futurePos: {futurePos}, futurePos2: {futurePos2}, Vector3d.Distance(targetPos, futurePos): {Vector3d.Distance(targetPos, futurePos)}, Vector3d.Distance(futurePos, futurePos2): {Vector3d.Distance(futurePos, futurePos2)}");
+                //Log($"CalculateTimeBeforeManeuver stopwatchDistanceError5: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
 
-                return Vector3d.Distance(targetPos, futurePos);
+                double distance = Vector3d.Distance(targetPos, futurePos);
+
+                //stopwatchDistanceError.Stop();
+                //Log($"CalculateTimeBeforeManeuver stopwatchDistanceErrortotal: {stopwatchDistanceError.Elapsed.TotalSeconds}s\n");
+
+                return distance;
             }
 
             // as blackbird pointed out, it is possible for there to be two local minima within (0, 360) for a given total flight time, one with a high phasing time and low post maneuver time, and one with a low phasing time and high post maneuver time
@@ -1328,9 +1352,11 @@ namespace TargetInterceptPlanner
 
             meanAnomaly = meanMotion * (flightTime - bestTime);
 
-            //Log($"\nmeanAnomaly: {meanAnomaly}, DistanceError bestAngle: {DistanceError(bestAngle)}, bestAngle: {bestAngle}, DistanceError(bestAngle1): {DistanceError(bestAngle1)}, bestAngle1: {bestAngle1}, DistanceError(bestAngle2): {DistanceError(bestAngle2)}, bestAngle2: {bestAngle2}\nbestTime: {bestTime}, transferEcc: {transferEcc}, flightTime: {flightTime}, r0: {r0}, transferSMA: {transferSMA}, meanMotion: {meanMotion}, gravParameter: {gravParameter}, postManeuverTime: {flightTime - bestTime}, real mean anomaly?: {meanMotion * (flightTime - bestTime)}");
+            //stopwatch.Stop();
+            
+            //Log($"\nCalculateTimeBeforeManeuver time: {stopwatch.Elapsed.TotalSeconds}s, meanAnomaly: {meanAnomaly}, DistanceError bestAngle: {DistanceError(bestAngle)}, bestAngle: {bestAngle}, DistanceError(bestAngle1): {DistanceError(bestAngle1)}, bestAngle1: {bestAngle1}, DistanceError(bestAngle2): {DistanceError(bestAngle2)}, bestAngle2: {bestAngle2}\nbestTime: {bestTime}, transferEcc: {transferEcc}, flightTime: {flightTime}, r0: {r0}, transferSMA: {transferSMA}, meanMotion: {meanMotion}, gravParameter: {gravParameter}");
 
-            if (flightTime <= bestTime || transferEcc < 1d && meanAnomaly > Math.PI || double.IsNaN(bestAngle) || double.IsNaN(DistanceError(bestAngle)) || Math.Abs(bestAngle - 180d) < tolerance || bestAngle < tolerance)
+            if (flightTime <= bestTime || (transferEcc < 1d && meanAnomaly > Math.PI) || double.IsNaN(bestAngle) || double.IsNaN(DistanceError(bestAngle)) || Math.Abs(bestAngle - 180d) < tolerance || bestAngle < tolerance)
             { 
                 //Log($"Returning NaN!"); 
                 return (double.NaN, double.NaN);
@@ -1354,43 +1380,69 @@ namespace TargetInterceptPlanner
             double maxPossibleDV = maxDeltaVScaled * GetBodyScaledDV();
             double maxVelocity = Math.Sqrt(gravParameter / r0) + maxPossibleDV;
             double maxEccentricity = (r0 * maxVelocity * maxVelocity / gravParameter) - 1;
+            double minEccentricity = CalculateTimeOfHohmannManeuver(false).eccentricity;
             double meanAnomaly = tau;
             int errorStateDV = 0;
 
             double targetTime = startUT + postManeuverTime;
             Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime);
 
+            Orbit transferOrbit = new Orbit
+            {
+                inclination = inclination,
+                LAN = LAN,
+                epoch = startUT,
+                argumentOfPeriapsis = AoP,
+                meanAnomalyAtEpoch = 0d,
+                referenceBody = mainBody
+            };
+
             double DistanceError(double eccentricity)
             {
+                //Stopwatch stopwatchDistanceError = Stopwatch.StartNew();
+
                 if (eccentricity == 1) return double.NaN;
                 double SMA = r0 / (1 - eccentricity);
-                Orbit transferOrbit = new Orbit
-                {
-                    inclination = inclination,
-                    eccentricity = eccentricity,
-                    semiMajorAxis = SMA,
-                    LAN = LAN,
-                    argumentOfPeriapsis = AoP,
-                    meanAnomalyAtEpoch = 0d,
-                    epoch = startUT,
-                    referenceBody = mainBody,
-                };
+
+                //Log($"CalculateDV stopwatchDistanceError1: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
+
+                transferOrbit.eccentricity = eccentricity;
+                transferOrbit.semiMajorAxis = SMA;
+
+                //Log($"CalculateDV stopwatchDistanceError2: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
 
                 transferOrbit.Init();
                 transferOrbit.UpdateFromUT(startUT);
 
+                //Log($"CalculateDV stopwatchDistanceError3: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
+
                 meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(SMA, 3))) * postManeuverTime; // we're not clamping this to tau, as doing so leads to crashes somehow
+
+                if (double.IsNaN(meanAnomaly) || double.IsNaN(eccentricity))
+                {
+                    //Log($"A value is NaN! meanAnomaly: {meanAnomaly}, eccentricity: {eccentricity}");
+                }
+
+                //Log($"CalculateDV stopwatchDistanceError4: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
+
                 //if (eccentricity < 1 && meanAnomaly > tau) meanAnomaly = tau;
                 double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, eccentricity, epsilon); // a very large meanAnomaly will lead to a crash here, we prevent this beforehand by discarding large flight times in CalculatePhasingAndDeltaV
+
+                //Log($"CalculateDV stopwatchDistanceError5: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
+
                 Vector3d futurePos = transferOrbit.getPositionFromEccAnomaly(eccAnomaly);
-                //Vector3d futurePos2 = transferOrbit.getPositionAtUT(targetTime); // this is less accurate because we cant set our own epsilon
 
-                //Log($"DV2: targetPos: {targetPos}, futurePos: {futurePos}, futurePos2: {futurePos2}, Vector3d.Distance(targetPos, futurePos): {Vector3d.Distance(targetPos, futurePos)}, Vector3d.Distance(futurePos, futurePos2): {Vector3d.Distance(futurePos, futurePos2)}");
+                //Log($"CalculateDV stopwatchDistanceError6: {stopwatchDistanceError.Elapsed.TotalSeconds}s");
 
-                return Vector3d.Distance(targetPos, futurePos);
+                double distance = Vector3d.Distance(targetPos, futurePos);
+
+                //stopwatchDistanceError.Stop();
+                //Log($"CalculateDV stopwatchDistanceErrortotal: {stopwatchDistanceError.Elapsed.TotalSeconds}s\n");
+
+                return distance;
             }
 
-            double bestEccentricity = GoldenSectionSearch(epsilon, maxEccentricity, epsilon, DistanceError);
+            double bestEccentricity = GoldenSectionSearch(minEccentricity, maxEccentricity, epsilon, DistanceError);
 
             //if (bestEccentricity == 1) errorStateDV = 4;
 
@@ -1413,19 +1465,14 @@ namespace TargetInterceptPlanner
 
             double dV = Math.Sqrt((bestEccentricity + 1) * gravParameter / r0) - Math.Sqrt(gravParameter / r0);
 
-            //Log($"dV: {dV}, bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity}, meanAnomaly: {meanAnomaly}, errorStateDV: {errorStateDV}, distanceError: {distanceError}\naBest: {aBest}, r0: {r0}, gravParameter: {gravParameter}, postManeuverTime: {postManeuverTime}, startUT: {startUT} inclination: {inclination}, LAN: {LAN} AoP: {AoP}, meanMotion: {meanMotion}");
-
-            //Log($"BEFORE WIPE: dV: {dV}, bestEccentricity: {bestEccentricity}, meanAnomaly: {meanAnomaly}");
-
-            if (errorStateDV != 0)
-            {
-                //dV = bestEccentricity = double.NaN;
-            }
-
             //stopwatch.Stop();
 
-            //Log($"dV: {dV}, bestEccentricity: {bestEccentricity}, errorStateDV: {errorStateDV}, meanAnomaly: {meanAnomaly}, DistanceError: {DistanceError(bestEccentricity)}, postManeuverTime: {postManeuverTime}, startUT: {startUT}");
-            //Log($"DV2 Completed in {stopwatch.Elapsed.TotalSeconds}s, dV: {dV}, bestEccentricity: {bestEccentricity}, errorStateDV: {errorStateDV}, DistanceError: {distanceError}, postManeuverTime: {postManeuverTime}, startUT: {startUT}, inclination: {inclination}, LAN: {LAN}, AoP: {AoP}");
+            //Log($"CalculateDV time: {stopwatch.Elapsed.TotalSeconds}s, dV: {dV}, bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity}, minEccentricity: {minEccentricity}, meanAnomaly: {meanAnomaly}, errorStateDV: {errorStateDV}, distanceError: {distanceError}\naBest: {aBest}, r0: {r0}, gravParameter: {gravParameter}, postManeuverTime: {postManeuverTime}, startUT: {startUT} inclination: {inclination}, LAN: {LAN} AoP: {AoP}, meanMotion: {meanMotion}");
+
+            //if (errorStateDV != 0)
+            //{
+            //    dV = bestEccentricity = double.NaN;
+            //}
 
             return (dV, bestEccentricity, errorStateDV);
         }
@@ -1446,7 +1493,7 @@ namespace TargetInterceptPlanner
             double phasingAngle = double.NaN;
             double dV = double.NaN;
             int errorStateDV = -1;
-            //int i = 0;
+            int i = 0;
 
             double gravParameter = mainBody.gravParameter;
             double r0 = mainBody.Radius + parkingAltitude * 1000d;
@@ -1465,8 +1512,8 @@ namespace TargetInterceptPlanner
             }
             else
             {
-                for (int i = 0; i < maxIterations; i++)
-                //for (; i < maxIterations; i++)
+                //for (int i = 0; i < maxIterations; i++)
+                for (; i < maxIterations; i++)
                 {
                     double lastEcc = eccentricity;
 
@@ -1488,7 +1535,11 @@ namespace TargetInterceptPlanner
                     (dV, eccentricity, errorStateDV) = CalculateDV(flightTime - phasingTime, startUT + phasingTime, inclination, LAN, Util.ClampAngle(AoP + phasingAngle, false));
 
                     //if (errorStateDV != 0 || Math.Abs(eccentricity - lastEcc) < epsilon) break;
-                    if (Math.Abs(eccentricity - lastEcc) < epsilon) break;
+                    if (Math.Abs(eccentricity - lastEcc) < epsilon)
+                    {
+                        //Log($"Eccentricity ({eccentricity}) is close to lastEcc ({lastEcc})");
+                        break;
+                    }
 
                     if ((lastEcc > 1 && eccentricity < 1))
                     {
@@ -1497,9 +1548,9 @@ namespace TargetInterceptPlanner
                         break;
                     }
 
-                    if (eccentricity < minEccentricity)
+                    if (eccentricity < minEccentricity || Math.Abs(eccentricity - minEccentricity) < epsilon)
                     {
-                        //Log($"Eccentricity was below minimum! eccentricity: {eccentricity}, minEccentricity: {minEccentricity}"); // gets falsely triggered with small flight times when it escapes previous loop
+                        //Log($"Eccentricity was below minimum! eccentricity: {eccentricity}, minEccentricity: {minEccentricity}, lastEcc: {lastEcc}"); // gets falsely triggered with small flight times when it escapes previous loop?
                         //eccentricity = minEccentricity;
                         //errorStateDV = 1;
                         //break;
@@ -1552,12 +1603,12 @@ namespace TargetInterceptPlanner
 
             double altitude = useApR ? targetOrbit.ApR : targetOrbit.PeR;
             double r0 = parkingAltitude * 1000d + mainBody.Radius;
+            double e = (altitude - r0) / (altitude + r0);
             double gravParameter = mainBody.gravParameter;
 
             double a = (r0 + altitude) / 2d;
             double t1 = Math.PI * Math.Sqrt(Math.Pow(a, 3) / gravParameter);
 
-            double e = (altitude - r0) / (altitude + r0);
             double orbitPeriod = tau * Math.Sqrt(Math.Pow(r0, 3) / gravParameter);
 
             return (t1, t1 + orbitPeriod, e);
@@ -2141,7 +2192,7 @@ namespace TargetInterceptPlanner
             GUILayout.Space(10);
         }
 
-        private void ShowOrbitInfo(ref bool useAngle, ref bool useLAN, double phaseTime, double phaseAngle, double launchLAN, double launchAoP, double flightTime)
+        private void ShowOrbitInfo(ref bool useAngle, ref bool useLAN, double phaseTime, double phaseAngle, double launchLAN, double launchAoP, double launchInc, double transferEcc, double flightTime, double startTime)
         {
             GUILayout.Space(5);
 
@@ -2173,6 +2224,11 @@ namespace TargetInterceptPlanner
 
             GUILayout.Space(5);
 
+            GUILayout.Label(new GUIContent("Eccentricity", $"The eccentricity of the {(!double.IsNaN(transferEcc) ? (transferEcc > 1 ? "hyperbolic" : "elliptical") : "NaN")} transfer"));
+            GUILayout.Box(new GUIContent(FormatDecimals(transferEcc), $"{transferEcc}"));
+
+            GUILayout.Space(5);
+
             if (useLAN)
             {
                 GUILayout.BeginHorizontal();
@@ -2191,6 +2247,37 @@ namespace TargetInterceptPlanner
                 GUILayout.EndHorizontal();
                 GUILayout.Box(new GUIContent($"{FormatDecimals(launchAoP)}\u00B0", $"{FormatDecimals(launchAoP * degToRad)} rads"));
             }
+
+            Orbit transferOrbit = new Orbit
+            {
+                inclination = launchInc,
+                eccentricity = transferEcc,
+                semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - transferEcc),
+                LAN = launchLAN,
+                argumentOfPeriapsis = Util.ClampAngle(launchAoP + phaseAngle, false),
+                meanAnomalyAtEpoch = 0d,
+                epoch = currentUT + startTime + phaseTime,
+                referenceBody = mainBody,
+            };
+
+            transferOrbit.Init();
+            transferOrbit.UpdateFromUT(currentUT + startTime + phaseTime);
+
+            Vector3d transferVel = transferOrbit.getOrbitalVelocityAtUT(currentUT + startTime + flightTime);
+            Vector3d targetVel = targetOrbit.getOrbitalVelocityAtUT(currentUT + startTime + flightTime);
+
+            double relativeVel = Vector3d.Distance(transferVel, targetVel);
+            double relativeAngle = Vector3d.Angle(transferVel, targetVel);
+
+            GUILayout.Space(5);
+
+            GUILayout.Label(new GUIContent("Relative speed", "The relative speed between you and the target at the intersection point"));
+            GUILayout.Box(new GUIContent($"{FormatDecimals(relativeVel)} m/s", $"{relativeVel} m/s"));
+
+            GUILayout.Space(5);
+
+            GUILayout.Label(new GUIContent("Relative angle", "The relative angle between your velocity and the target's velocity at the intersection point"));
+            GUILayout.Box(new GUIContent($"{FormatDecimals(relativeAngle)}\u00B0", $"{relativeAngle}\u00B0"));
         }
 
         private void ShowErrorStateDV(int errorStateDV)
@@ -2708,6 +2795,7 @@ namespace TargetInterceptPlanner
                         double phaseAngle0 = launchOrbit0.phaseAngle;
                         double dV0 = launchOrbit0.deltaV;
                         double transferEcc0 = launchOrbit0.eccentricity;
+                        double transferEcc1 = launchOrbit1.eccentricity;
                         int errorStateDV0 = launchOrbit0.errorStateDV;
                         int errorStateDV1 = launchOrbit1.errorStateDV;
 
@@ -2735,10 +2823,10 @@ namespace TargetInterceptPlanner
 
                         GUILayout.BeginHorizontal();
                         ShowErrorStateDV(errorStateDV0);
-                        GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit"));
+                        GUILayout.Label(new GUIContent("Required \u0394V", "Required change in velocity for the maneuver in parking orbit, for this reference time"));
                         GUILayout.EndHorizontal();
 
-                        GUILayout.Box(new GUIContent($"{FormatDecimals(dV0)} m/s", $"Eccentricity of {(!double.IsNaN(transferEcc0) ? (transferEcc0 > 1 ? "hyperbolic" : "elliptical") : "NaN")} trajectory: {FormatDecimals(transferEcc0)}"), GUILayout.MinWidth(100));
+                        GUILayout.Box(new GUIContent($"{FormatDecimals(dV0)} m/s", $"{dV0} m/s"), GUILayout.MinWidth(100));
 
                         GUILayout.Space(5);
 
@@ -2768,7 +2856,7 @@ namespace TargetInterceptPlanner
 
                         if (expandParking0)
                         {
-                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0, flightTime);
+                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime0, phaseAngle0, launchLAN0, launchAoP0, launchInc0, transferEcc0, flightTime, referenceTime);
                         }
 
                         string windowTooltip = (!isLowLatitude || useAltBehavior) && Math.Abs(launchAz1 - 90d) < epsilon ? // TODO, add westerly
@@ -2791,7 +2879,7 @@ namespace TargetInterceptPlanner
                         double phaseAngle1 = launchOrbit1.phaseAngle;
                         if (expandParking1)
                         {
-                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1, flightTime);
+                            ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime1, phaseAngle1, launchLAN1, launchAoP1, launchInc1, transferEcc1, flightTime, nextLaunchETA);
                         }
 
                         if (expandExtraWindow)
@@ -2802,6 +2890,7 @@ namespace TargetInterceptPlanner
                             double launchInc2 = launchOrbit2.inclination;
                             double displayInc2 = ConvertInc(launchOrbit2); // unused
                             int errorStateDV2 = launchOrbit2.errorStateDV;
+                            double transferEcc2 = launchOrbit2.eccentricity;
 
                             GUILayout.Space(5);
                             GUILayout.BeginHorizontal();
@@ -2818,7 +2907,7 @@ namespace TargetInterceptPlanner
                                 double launchAoP2 = launchOrbit2.AoP;
                                 double phaseTime2 = launchOrbit2.phaseTime;
                                 double phaseAngle2 = launchOrbit2.phaseAngle;
-                                ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2, flightTime);
+                                ShowOrbitInfo(ref useAngle, ref useLAN, phaseTime2, phaseAngle2, launchLAN2, launchAoP2, launchInc2, transferEcc2, flightTime, extraLaunchETA);
                             }
                         }
 
@@ -3100,11 +3189,48 @@ namespace TargetInterceptPlanner
 
                         if (HighLogic.LoadedSceneIsFlight && FlightGlobals.ActiveVessel != null)
                         {
-                            GUI.enabled = FlightGlobals.ActiveVessel.situation == Vessel.Situations.ORBITING;
-                            if (GUILayout.Button(new GUIContent("Make Node", $"Make Maneuver Node in parking orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING ? "\nMust be in orbit" : "")}")) && !double.IsNaN(dV0) && !double.IsNaN(phaseTime0))
+                            GUI.enabled = FlightGlobals.ActiveVessel.situation == Vessel.Situations.ORBITING && errorStateDV0 == 0; // TODO we really need to not delete old solutions once their time has passed
+                            // TODO again, we need to make this nodes be correct for the current orbit that they are in, not the idealized one. this would require another solver with phase time and eccentricity
+                            if (GUILayout.Button(new GUIContent("Make Tran. Node", $"Make Maneuver Node in parking orbit to get into a transfer orbit to intercept target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING || errorStateDV0 != 0 ? "\nMust be in orbit above the atmosphere with a valid trajectory planned" : "")}")))
                             {
                                 ManeuverNode node = FlightGlobals.ActiveVessel.patchedConicSolver.AddManeuverNode(currentUT + referenceTime + phaseTime0);
                                 node.DeltaV = new Vector3d(0, 0, dV0);
+                                node.solver.UpdateFlightPlan();
+                            }
+                            if (GUILayout.Button(new GUIContent("Make Rend. Node", $"Make Maneuver Node in transfer orbit to rendezvous with target{(FlightGlobals.ActiveVessel.situation != Vessel.Situations.ORBITING || errorStateDV0 != 0 ? "\nMust be in orbit above the atmosphere with a valid trajectory planned" : "")}")))
+                            {
+                                Orbit transferOrbit = new Orbit
+                                {
+                                    inclination = launchInc0,
+                                    eccentricity = transferEcc0,
+                                    semiMajorAxis = (mainBody.Radius + parkingAltitude * 1000d) / (1 - transferEcc0),
+                                    LAN = launchLAN0,
+                                    argumentOfPeriapsis = Util.ClampAngle(launchAoP0 + phaseAngle0, false),
+                                    meanAnomalyAtEpoch = 0d,
+                                    epoch = currentUT + referenceTime + phaseTime0,
+                                    referenceBody = mainBody,
+                                };
+
+                                transferOrbit.Init();
+                                transferOrbit.UpdateFromUT(currentUT + referenceTime + phaseTime0);
+
+                                Vector3d transferVel = transferOrbit.getOrbitalVelocityAtUT(currentUT + referenceTime + flightTime);
+                                Vector3d targetVel = targetOrbit.getOrbitalVelocityAtUT(currentUT + referenceTime + flightTime);
+
+                                double relativeVel = Vector3d.Distance(transferVel, targetVel);
+
+                                Vector3d deltaV = targetVel - transferVel;
+
+                                Vector3d prograde = transferVel.normalized;
+                                Vector3d normal = transferOrbit.GetOrbitNormal().normalized;
+                                Vector3d radial = Vector3d.Cross(normal, prograde).normalized;
+
+                                double dvPrograde = Vector3d.Dot(deltaV, prograde);
+                                double dvNormal = Vector3d.Dot(deltaV, normal);
+                                double dvRadial = Vector3d.Dot(deltaV, radial);
+
+                                ManeuverNode node = FlightGlobals.ActiveVessel.patchedConicSolver.AddManeuverNode(currentUT + referenceTime + flightTime);
+                                node.DeltaV = new Vector3d(dvRadial, dvNormal, dvPrograde);
                                 node.solver.UpdateFlightPlan();
                             }
                             GUI.enabled = true;
@@ -3628,7 +3754,7 @@ namespace TargetInterceptPlanner
                     DrawLine();
 
                     BeginCombined();
-                    GUILayout.Label(new GUIContent($"Use Target's Inclination as Default {(showAzimuth ? "Azimuth" : "Inclination")}", $"Instead of the default being due east, this will make the reset button match your {(showAzimuth ? "azimuth" : "inclination")} with the target's inclination ({FormatDecimals(targetOrbit.inclination)}\u00B0), if possible."));
+                    GUILayout.Label(new GUIContent($"Use Target's Inclination as Default {(showAzimuth ? "Azimuth" : "Inclination")}", $"Instead of the default being due east, this will make the reset button match your {(showAzimuth ? "azimuth" : "inclination")} with the target's inclination ({FormatDecimals(targetOrbit.inclination)}\u00B0), if possible. When the intersection point is near the ascending/descending node of the target's orbit, this will match the plane of the target's orbit and therefore reduce the relative speed at the intersection."));
                     MiddleCombined();
                     useAlternateDefaultValues = GUILayout.Toggle(useAlternateDefaultValues, "");
                     EndCombined();
@@ -3649,14 +3775,15 @@ namespace TargetInterceptPlanner
                     {
                         double sinAz = Math.Cos(inclination * degToRad) / cosLat;
                         sinAz = Util.Clamp(sinAz, -1d, 1d);
-                        return Math.Asin(sinAz) * radToDeg;
+                        double azimuth = Util.ClampAngle(Math.Asin(sinAz), true) * radToDeg;
+                        return azimuth;
                     }
 
                     bool SwitchDirections()
                     {
                         GUILayout.BeginVertical();
                         GUILayout.Space(5);
-                        bool pressed = GUILayout.Button(new GUIContent("Switch Directions", $"Switch from {(targetLaunchAzimuth <= 180d ? "Prograde to Retrograde" : "Retrograde to Prograde")}"), GUILayout.Width(60));
+                        bool pressed = GUILayout.Button(new GUIContent("Switch Directions", $"Switch from {(targetLaunchAzimuth <= 180d ? "Prograde to Retrograde" : "Retrograde to Prograde")}"), GUILayout.Width(130));
                         GUILayout.EndVertical();
 
                         return pressed;

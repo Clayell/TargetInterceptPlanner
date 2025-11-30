@@ -402,7 +402,7 @@ namespace TargetInterceptPlanner
                 return true;
             }
 
-            if (__instance.IsRenderableOrbit(orbit, tgt))
+            if (__instance.IsRenderableOrbit(orbit, tgt)) // TODO, use CamVsSmaRatio like stock and just make it really large? meh
             {
                 lineOpacityField?.SetValue(__instance, 1f);
             }
@@ -420,7 +420,7 @@ namespace TargetInterceptPlanner
 
         internal static readonly FieldInfo orbitPointsField = AccessTools.Field(typeof(OrbitRendererBase), "orbitPoints");
         internal static readonly FieldInfo orbitLineField = AccessTools.Field(typeof(OrbitRendererBase), "orbitLine");
-        internal const double drawAngle = 5d; // TODO, change this to be based on meanAnomaly? actually it seems pretty long already, original is Math.Acos(-1d / orbit.eccentricity)
+        internal const double drawAngle = 5d; // TODO, make this user-editable
 
         // massively increases how long hyperbolic orbits are drawn for
 
@@ -461,7 +461,7 @@ namespace TargetInterceptPlanner
 
             if (orbit == null)
             {
-                Util.LogWarning("orbitField returned null Orbit!");
+                Util.LogWarning("Orbit is null!");
                 return true;
             }
 
@@ -479,8 +479,6 @@ namespace TargetInterceptPlanner
 
             if (orbit.eccentricity >= 1)
             {
-                Util.Log($"Math.Acos(-1d / orbit.eccentricity): {Math.Acos(-1d / orbit.eccentricity)}");
-                
                 double st = -drawAngle;
                 double end = drawAngle;
                 double rng = end - st;

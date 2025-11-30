@@ -16,3 +16,4 @@ build/
 bld/
 [Bb]in/
 [Oo]bj/
+/active_configuration.txt

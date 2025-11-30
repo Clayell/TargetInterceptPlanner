@@ -35,14 +35,24 @@
     <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'ReleaseProfiler|AnyCPU'">
-	<DebugType>full</DebugType>
-	<Optimize>true</Optimize>
-	<OutputPath>bin\ReleaseProfiler\</OutputPath>
-	<DefineConstants>TRACE;ENABLE_PROFILER</DefineConstants>
-	<ErrorReport>prompt</ErrorReport>
-	<WarningLevel>4</WarningLevel>
-	<Prefer32Bit>false</Prefer32Bit>
-	<DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\ReleaseProfiler\</OutputPath>
+    <DefineConstants>TRACE;ENABLE_PROFILER</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'ReleaseWithLogs|AnyCPU'">
+    <DebugType>none</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\ReleaseWithLogs\</OutputPath>
+    <DefineConstants>TRACE;RELEASE_WITH_LOGS</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+    <DebugSymbols>true</DebugSymbols>
   </PropertyGroup>
   <!-- Make sure KSPRoot is set as a system variable when building this, it should link to the root folder of your KSP install -->
   <ItemDefinitionGroup>
@@ -59,7 +69,7 @@
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\Assembly-CSharp.dll" />
-	<Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\Assembly-CSharp-firstpass.dll" />
+    <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\Assembly-CSharp-firstpass.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.AnimationModule.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.CoreModule.dll" />
@@ -68,7 +78,7 @@
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.UI.dll" />
     <Reference Include="$(KSPRoot)\KSP_x64_Data\Managed\UnityEngine.TextRenderingModule.dll" />
     <Reference Include="$(KSPRoot)\GameData\000_ClickThroughBlocker\Plugins\ClickThroughBlocker.dll" />
-	<Reference Include="$(KSPRoot)\GameData\000_Harmony\0Harmony.dll" />
+    <Reference Include="$(KSPRoot)\GameData\000_Harmony\0Harmony.dll" />
     <Reference Include="$(KSPRoot)\GameData\001_ToolbarControl\Plugins\ToolbarControl.dll" />
   </ItemGroup>
   <ItemGroup>
@@ -117,7 +127,7 @@
 	</PostBuildEvent>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU'">
-	<PostBuildEvent>
+    <PostBuildEvent>
 		xcopy /y /i "$(TargetPath)" "$(SolutionDir)\GameData\TargetInterceptPlanner\Plugins\"
 
 		xcopy /y /i "$(TargetPath)" "$(KSPRoot)\GameData\TargetInterceptPlanner\Plugins\"
@@ -125,9 +135,19 @@
 		xcopy /y /i "$(TargetPath)" "C:\Users\Clayel\KSP Instances\Kerbal Space Program 1\KSP (1.12.5 STOCKALIKE)\GameData\TargetInterceptPlanner\Plugins\"
 	</PostBuildEvent>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'ReleaseWithLogs|AnyCPU'">
+    <PostBuildEvent>
+		  xcopy /y /i "$(TargetPath)" "$(SolutionDir)\GameData\TargetInterceptPlanner\Plugins\"
+
+		  xcopy /y /i "$(TargetPath)" "$(KSPRoot)\GameData\TargetInterceptPlanner\Plugins\"
+
+		  xcopy /y /i "$(TargetPath)" "C:\Users\Clayel\KSP Instances\Kerbal Space Program 1\KSP (1.12.5 STOCKALIKE)\GameData\TargetInterceptPlanner\Plugins\"
+	  </PostBuildEvent>
+  </PropertyGroup>
   <PropertyGroup>
     <PreBuildEvent>
-    </PreBuildEvent>
+		powershell -NoProfile -Command "Set-Content -Path '$(ProjectDir)active_configuration.txt' -Value '$(Configuration)'"
+	</PreBuildEvent>
   </PropertyGroup>
   <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
     <Exec Command="&quot;$(ProgramFiles)\Microsoft Visual Studio\2022\Community\Common7\IDE\TextTransform.exe&quot; &quot;$(ProjectDir)Properties\AssemblyVersion.tt&quot;" />

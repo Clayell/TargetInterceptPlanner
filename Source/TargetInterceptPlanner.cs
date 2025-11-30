@@ -775,6 +775,11 @@ namespace TargetInterceptPlanner
 
         private void Log(string message) => Util.Log(message);
 
+        private void LogDebug(string message)
+        {
+            Log(message);
+        }
+
         private void LogWarning(string message) => Util.LogWarning(message);
 
         private void LogError(string message) => Util.LogError(message);
@@ -1829,7 +1834,7 @@ namespace TargetInterceptPlanner
 
                 if (windowCache.Count > maxWindows)
                 {
-                    Log("windowCache.Count has grown greater than maxWindows!");
+                    LogWarning("windowCache.Count has grown greater than maxWindows!");
                     return double.NaN;
                 }
             }
@@ -1899,7 +1904,7 @@ namespace TargetInterceptPlanner
             double minValueDouble = Convert.ToDouble(minValue);
             double maxValueDouble = Convert.ToDouble(maxValue);
 
-            if (minValueDouble > maxValueDouble) Log("Min value is greater than max value!");
+            if (minValueDouble > maxValueDouble) LogWarning("Min value is greater than max value!");
 
             stepDouble = Math.Max(epsilon, stepDouble);
             if (!wrapAround) minValueDouble = Util.ClampEpsilon(minValueDouble);
@@ -3684,7 +3689,7 @@ namespace TargetInterceptPlanner
 
                                     if (double.IsNaN(candidateLaunchTime))
                                     {
-                                        Log("A Launchtime was NaN, skipping this window"); // GetCachedLaunchTime should remove NaN launchtimes, so this shouldn't happen
+                                        LogWarning("A Launchtime was NaN, skipping this window"); // GetCachedLaunchTime should remove NaN launchtimes, so this shouldn't happen
                                         continue;
                                     }
 

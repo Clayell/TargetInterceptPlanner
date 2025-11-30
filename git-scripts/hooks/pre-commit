@@ -1,5 +1,7 @@
 #!/bin/sh
 
+# put this in .git/hooks, no path extension
+
 CONFIG_FILE="active_configuration.txt"
 
 if [ ! -f "$CONFIG_FILE" ]; then

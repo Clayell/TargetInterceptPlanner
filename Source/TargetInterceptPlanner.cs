@@ -1,4 +1,4 @@
-using ClickThroughFix;
+﻿using ClickThroughFix;
 using KSP.UI.Screens;
 using System;
 using System.Collections.Generic;
@@ -1010,7 +1010,7 @@ namespace TargetInterceptPlanner
             }
         }
 
-#endregion
+        #endregion
         #region Main Methods
 
         (Vector3d orbitNorm, double azimuth, double inclination) CalcOrbitForTime(Vector3d launchPos, double flightTime, double startTime)
@@ -1291,6 +1291,8 @@ namespace TargetInterceptPlanner
                 meanAnomalyAtEpoch = 0d,
                 referenceBody = mainBody
             };
+
+            double maxAngle = Math.Min(360d, (flightTime / orbitPeriod) * 360d); // TODO, use this instead of 360, also need to make sure its not below 180 for the 2nd angle...
 
             double DistanceError(double phasingAngle)
             {
@@ -2657,7 +2659,7 @@ namespace TargetInterceptPlanner
 
                         //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
-                        if (double.IsNaN(flightTime) || (resetToMaxTime && !targetManual && StateChanged("targetMainWindow", targetName))) // initialize on first load or when target changes (we do targetManual elsewhere)
+                        if (double.IsNaN(flightTime) || (resetToMaxTime && !targetManual && StateChanged("targetMainWindow", targetName, false))) // initialize on first load or when target changes (we do targetManual elsewhere)
                         {
                             flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
                             SetFlightTimeDisplay();

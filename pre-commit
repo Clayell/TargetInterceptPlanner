@@ -1,0 +1,17 @@
+#!/bin/sh
+
+CONFIG_FILE="active_configuration.txt"
+
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Commit blocked: No active configuration detected. Build the project first."
+    exit 1
+fi
+
+CONFIG=$(cat "$CONFIG_FILE" | tr -d '\r')
+
+if [ "$CONFIG" != "Release" ]; then
+    echo "Commit blocked: Build configuration must be 'Release'. Last build was: '$CONFIG'"
+    exit 1
+fi
+
+exit 0

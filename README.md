@@ -6,7 +6,7 @@
 
 Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive, and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
 
-Why use this over simply launching into the same LAN and Inclination as your target? This mod allows you to launch from any position on the planet, instead of being limited to a certain area on the planet. This also means that the trajectories this mod gives may not be in the same inclination of your target (because this might be possible to achieve from your launch location), so a plane change maneuver may be needed at the intersection point when rendezvousing with a vessel.
+Why use this over simply launching into the same LAN and Inclination as your target? This mod allows you to launch from any position on the planet, instead of being limited to a certain area on the planet. This also means that the trajectories this mod gives may not be in the same inclination of your target (because this might not be possible to achieve from your launch location), so a plane change maneuver may be needed at the intersection point when rendezvousing with a vessel.
 
 #### Usecases include:
 * Launching to the Moon from any position on Earth

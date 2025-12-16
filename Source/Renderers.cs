@@ -1,4 +1,5 @@
 ﻿// Adapted from TWP2 with permission (https://github.com/Nazfib/TransferWindowPlanner2/tree/main/TransferWindowPlanner2/UI/Rendering), thanks Nazfib!
+// I think the original code was taken from KSP's AngleRenderEject, which seems to be a class that is hardly used
 
 
 using HarmonyLib;
@@ -342,12 +343,12 @@ namespace TargetInterceptPlanner
         // inheriting from OrbitTargetRenderer. Only the ContractOrbitRenderer is available without the DLC.
         internal ContractOrbitRenderer _renderer;
 
-        internal static readonly Dictionary<OrbitRendererBase, OrbitRendererHack> hacks = new Dictionary<OrbitRendererBase, OrbitRendererHack>();
+        internal static readonly HashSet<OrbitRendererBase> renderers = new HashSet<OrbitRendererBase>();
 
         internal OrbitRendererHack(ContractOrbitRenderer renderer)
         {
             _renderer = renderer;
-            hacks[_renderer] = this;
+            renderers.Add(_renderer);
         }
 
         internal static OrbitRendererHack Setup(Orbit orbit, Color color)
@@ -367,8 +368,8 @@ namespace TargetInterceptPlanner
 
         internal void Cleanup()
         {
+            renderers.Remove(_renderer);
             _renderer.Cleanup();
-            hacks.Remove(_renderer);
         }
     }
 
@@ -383,7 +384,7 @@ namespace TargetInterceptPlanner
         [HarmonyPrefix]
         internal static bool Prefix_SplineOpacityUpdate(OrbitRendererBase __instance)
         {
-            if (!OrbitRendererHack.hacks.ContainsKey(__instance)) return true;
+            if (!OrbitRendererHack.renderers.Contains(__instance)) return true;
 
             MapObject target = PlanetariumCamera.fetch?.target;
             CelestialBody tgt = target?.celestialBody ?? target?.orbit?.referenceBody;
@@ -421,6 +422,7 @@ namespace TargetInterceptPlanner
         internal static readonly FieldInfo orbitPointsField = AccessTools.Field(typeof(OrbitRendererBase), "orbitPoints");
         internal static readonly FieldInfo orbitLineField = AccessTools.Field(typeof(OrbitRendererBase), "orbitLine");
         internal const double drawAngle = 5d; // TODO, make this user-editable
+        // original drawAngle is Math.Acos(0.0 - 1.0 / orbit.eccentricity);
 
         // massively increases how long hyperbolic orbits are drawn for
 
@@ -428,7 +430,7 @@ namespace TargetInterceptPlanner
         [HarmonyPrefix]
         internal static bool Prefix_UpdateSpline(OrbitRendererBase __instance)
         {
-            if (!OrbitRendererHack.hacks.ContainsKey(__instance)) return true;
+            if (!OrbitRendererHack.renderers.Contains(__instance)) return true;
 
             if (__instance.driver == null)
             {
@@ -441,6 +443,11 @@ namespace TargetInterceptPlanner
             if (orbit == null)
             {
                 Util.LogWarning("Orbit is null!");
+                return true;
+            }
+
+            if (orbit.eccentricity < 1d)
+            {
                 return true;
             }
 
@@ -459,12 +466,6 @@ namespace TargetInterceptPlanner
             Vector3d[] orbitPoints = (Vector3d[])orbitPointsField.GetValue(__instance);
             VectorLine orbitLine = (VectorLine)orbitLineField.GetValue(__instance);
 
-            if (orbit == null)
-            {
-                Util.LogWarning("Orbit is null!");
-                return true;
-            }
-
             if (orbitPoints == null)
             {
                 Util.LogWarning("orbitPointsField returned null Vector3d[]!");
@@ -477,28 +478,21 @@ namespace TargetInterceptPlanner
                 return true;
             }
 
-            if (orbit.eccentricity >= 1)
+            double st = -drawAngle;
+            double end = drawAngle;
+            double rng = end - st;
+            double itv = rng / (double)(orbitPoints.Length - 1);
+            int num3 = orbitPoints.Length;
+            for (int i = 0; i < num3; i++)
             {
-                double st = -drawAngle;
-                double end = drawAngle;
-                double rng = end - st;
-                double itv = rng / (double)(orbitPoints.Length - 1);
-                int num3 = orbitPoints.Length;
-                for (int i = 0; i < num3; i++)
-                {
-                    orbitPoints[i] = orbit.getPositionFromEccAnomalyWithSemiMinorAxis(st + itv * (double)i, orbit.semiMinorAxis);
-                }
-
-                ScaledSpace.LocalToScaledSpace(orbitPoints, orbitLine.points3);
-
-                orbitLine.drawEnd = orbitLine.points3.Count - 2;
-
-                return false;
+                orbitPoints[i] = orbit.getPositionFromEccAnomalyWithSemiMinorAxis(st + itv * (double)i, orbit.semiMinorAxis);
             }
-            else
-            {
-                return true;
-            }
+
+            ScaledSpace.LocalToScaledSpace(orbitPoints, orbitLine.points3);
+
+            orbitLine.drawEnd = orbitLine.points3.Count - 2;
+
+            return false;
         }
     }
 

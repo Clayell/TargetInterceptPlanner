@@ -1651,7 +1651,7 @@ namespace TargetInterceptPlanner
             }
             else
             {
-                if (referenceWindowNumber == null) // this is the first load
+                if (referenceWindowNumber == null) // this is the first ever load
                 {
                     switch (referenceTimeMode)
                     {
@@ -2659,7 +2659,7 @@ namespace TargetInterceptPlanner
 
                         //TODO, add button to add waypoint at launchPos? kept getting a NRE but perhaps im doing it wrong
 
-                        if (double.IsNaN(flightTime) || (resetToMaxTime && !targetManual && StateChanged("targetMainWindow", targetName, false))) // initialize on first load or when target changes (we do targetManual elsewhere)
+                        if (double.IsNaN(flightTime) || (resetToMaxTime && !targetManual && StateChanged("targetMainWindow", targetName, false))) // initialize on first ever load or when target changes (we do targetManual elsewhere)
                         {
                             flightTime = CalculateMaxFlightTime(launchPos, latitude, longitude, targetOrbit.inclination, useAltBehavior);
                             SetFlightTimeDisplay();
@@ -3139,11 +3139,16 @@ namespace TargetInterceptPlanner
                             if (target is ProtoVessel protoTarget)
                             {
                                 Vessel vesselTarget = FlightGlobals.Vessels.FirstOrDefault(v => v.id == protoTarget.vesselID);
-                                if (vesselTarget != null) PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
+                                if (vesselTarget != null)
+                                {
+                                    PlanetariumCamera.fetch.SetTarget(vesselTarget.mapObject);
+                                }
                                 else LogError("Could not load ProtoVessel"); // this shouldnt happen because we should be in the map view
                             }
                             else if (target is CelestialBody bodyTarget)
+                            { 
                                 PlanetariumCamera.fetch.SetTarget(bodyTarget.MapObject);
+                            }
                             else LogError("Unknown target type passed to focusSet: " + target.GetType().Name);
 
                             // lol, who put Vessel as mapObject and CelestialBody as MapObject?

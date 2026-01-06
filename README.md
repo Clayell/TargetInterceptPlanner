@@ -67,3 +67,8 @@ Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 
 ## License
 The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/TargetInterceptPlanner/blob/master/LICENSE.md))
+
+![Intercepting with the Moon](https://i.imgur.com/VRTycpy.png)
+![Intercepting with a vessel](https://i.imgur.com/KgqsGP2.png)
+![Intercepting with a manually set orbit](https://i.imgur.com/utW7UJI.png)
+![Intercepting with the Mun with a hyperbolic transfer](https://i.imgur.com/a8JggTj.png)

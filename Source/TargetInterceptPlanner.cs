@@ -627,7 +627,7 @@ namespace TargetInterceptPlanner
             {
                 int index = lines.FindIndex(line => line.Contains(kvp.Key));
                 if (index != -1) lines[index] += $" // {kvp.Value}"; // attach it to the end of the line
-                else Log($"A line with key \"{kvp.Key}\" could not be found to attach a comment to");
+                else LogWarning($"A line with key \"{kvp.Key}\" could not be found to attach a comment to");
             }
 
             File.WriteAllLines(SettingsPath, lines); // save all lines, including those with comments, back to file
@@ -638,136 +638,148 @@ namespace TargetInterceptPlanner
         private void LoadSettings()
         {
             ConfigNode root = ConfigNode.Load(SettingsPath);
-            if (root != null)
+            if (root == null)
             {
-                ConfigNode settings = root.GetNode("SETTINGS");
-                if (settings != null)
-                {
-                    Log("Loading settings...");
+                LogWarning("No settings file found!");
+                return;
+            }
+            
+            ConfigNode settings = root.GetNode("SETTINGS");
+
+            if (settings == null)
+            {
+                LogWarning("Settings node not found!");
+                return;
+            }
+
+            Log("Loading settings...");
                     
-                    void Read<T>(ref T field, string name) => Util.TryReadValue(ref field, settings, name);
+            void Read<T>(ref T field, string name) => Util.TryReadValue(ref field, settings, name);
 
-                    float x1 = mainRect.xMin, y1 = mainRect.yMin;
-                    float x2 = settingsRect.xMin, y2 = settingsRect.yMin;
-                    float x3 = manualOrbitRect.xMin, y3 = manualOrbitRect.yMin;
-                    float ySettings = settingsScroll.y;
+            float x1 = mainRect.xMin, y1 = mainRect.yMin;
+            float x2 = settingsRect.xMin, y2 = settingsRect.yMin;
+            float x3 = manualOrbitRect.xMin, y3 = manualOrbitRect.yMin;
+            float ySettings = settingsScroll.y;
 
-                    Read(ref x1, "mainRect.xMin");
-                    Read(ref y1, "mainRect.yMin");
-                    Read(ref x2, "settingsRect.xMin");
-                    Read(ref y2, "settingsRect.yMin");
-                    Read(ref x3, "manualOrbitRect.xMin");
-                    Read(ref y3, "manualOrbitRect.yMin");
-                    Read(ref ySettings, "settingsScroll.y");
+            Read(ref x1, "mainRect.xMin");
+            Read(ref y1, "mainRect.yMin");
+            Read(ref x2, "settingsRect.xMin");
+            Read(ref y2, "settingsRect.yMin");
+            Read(ref x3, "manualOrbitRect.xMin");
+            Read(ref y3, "manualOrbitRect.yMin");
+            Read(ref ySettings, "settingsScroll.y");
 
-                    Read(ref isWindowOpen, "isWindowOpen");
-                    Read(ref targetName, "targetName"); // we convert it to an actual target later
-                    Read(ref targetManual, "targetManual");
+            Read(ref isWindowOpen, "isWindowOpen");
+            Read(ref targetName, "targetName"); // we convert it to an actual target later
+            Read(ref targetManual, "targetManual");
 
-                    // targetManual options
-                    Read(ref manualEccentricity, "manualEccentricity");
-                    Read(ref manualSMA, "manualSMA");
-                    Read(ref manualInclination, "manualInclination");
-                    Read(ref manualLAN, "manualLAN");
-                    Read(ref manualAoP, "manualAoP");
-                    Read(ref manualMNA, "manualMNA");
-                    Read(ref useRadians, "useRadians");
-                    Read(ref useCenterDistance, "useCenterDistance");
-                    Read(ref manualTargetMode, "manualTargetMode");
-                    Read(ref showManualOrbit, "showManualOrbit");
+            // targetManual options
+            Read(ref manualEccentricity, "manualEccentricity");
+            Read(ref manualSMA, "manualSMA");
+            Read(ref manualInclination, "manualInclination");
+            Read(ref manualLAN, "manualLAN");
+            Read(ref manualAoP, "manualAoP");
+            Read(ref manualMNA, "manualMNA");
+            Read(ref useRadians, "useRadians");
+            Read(ref useCenterDistance, "useCenterDistance");
+            Read(ref manualTargetMode, "manualTargetMode");
+            Read(ref showManualOrbit, "showManualOrbit");
 
-                    Read(ref targetVessel, "targetVessel");
-                    Read(ref showSettings, "showSettings");
-                    Read(ref useAltSkin, "useAltSkin");
-                    Read(ref tickSpeed, "tickSpeed");
-                    Read(ref flightTime, "flightTime");
-                    Read(ref flightTimeMode, "flightTimeMode");
-                    Read(ref useHomeSolarDay, "useHomeSolarDay");
-                    Read(ref parkingAltitude, "parkingAltitude");
-                    Read(ref useAltBehavior, "useAltBehavior");
-                    Read(ref altBehaviorTimeLimit, "altBehaviorTimeLimit");
-                    Read(ref altBehaviorNaN, "altBehaviorNaN");
-                    Read(ref maxIterations, "maxIterations");
-                    Read(ref resetToMaxTime, "resetToMaxTime");
-                    Read(ref displaySeconds, "displaySeconds");
-                    Read(ref useVesselPosition, "useVesselPosition");
-                    Read(ref requireSurfaceVessel, "requireSurfaceVessel");
-                    Read(ref useAltAlarm, "useAltAlarm");
-                    Read(ref useKAC, "useKAC");
-                    Read(ref latitude, "latitude");
-                    Read(ref longitude, "longitude");
-                    Read(ref showAzimuth, "showAzimuth");
-                    Read(ref showRotatedValues, "showRotatedValues");
-                    Read(ref useAlternateDefaultValues, "useAlternateDefaultValues");
-                    Read(ref expandExtraWindow, "expandExtraWindow");
-                    Read(ref referenceTimeMode, "referenceTimeMode");
-                    Read(ref extraWindowNumber, "extraWindowNumber");
-                    Read(ref useWindowOptimizer, "useWindowOptimizer");
-                    Read(ref expandLatLong, "expandLatLong");
-                    Read(ref expandAltitude, "expandAltitude");
-                    Read(ref expandParking0, "expandParking0");
-                    Read(ref expandParking1, "expandParking1");
-                    Read(ref expandParking2, "expandParking2");
-                    Read(ref maxDeltaVScaled, "maxDeltaVScaled");
-                    Read(ref useAngle, "useAngle");
-                    Read(ref useLAN, "useLAN");
-                    Read(ref maxWindows, "maxWindows");
-                    Read(ref warpMargin, "warpMargin");
-                    Read(ref specialWarpSelected, "specialWarpSelected");
-                    Read(ref displayParking, "displayParking");
-                    Read(ref displayTransfer, "displayTransfer");
-                    Read(ref displayManual, "displayManual");
-                    Read(ref displayPhasing, "displayPhasing");
-                    Read(ref targetLaunchAzimuth, "targetLaunchAzimuth");
-                    Read(ref targetPhasingAngle, "targetPhasingAngle");
-                    Read(ref debugMode, "debugMode");
+            Read(ref targetVessel, "targetVessel");
+            Read(ref showSettings, "showSettings");
+            Read(ref useAltSkin, "useAltSkin");
+            Read(ref tickSpeed, "tickSpeed");
+            Read(ref flightTime, "flightTime");
+            Read(ref flightTimeMode, "flightTimeMode");
+            Read(ref useHomeSolarDay, "useHomeSolarDay");
+            Read(ref parkingAltitude, "parkingAltitude");
+            Read(ref useAltBehavior, "useAltBehavior");
+            Read(ref altBehaviorTimeLimit, "altBehaviorTimeLimit");
+            Read(ref altBehaviorNaN, "altBehaviorNaN");
+            Read(ref maxIterations, "maxIterations");
+            Read(ref resetToMaxTime, "resetToMaxTime");
+            Read(ref displaySeconds, "displaySeconds");
+            Read(ref useVesselPosition, "useVesselPosition");
+            Read(ref requireSurfaceVessel, "requireSurfaceVessel");
+            Read(ref useAltAlarm, "useAltAlarm");
+            Read(ref useKAC, "useKAC");
+            Read(ref latitude, "latitude");
+            Read(ref longitude, "longitude");
+            Read(ref showAzimuth, "showAzimuth");
+            Read(ref showRotatedValues, "showRotatedValues");
+            Read(ref useAlternateDefaultValues, "useAlternateDefaultValues");
+            Read(ref expandExtraWindow, "expandExtraWindow");
+            Read(ref referenceTimeMode, "referenceTimeMode");
+            Read(ref extraWindowNumber, "extraWindowNumber");
+            Read(ref useWindowOptimizer, "useWindowOptimizer");
+            Read(ref expandLatLong, "expandLatLong");
+            Read(ref expandAltitude, "expandAltitude");
+            Read(ref expandParking0, "expandParking0");
+            Read(ref expandParking1, "expandParking1");
+            Read(ref expandParking2, "expandParking2");
+            Read(ref maxDeltaVScaled, "maxDeltaVScaled");
+            Read(ref useAngle, "useAngle");
+            Read(ref useLAN, "useLAN");
+            Read(ref maxWindows, "maxWindows");
+            Read(ref warpMargin, "warpMargin");
+            Read(ref specialWarpSelected, "specialWarpSelected");
+            Read(ref displayParking, "displayParking");
+            Read(ref displayTransfer, "displayTransfer");
+            Read(ref displayManual, "displayManual");
+            Read(ref displayPhasing, "displayPhasing");
+            Read(ref targetLaunchAzimuth, "targetLaunchAzimuth");
+            Read(ref targetPhasingAngle, "targetPhasingAngle");
+            Read(ref debugMode, "debugMode");
 
-                    mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
-                    settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
-                    manualOrbitRect = new Rect(x3, y3, manualOrbitRect.width, manualOrbitRect.height);
-                    settingsScroll = new Vector2(settingsScroll.x, ySettings);
+            mainRect = new Rect(x1, y1, mainRect.width, mainRect.height);
+            settingsRect = new Rect(x2, y2, settingsRect.width, settingsRect.height);
+            manualOrbitRect = new Rect(x3, y3, manualOrbitRect.width, manualOrbitRect.height);
+            settingsScroll = new Vector2(settingsScroll.x, ySettings);
 
-                    ConfigNode colorNode = settings.GetNode("COLORS");
-                    if (colorNode != null)
+            ConfigNode colorNode = settings.GetNode("COLORS");
+
+            if (colorNode == null)
+            {
+                LogWarning("Colors node not found!");
+            }
+            else
+            {
+                bool TryParseColor(string s, out Color c)
+                {
+                    c = Color.white; // fallback
+                    if (string.IsNullOrEmpty(s)) return false;
+
+                    string[] parts = s.Split(',');
+                    if (parts.Length != 4) return false;
+
+                    return float.TryParse(parts[0], out float r) &&
+                            float.TryParse(parts[1], out float g) &&
+                            float.TryParse(parts[2], out float b) &&
+                            float.TryParse(parts[3], out float a) &&
+                            ((c = new Color(r, g, b, a)) != null);
+                }
+
+                Dictionary<string, Action<Color>> colorSetters = new Dictionary<string, Action<Color>>
+                {
+                    { "parkingColor", c => parkingColor = c },
+                    { "transferColor", c => transferColor = c },
+                    { "manualColor", c => manualColor = c },
+                    { "startLineColor", c => startLineColor = c },
+                    { "endLineColor", c => endLineColor = c },
+                    { "arcLineColor", c => arcLineColor = c },
+                };
+
+                foreach (var kvp in colorSetters)
+                {
+                    string value = colorNode.GetValue(kvp.Key);
+                    if (TryParseColor(value, out Color c))
                     {
-                        bool TryParseColor(string s, out Color c)
-                        {
-                            c = Color.white; // fallback
-                            if (string.IsNullOrEmpty(s)) return false;
-
-                            string[] parts = s.Split(',');
-                            if (parts.Length != 4) return false;
-
-                            return float.TryParse(parts[0], out float r) &&
-                                   float.TryParse(parts[1], out float g) &&
-                                   float.TryParse(parts[2], out float b) &&
-                                   float.TryParse(parts[3], out float a) &&
-                                   ((c = new Color(r, g, b, a)) != null);
-                        }
-
-                        Dictionary<string, Action<Color>> colorSetters = new Dictionary<string, Action<Color>>
-                        {
-                            { "parkingColor", c => parkingColor = c },
-                            { "transferColor", c => transferColor = c },
-                            { "manualColor", c => manualColor = c },
-                            { "startLineColor", c => startLineColor = c },
-                            { "endLineColor", c => endLineColor = c },
-                            { "arcLineColor", c => arcLineColor = c },
-                        };
-
-                        foreach (var kvp in colorSetters)
-                        {
-                            string value = colorNode.GetValue(kvp.Key);
-                            if (TryParseColor(value, out Color c))
-                            {
-                                kvp.Value(c);
-                            }
-                        }
+                        kvp.Value(c);
                     }
-
-                    Log("Loaded settings");
                 }
             }
+
+            Log("Loaded settings");
         }
 
         #endregion

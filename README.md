@@ -1,5 +1,7 @@
 ### This is still a WIP, use [this guide](https://github.com/KSP-RO/RP-1/wiki/How-To-Install-a-Mod-From-Github#grabbing-a-branchs-source-code-the-less-common-way-to-install) to learn how to install this, and DM @clayel on discord for any issues you encounter (or make an issue in https://github.com/Clayell/TargetInterceptPlanner/issues)
 
+<img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/Clayell/TargetInterceptPlanner/total">
+
 # Target Intercept Planner (TIP)
 
 ### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) from the surface of the celestial body (planet, moon, gas giant, star, black hole, etc.) on which you are currently on.
@@ -25,7 +27,8 @@ Why use this over simply launching into the same LAN and Inclination as your tar
 #### Info given back to help you plan:
 * The time of the next launch window to your parking orbit at the target azimuth/inclination
     * Also shows the nth launch window from the current time, where n is user-defined (max of 100, but this can be changed in settings)
-* The delta-V of the maneuver from your parking orbit to an intersection with the target
+* A maneuver node from your parking orbit to an intersection with the target
+* A maneuver node from your intersect trajectory to rendezvous with the target
 * The time spent in your parking orbit while waiting for the maneuver
     * Can also show the phasing angle from the current position
 * Map view visualizations of the parking orbit, transfer orbit, and phasing angle (and target orbit if using a manual target)

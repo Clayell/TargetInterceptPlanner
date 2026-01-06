@@ -96,6 +96,7 @@
   <ItemGroup>
     <None Include="GameData\TargetInterceptPlanner\README.md" />
     <None Include="git-scripts\hooks\pre-commit" />
+    <None Include="git-scripts\zip.ps1" />
     <None Include="Properties\AssemblyVersion.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <LastGenOutput>AssemblyVersion.cs</LastGenOutput>
@@ -159,6 +160,9 @@
       <Output TaskParameter="ConsoleOutput" PropertyName="KSPProcessList" />
     </Exec>
     <Error Condition="$(KSPProcessList.Contains('KSP_x64.exe'))" Text="Build failed: KSP_x64.exe is running. Please close KSP before building." />
+  </Target>
+  <Target Name="ZipGameData" AfterTargets="Build">
+    <Exec Command="powershell -ExecutionPolicy Bypass -File .git\zip.ps1" WorkingDirectory="$(ProjectDir)" />
   </Target>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

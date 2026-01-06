@@ -1,6 +1,4 @@
-### This is still a WIP, use [this guide](https://github.com/KSP-RO/RP-1/wiki/How-To-Install-a-Mod-From-Github#grabbing-a-branchs-source-code-the-less-common-way-to-install) to learn how to install this, and DM @clayel on discord for any issues you encounter (or make an issue in https://github.com/Clayell/TargetInterceptPlanner/issues)
-
-<img alt="GitHub Downloads (all assets, all releases)" src="https://img.shields.io/github/downloads/Clayell/TargetInterceptPlanner/total">
+[![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/Clayell/TargetInterceptPlanner/total)](https://github.com/Clayell/TargetInterceptPlanner/releases/latest)
 
 # Target Intercept Planner (TIP)
 
@@ -33,7 +31,7 @@ Why use this over simply launching into the same LAN and Inclination as your tar
     * Can also show the phasing angle from the current position
 * Map view visualizations of the parking orbit, transfer orbit, and phasing angle (and target orbit if using a manual target)
 
-Keep in mind that this mod assumes you can instantly get into the parking orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit. You may want to use mechjeb to launch into the requested inclination, to account for the initial velocity caused by the rotation of the planet.
+Keep in mind that this mod currently assumes you can instantly get into the parking orbit from your current launch position. If you want more accurate results (especially for launching into a vessel's orbit), launch into the next window's inclination a few minutes before the window itself, with the time depending on how long it takes you to reach orbit. You may want to use mechjeb to launch into the requested inclination, to account for the initial velocity caused by the rotation of the planet.
 
 Note: As the orbital period of the target approaches the sidereal day length of the planet, the time to the next window approaches infinity. It is impossible to find a launch window for a target in a synchronous orbit using this tool. Sorry!
 
@@ -55,7 +53,7 @@ Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 
 #### Compatible with:
 * Principia (although not perfectly accurate due to n-body stuff)
-* Any celestial body from any solar system (including satellites of moons, and technically even from the Surface of the Sun/Kerbol?)
+* Any celestial body from any solar system (including satellites of moons, and technically even from the surface of stars)
 
 ## Authors
 * [RCrockford](https://github.com/RCrockford) (author of original Lunar Transfer Planner)

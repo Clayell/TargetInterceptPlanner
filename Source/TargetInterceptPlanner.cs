@@ -310,7 +310,7 @@ namespace TargetInterceptPlanner
         List<ProtoVessel> vessels; // FlightGlobals.Vessels doesnt work in the editor, so we need to use ProtoVessel which should always work
         double lastLaunchTime = 0d;
         readonly List<(string targetName, double latitude, double longitude, double targetInclination, double absoluteLaunchTime)> windowCache = new List<(string, double, double, double, double)>();
-        readonly List<(OrbitData launchOrbit, int windowNumber)> launchOrbitCache = new List<(OrbitData, int)>();
+        readonly Dictionary<int, OrbitData> launchOrbitCache = new Dictionary<int, OrbitData>();
         readonly Dictionary<string, double> nextTickMap = new Dictionary<string, double>();
         readonly Dictionary<string, string> textBuffer = new Dictionary<string, string>();
         readonly Dictionary<string, object> stateBuffer = new Dictionary<string, object>();
@@ -881,10 +881,11 @@ namespace TargetInterceptPlanner
             double left = CalcLeft();
             double right = CalcRight();
             int i = 0;
-            if (enableLogging) Log($"\n\nGSS Logging on for {errorFunc.Method.Name}, lowerBound: {lowerBound}, upperBound: {upperBound}");
 
             double eLeft = errorFunc(left);
             double eRight = errorFunc(right);
+
+            if (enableLogging) Log($"\n\nGSS Logging on for {errorFunc.Method.Name}, lowerBound: {lowerBound}, upperBound: {upperBound}, left: {left}, right: {right}, eLeft: {eLeft}, eRight: {eRight}");
 
             while (Math.Abs(left - right) > epsilon)
             {
@@ -897,6 +898,8 @@ namespace TargetInterceptPlanner
                     eRight = eLeft;
                     left = CalcLeft();
                     eLeft = errorFunc(left);
+
+                    if (enableLogging) Log($"(eLeft < eRight) lowerBound: {lowerBound}, upperBound: {upperBound}, left: {left}, right: {right}, eLeft: {eLeft}, eRight: {eRight}");
                 }
                 else
                 {
@@ -905,6 +908,8 @@ namespace TargetInterceptPlanner
                     eLeft = eRight;
                     right = CalcRight();
                     eRight = errorFunc(right);
+
+                    if (enableLogging) Log($"(eLeft >= eRight) lowerBound: {lowerBound}, upperBound: {upperBound}, left: {left}, right: {right}, eLeft: {eLeft}, eRight: {eRight}");
                 }
                 if (i == maxIterations - 1)
                 {
@@ -1054,8 +1059,6 @@ namespace TargetInterceptPlanner
             if (!isLowLatitude) useAltBehavior = false; // this only changes the parameter
 
             const double epsilon = 1e-9;
-            const double tolerance = 0.01; // needs to be higher than epsilon bc we use that for GSS
-            const double buffer = 1d;
 
             if (Math.Abs(targetOrbit.period - mainBody.rotationPeriod) < epsilon)
             {
@@ -1063,7 +1066,7 @@ namespace TargetInterceptPlanner
                 return double.NaN;
             }
 
-            double coarseStep = 1200d * dayScale;
+            double coarseStep = 1200d * dayScale; // seconds
             double alignmentMultiplier = targetOrbit.period / Math.Abs(targetOrbit.period - mainBody.rotationPeriod); // this is the number of rotations per alignment cycle, it approaches infinity as the orbital period and rotation period converge
             double maxTimeLimit = mainBody.rotationPeriod * (useAltBehavior ? altBehaviorTimeLimit : 1d) * alignmentMultiplier; // expand to 30 days (altBehaviorTimeLimit) to search for global min
 
@@ -1126,87 +1129,108 @@ namespace TargetInterceptPlanner
                 }
             }
 
-            double t0 = startTime;
-            double t1 = startTime + coarseStep;
-            double e0 = AzimuthError(t0);
-            double e1 = AzimuthError(t1);
+            double finalTime = LocalMinSearch(startTime, maxTimeLimit, coarseStep, AzimuthError, true);
 
-            if (e0 < e1) // either increasing slope, or t0 and t1 are on opposite sides of a min (and t0 has a lower error)
+            return finalTime;
+        }
+
+        private double LocalMinSearch(double startValue, double endValue, double coarseStep, Func<double, double> errorFunc, bool combineStartEnd, bool enableLogging = false)
+        {
+            // finds the first local minimum of errorFunc, up to an end value
+
+            const double epsilon = 1e-9;
+            const double tolerance = 0.01; // needs to be higher than epsilon bc we use that for GSS
+            const double buffer = 1d;
+
+            double left = startValue;
+            double right = startValue + coarseStep;
+            double combinedStartEnd = combineStartEnd ? startValue + endValue : endValue;
+            double eLeft = errorFunc(left);
+            double eRight = errorFunc(right);
+
+            if (enableLogging) Log($"INITIAL for {errorFunc.Method.Name}, left: {left}, eLeft: {eLeft}, right: {right}, eRight: {eRight}");
+
+            if (eLeft < eRight) // either increasing slope, or left and right are on opposite sides of a min (and left has a lower error)
             {
-                double refinedTime = GoldenSectionSearch(t0, t1, epsilon, AzimuthError);
+                double refinedValue = GoldenSectionSearch(left, right, epsilon, errorFunc);
 
-                if (refinedTime > t0 + tolerance) // t0 and t1 are on opposite sides of a min (and t0 has a lower error)
+                if (refinedValue > left + tolerance) // left and right are on opposite sides of a min (and left has a lower error)
                 {
-                   //Log($"launchTime found at {refinedTime}");
-                    return refinedTime;
-                } // else, t0 (startTime) is the 'local' min, so this is an increasing slope
+                    if (enableLogging) Log($"result found at {refinedValue}, left: {left}, eLeft: {eLeft}, right: {right}, eRight: {eRight}");
+                    return refinedValue;
+                } // else, left is the 'local' min, so this is an increasing slope
 
-                //Log("Increasing Slope");
+                if (enableLogging) Log("Increasing Slope");
 
-                while (e0 <= e1) // increasing slope (we just passed a min)
+                while (eLeft <= eRight) // increasing slope (we just passed a min)
                 {
-                    t0 = t1;
-                    t1 += coarseStep;
-                    e0 = e1;
-                    e1 = AzimuthError(t1);
-                    if (t0 >= startTime + maxTimeLimit) // no min found within time limit
+                    left = right;
+                    right += coarseStep;
+                    eLeft = eRight;
+                    eRight = errorFunc(right);
+
+                    if (enableLogging) Log($"left: {left}, eLeft: {eLeft}, right: {right}, eRight: {eRight} (increasing slope)");
+
+                    if (left >= combinedStartEnd) // no min found within max
                     {
-                        LogWarning($"No minimum found within time limit of {maxTimeLimit}! Flight Time: {flightTime}s. (increasing slope)");
+                        LogWarning($"No minimum found within max of {combinedStartEnd}! (increasing slope)");
                         return double.NaN;
                     }
                 }
             }
-            else if (Math.Abs(e0 - e1) < epsilon) // perfectly balanced between min or max
+            else if (Math.Abs(eLeft - eRight) < epsilon) // perfectly balanced between min or max
             {
-                t0 += buffer;
-                t1 += buffer;
-                e0 = AzimuthError(t0);
-                e1 = AzimuthError(t1);
+                left += buffer;
+                right += buffer;
+                eLeft = errorFunc(left);
+                eRight = errorFunc(right);
             }
 
-            double tBest = t0;
-            double eBest = e0;
+            double valueBest = left;
+            double eBest = eLeft;
 
-            //Log("Decreasing Slope");
+            if (enableLogging) Log("Decreasing Slope");
 
-            while (e0 > e1) // decreasing slope
+            while (eLeft > eRight) // decreasing slope
             {
-                if (e1 < eBest)
+                if (eRight < eBest)
                 {
-                    eBest = e1;
-                    tBest = t1;
+                    eBest = eRight;
+                    valueBest = right;
                 }
 
-                t0 = t1;
-                e0 = e1;
-                t1 += coarseStep;
-                e1 = AzimuthError(t1);
+                left = right;
+                eLeft = eRight;
+                right += coarseStep;
+                eRight = errorFunc(right);
 
-                //Log($"t0: {t0}, e0: {e0}, t1: {t1}, e1: {e1}");
+                if (enableLogging) Log($"left: {left}, eLeft: {eLeft}, right: {right}, eRight: {eRight} (decreasing slope)");
 
-                if (t0 >= startTime + maxTimeLimit) // no min found within time limit
+                if (left >= combinedStartEnd) // no min found within max
                 {
-                    LogWarning($"No minimum found within time limit of {maxTimeLimit}! Flight Time: {flightTime}s. (decreasing slope)");
+                    LogWarning($"No minimum found within max of {combinedStartEnd}! (decreasing slope)");
                     return double.NaN;
                 }
 
-                if (Math.Abs(e0 - e1) < epsilon) // perfectly balanced between min
+                if (Math.Abs(eLeft - eRight) < epsilon) // perfectly balanced between min
                 {
-                    t0 += buffer;
-                    t1 += buffer;
-                    e0 = AzimuthError(t0);
-                    e1 = AzimuthError(t1);
+                    left += buffer;
+                    right += buffer;
+                    eLeft = errorFunc(left);
+                    eRight = errorFunc(right);
                 }
             }
 
-            double fineT0 = Math.Max(startTime, tBest - coarseStep); // we need to back a step, in case we skipped over the min
-            double fineT1 = Math.Min(startTime + maxTimeLimit, tBest + coarseStep);
+            if (enableLogging) Log("Minimum found");
 
-            double finalResult = GoldenSectionSearch(fineT0, fineT1, epsilon, AzimuthError);
+            double fineLeft = Math.Max(startValue, valueBest - coarseStep); // we need to go back a step, in case we skipped over the min
+            double fineRight = Math.Min(combinedStartEnd, valueBest + coarseStep);
+
+            double finalResult = GoldenSectionSearch(fineLeft, fineRight, epsilon, errorFunc);
+
+            if (enableLogging) Log($"fineLeft: {fineLeft}, fineRight: {fineRight}, finalResult: {finalResult}");
 
             // TODO, im unaware of a way to reliably run GoldenSectionSearch only once in this method without severely messing up the logic, its a small optimization but its something
-
-            //Log($"launchTime found at {finalResult}, UT time: {finalResult + currentUT}, AzimuthError finalResult: {AzimuthError(finalResult)}");
 
             return finalResult;
         }
@@ -1486,6 +1510,104 @@ namespace TargetInterceptPlanner
             return (dV, bestEccentricity, errorStateDV);
         }
 
+        private (double dV, double eccentricity, int errorStateDV) CalculateDV2(double postManeuverTime, double startUT, double inclination, double LAN, double AoP)
+        {
+            // postManeuverTime is the time in transit after the maneuver, startUT needs to include phasingTime, AoP needs to include phasingAngle
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            const double epsilon = 1e-9;
+            double gravParameter = mainBody.gravParameter;
+            double r0 = mainBody.Radius + parkingAltitude * 1000d;
+            double maxPossibleDV = maxDeltaVScaled * GetBodyScaledDV();
+            double maxVelocity = Math.Sqrt(gravParameter / r0) + maxPossibleDV;
+            double maxEccentricity = (r0 * maxVelocity * maxVelocity / gravParameter) - 1;
+            double minEccentricity = CalculateTimeOfHohmannManeuver(false).eccentricity;
+            double meanAnomaly = tau;
+            int errorStateDV = 0;
+
+            double targetTime = startUT + postManeuverTime;
+            Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime);
+
+            Orbit transferOrbit = new Orbit
+            {
+                inclination = inclination,
+                LAN = LAN,
+                epoch = startUT,
+                argumentOfPeriapsis = AoP,
+                meanAnomalyAtEpoch = 0d,
+                referenceBody = mainBody
+            };
+
+            double DistanceError(double eccentricity)
+            {
+                Stopwatch stopwatchDistanceError = Stopwatch.StartNew();
+
+                if (eccentricity == 1) return double.NaN;
+                double SMA = r0 / (1 - eccentricity);
+
+                transferOrbit.eccentricity = eccentricity;
+                transferOrbit.semiMajorAxis = SMA;
+
+                transferOrbit.Init();
+                transferOrbit.UpdateFromUT(startUT);
+
+                meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(SMA, 3))) * postManeuverTime; // we're not clamping this to tau, as doing so leads to crashes somehow
+
+                if (double.IsNaN(meanAnomaly) || double.IsNaN(eccentricity))
+                {
+                    LogDebug($"A value is NaN! meanAnomaly: {meanAnomaly}, eccentricity: {eccentricity}");
+                }
+
+                //if (eccentricity < 1 && meanAnomaly > tau) meanAnomaly = tau;
+                double eccAnomaly = transferOrbit.solveEccentricAnomaly(meanAnomaly, eccentricity, epsilon); // a very large meanAnomaly will lead to a crash here, we prevent this beforehand by discarding large flight times in CalculatePhasingAndDeltaV
+
+                Vector3d futurePos = transferOrbit.getPositionFromEccAnomaly(eccAnomaly);
+
+                double distance = Vector3d.Distance(targetPos, futurePos);
+
+                stopwatchDistanceError.Stop();
+
+                return distance;
+            }
+
+            double bestEccentricity = GoldenSectionSearch(minEccentricity, maxEccentricity, epsilon, DistanceError, true);
+
+            //if (bestEccentricity == 1) errorStateDV = 4;
+
+            double distanceError = DistanceError(bestEccentricity);
+
+            double aBest = r0 / (1 - bestEccentricity);
+            meanAnomaly = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(aBest, 3))) * postManeuverTime;
+            double meanMotion = Math.Sqrt(gravParameter / Math.Abs(Math.Pow(aBest, 3)));
+
+            //if (Math.Abs(bestEccentricity - maxEccentricity) <= epsilon * 10d) // eccentricity too high (need to use a higher epsilon here bc of GSS)
+            //{
+            //    Log($"dV is above the maximum of {maxPossibleDV} for this body, returning NaN. (bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity})");
+            //    errorStateDV = 2;
+            //}
+            //else if (bestEccentricity < 1 && meanAnomaly > Math.PI && postManeuverTime >= (CalculateTimeOfHohmannManeuver(false).postTime / 2d)) // eccentricity too low
+            //{ // check against hohmann maneuver time at PeR to make sure we have a sensible manuever time
+            //    //Log($"dV is below the minimum possible to reach the target at this parking altitude, returning NaN.");
+            //    errorStateDV = 1;
+            //}
+
+            double dV = Math.Sqrt((bestEccentricity + 1) * gravParameter / r0) - Math.Sqrt(gravParameter / r0);
+
+            stopwatch.Stop();
+
+            //LogDebug($"CalculateDV time: {stopwatch.Elapsed.TotalSeconds}s, dV: {dV}, bestEccentricity: {bestEccentricity}, maxEccentricity: {maxEccentricity}, minEccentricity: {minEccentricity}, meanAnomaly: {meanAnomaly}, errorStateDV: {errorStateDV}, distanceError: {distanceError}\naBest: {aBest}, r0: {r0}, gravParameter: {gravParameter}, postManeuverTime: {postManeuverTime}, startUT: {startUT} inclination: {inclination}, LAN: {LAN} AoP: {AoP}, meanMotion: {meanMotion}");
+
+            //if (errorStateDV != 0)
+            //{
+            //    dV = bestEccentricity = double.NaN;
+            //}
+
+            Log($"CalculateDV2: AoP: {AoP}, dV: {dV}, bestEccentricity: {bestEccentricity}, errorStateDV: {errorStateDV}, distanceError: {distanceError}");
+
+            return (dV, bestEccentricity, errorStateDV);
+        }
+
         private (double phasingTime, double phasingAngle, double dV, double eccentricity, int errorStateDV) CalculatePhasingAndDeltaV
             (double flightTime, double startTime, double inclination, double LAN, double AoP) // the inclination needs to be the one from launchOrbit
         {
@@ -1604,6 +1726,156 @@ namespace TargetInterceptPlanner
             }
 
             return (phasingTime, phasingAngle, dV, eccentricity, errorStateDV);
+        }
+
+        private (double phasingTime, double phasingAngle, double dV, double eccentricity, int errorStateDV) CalculatePhasingAndDeltaV2
+    (double flightTime, double startTime, double inclination, double LAN, double initialAoP)
+        {
+            const double epsilon = 1e-9;
+
+            double gravParameter = mainBody.gravParameter;
+            double r0 = mainBody.Radius + parkingAltitude * 1000d;
+            double orbitPeriod = tau * Math.Sqrt(Math.Pow(r0, 3) / gravParameter);
+            double startUT = currentUT + startTime;
+
+            double targetTime = currentUT + startTime + flightTime;
+            Vector3d targetPos = targetOrbit.getPositionAtUT(targetTime);
+
+            double LANrad = LAN * degToRad;
+            double inclinationRad = inclination * degToRad;
+            double AOPrad = initialAoP * degToRad;
+
+            double maxAngle = Math.Min(360d, (flightTime / orbitPeriod) * 360d);
+
+            List<(double phasingAngle, double phasingTime, double dV, double eccentricity, int errorStateDV)> windows = new List<(double, double, double, double, int)>();
+
+            double lastAngle = 0d;
+
+            int bestWindow = -1;
+            double bestEccentricity = double.NaN;
+
+            for (int i = 0; ; i++)
+            {
+                (double phasingAngle, double phasingTime) = LocalAngleSearch(lastAngle, maxAngle, flightTime, targetPos, inclinationRad, LANrad, AOPrad);
+                
+                if (double.IsNaN(phasingAngle))
+                {
+                    LogWarning($"phasingAngle for window {i} is NaN!");
+                    break;
+                }
+
+                lastAngle = phasingAngle + epsilon;
+
+                if (phasingAngle >= maxAngle || Math.Abs(phasingAngle - maxAngle) < epsilon)
+                    break;
+
+                if (i >= 100)
+                {
+                    LogWarning($"i in CalculatePhasingAndDeltaV bestAngle search exceeded 100!");
+                    break;
+                }
+
+                (double dV, double eccentricity, int errorStateDV) = CalculateDV2(flightTime - phasingTime, startUT + phasingTime, inclination, LAN, Util.ClampAngle(initialAoP + phasingAngle, false));
+                windows.Add((phasingAngle, phasingTime, dV, eccentricity, errorStateDV));
+
+                if (i == 0 || (eccentricity < bestEccentricity && errorStateDV == 0))
+                {
+                    bestEccentricity = eccentricity;
+                    bestWindow = i;
+                }
+            }
+
+            double bestTime = windows[bestWindow].phasingTime;
+            double bestAngle = windows[bestWindow].phasingAngle;
+            double bestDV = windows[bestWindow].dV;
+
+            int errorStateDVFinal = windows[bestWindow].errorStateDV;
+
+            if (errorStateDVFinal != 0)
+            {
+                Log($"best window is invalid! errorStateDVFinal: {errorStateDVFinal}, bestTime: {bestTime}, bestAngle: {bestAngle}, bestDV: {bestDV}, bestEccentricity: {bestEccentricity}");
+                bestTime = bestAngle = bestDV = bestEccentricity = double.NaN;
+            }
+
+            return (bestTime, bestAngle, bestDV, bestEccentricity, errorStateDVFinal);
+
+            //go through all angle space until maxAngle is hit, using the previous bestAngle as the startAngle.
+            //once we have all of the bestAngles, optimize for eccentricity on each of them (final error needs to be small enough for it to be a solution)
+            //now choose the angle with the lowest valid bestEccentricity
+        }
+
+        private (double phasingAngle, double phasingTime) LocalAngleSearch(double startAngle, double maxAngle, double flightTime, Vector3d targetPos, double inclinationRad, double LANrad, double initialAOPrad)
+        {
+            // we can just check the distance for the specific angle using a parabola, since it will get us in the right direction and it is really cheap to calculate
+
+            double coarseStep = maxAngle / 72d; // ideally 5 degrees
+
+            double gravParameter = mainBody.gravParameter;
+            double r0 = mainBody.Radius + parkingAltitude * 1000d;
+            double orbitPeriod = tau * Math.Sqrt(Math.Pow(r0, 3) / gravParameter);
+
+            double semiLatusRectum = 2d * r0;
+
+            Planetarium.CelestialFrame OrbitFrame = new Planetarium.CelestialFrame();
+
+            //Log($"beginning, coarseStep: {coarseStep}}");
+
+            double cosLAN = Math.Cos(LANrad);
+            double sinLAN = Math.Sin(LANrad);
+            double cosInc = Math.Cos(inclinationRad);
+            double sinInc = Math.Sin(inclinationRad);
+
+            double sinLANcosInc = sinLAN * cosInc;
+            double cosLANcosInc = cosLAN * cosInc;
+
+            void SetFrame(double C, ref Planetarium.CelestialFrame cf)
+            {
+                double cosAOP = Math.Cos(C);
+                double sinAOP = Math.Sin(C);
+                cf.X = new Vector3d(cosLAN * cosAOP - sinLANcosInc * sinAOP, sinLAN * cosAOP + cosLANcosInc * sinAOP, sinInc * sinAOP);
+                cf.Y = new Vector3d(-cosLAN * sinAOP - sinLANcosInc * cosAOP, -sinLAN * sinAOP + cosLANcosInc * cosAOP, sinInc * cosAOP);
+                //cf.Z = new Vector3d(sinLAN * sinInc, -cosLAN * sinInc, cosInc);
+            }
+
+            Vector3d getPositionFromTrueAnomalyOfParabola(double tA, double phasingAngle)
+            {
+                SetFrame(Util.ClampAngle(initialAOPrad + phasingAngle * degToRad, true), ref OrbitFrame);
+                double cosTA = Math.Cos(tA);
+                double sinTA = Math.Sin(tA);
+                Vector3d vector3d = semiLatusRectum / (2d * cosTA) * (OrbitFrame.X * cosTA + OrbitFrame.Y * sinTA);
+                return Planetarium.Zup.WorldToLocal(vector3d);
+            }
+
+            double getTrueAnomalyOfParabola(double postManeuverTime)
+            {
+                //sourced from https://en.wikipedia.org/wiki/Parabolic_trajectory#Barker's_equation
+                double A = postManeuverTime * 1.5d * Math.Sqrt(gravParameter / (2d * Math.Pow(r0, 3d)));
+                double B = Math.Pow(A + Math.Sqrt(1d + A * A), 1d / 3d);
+                double tA = 2d * Math.Atan(B - (1d / B));
+                return tA;
+            }
+
+            double DistanceError(double phasingAngle)
+            {
+                double phasingTime = orbitPeriod * (phasingAngle / 360d);
+                if (flightTime < phasingTime)
+                {
+                    LogWarning($"phasingTime ({phasingTime}) is somehow less than flightTime ({flightTime})! This should not happen. phasingAngle: {phasingAngle}, maxAngle: {maxAngle}");
+                }
+
+                double tA = getTrueAnomalyOfParabola(flightTime - phasingTime);
+                Vector3d futurePos = getPositionFromTrueAnomalyOfParabola(tA, phasingAngle);
+
+                double distance = Vector3d.Distance(targetPos, futurePos);
+
+                return distance;
+            }
+
+            double angle = LocalMinSearch(startAngle, maxAngle, coarseStep, DistanceError, false, true);
+
+            double time = orbitPeriod * (angle / 360d);
+
+            return (angle, time);
         }
 
         private (double postTime, double totalTime, double eccentricity) CalculateTimeOfHohmannManeuver(bool useApR)
@@ -1857,6 +2129,10 @@ namespace TargetInterceptPlanner
                 (double LAN, double AoP) = CalculateLAN(specialStartTime, latitude, longitude, azimuth); // TODO, replace the orbitNorm with the one from CalculateLAN?
 
                 (double phasingTime, double phasingAngle, double dV, double eccentricity, int errorStateDV) = CalculatePhasingAndDeltaV(flightTime, specialStartTime, inclination, LAN, AoP);
+                //(double phasingTime2, double phasingAngle2, double dV2, double eccentricity2, int errorStateDV2) = CalculatePhasingAndDeltaV2(flightTime, specialStartTime, inclination, LAN, AoP);
+
+                //Log($"CalculatePhasingAndDeltaV: phasingTime: {phasingTime}, phasingAngle: {phasingAngle}, dV: {dV}, eccentricity: {eccentricity}, errorStateDV: {errorStateDV}");
+                //Log($"CalculatePhasingAndDeltaV2: phasingTime: {phasingTime2}, phasingAngle: {phasingAngle2}, dV: {dV2}, eccentricity: {eccentricity2}, errorStateDV: {errorStateDV2}");
 
                 return new OrbitData(orbitNorm, inclination, azimuth, LAN, AoP, phasingTime, phasingAngle, dV, eccentricity, errorStateDV);
             }
@@ -1865,8 +2141,8 @@ namespace TargetInterceptPlanner
 
             if (windowNumber.HasValue)
             {
-                int index = launchOrbitCache.FindIndex(item => item.windowNumber == windowNumber.Value);
-                if (index != -1) return launchOrbitCache[index].launchOrbit; // return if exists
+                int index = launchOrbitCache.ContainsKey(windowNumber.Value) ? windowNumber.Value : -1;
+                if (index != -1) return launchOrbitCache[index]; // return if exists
                 else
                 {
                     OrbitData launchOrbit = GetOrbitData(startTime);
@@ -1885,7 +2161,7 @@ namespace TargetInterceptPlanner
                         }
                     }
 
-                    launchOrbitCache.Add((launchOrbit, windowNumber.Value));
+                    launchOrbitCache[windowNumber.Value] = launchOrbit;
                     return launchOrbit;
                 }
             }

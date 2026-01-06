@@ -65,4 +65,4 @@ Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 * [TriggerAu](https://github.com/TriggerAu) ([KAC Wrapper](https://github.com/TriggerAu/KerbalAlarmClock/blob/master/KerbalAlarmClock/API/KACWrapper.cs))
 
 ## License
-The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/TargetInterceptPlanner/blob/2.0.0/LICENSE.md))
+The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/TargetInterceptPlanner/blob/master/LICENSE.md))

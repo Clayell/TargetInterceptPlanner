@@ -172,13 +172,9 @@ namespace TargetInterceptPlanner
         private void UpdateVectors()
         {
             orbitNormal = parkingOrbit.GetOrbitNormal().xzy; // GetOrbitNormal is weird, it changes constantly in flight, but not in the tracking station. works tho
+            Vector3d nodeLine = Vector3d.Cross(orbitNormal, Vector3d.up).normalized;
 
-            Vector3d AoPToWorldVector(double AoPRad)
-            {
-                Vector3d nodeLine = Vector3d.Cross(orbitNormal, Vector3d.up).normalized;
-
-                return (Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(nodeLine, orbitNormal)).normalized;
-            }
+            Vector3d AoPToWorldVector(double AoPRad) => (Math.Cos(AoPRad) * nodeLine + Math.Sin(AoPRad) * Vector3d.Cross(nodeLine, orbitNormal)).normalized;
 
             Point1Direction = AoPToWorldVector(initialAoPRad);
             Point2Direction = AoPToWorldVector(newAoPRad);
@@ -325,7 +321,7 @@ namespace TargetInterceptPlanner
             if (dir2.z > 0 && cameraNear) GUI.Label(new Rect(dir2.x - 50, Screen.height - dir2.y - 15, 100, 30), new GUIContent("Transfer Maneuver Execution", "According to the phasing angle, this is where the transfer maneuver needs to be executed"), _styleLabel);
 
             Vector3d halfDir = QuaternionD.AngleAxis(AoPDiff / 2d, -orbitNormal) * Point1Direction;
-            double arcRadius = 2.5 * parkingOrbit.semiMajorAxis; // arc uses 2
+            double arcRadius = 2.5 * parkingOrbit.semiMajorAxis; // arc uses 2.5
 
             Vector3 arcPoint = PlanetariumCamera.Camera.WorldToScreenPoint(ScaledSpace.LocalToScaledSpace(center + halfDir * arcRadius));
 
@@ -389,6 +385,12 @@ namespace TargetInterceptPlanner
             MapObject target = PlanetariumCamera.fetch?.target;
             CelestialBody tgt = target?.celestialBody ?? target?.orbit?.referenceBody;
 
+            if (tgt == null)
+            {
+                Util.LogWarning("tgt is null!");
+                return true;
+            }
+
             if (__instance.driver == null)
             {
                 Util.LogWarning("OrbitDriver is null!");
@@ -403,9 +405,15 @@ namespace TargetInterceptPlanner
                 return true;
             }
 
+            if (lineOpacityField == null)
+            {
+                Util.LogWarning("lineOpacityField is null!");
+                return true;
+            }
+
             if (__instance.IsRenderableOrbit(orbit, tgt)) // TODO, use CamVsSmaRatio like stock and just make it really large? meh
             {
-                lineOpacityField?.SetValue(__instance, 1f);
+                lineOpacityField.SetValue(__instance, 1f);
             }
             else
             {

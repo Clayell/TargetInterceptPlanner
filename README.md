@@ -56,8 +56,8 @@ Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 * Any celestial body from any solar system (including satellites of moons, and technically even from the surface of stars)
 
 ## Authors
-* [RCrockford](https://github.com/RCrockford) (author of original Lunar Transfer Planner)
 * [Clayel](https://github.com/Clayell) (current author of Target Intercept Planner)
+* [RCrockford](https://github.com/RCrockford) (author of original Lunar Transfer Planner)
 
 ## Special Thanks To
 * [Nazfib](https://github.com/Nazfib) ([Southern Latitude fix](https://github.com/KSP-RO/LunarTransferPlanner/pull/8) and Orbit/Angle Renderer from [TWP2](https://github.com/Nazfib/TransferWindowPlanner2))

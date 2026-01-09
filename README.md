@@ -70,6 +70,8 @@ Wiki: https://github.com/Clayell/TargetInterceptPlanner/wiki
 ## License
 The code is subject to the MIT license. (see [LICENSE.md](https://github.com/Clayell/TargetInterceptPlanner/blob/master/LICENSE.md))
 
+Video showing off TIP: https://www.youtube.com/watch?v=B-uJvo5ea3I
+
 ![Intercepting with the Moon](https://i.imgur.com/VRTycpy.png)
 ![Intercepting with a vessel](https://i.imgur.com/KgqsGP2.png)
 ![Intercepting with a manually set orbit](https://i.imgur.com/utW7UJI.png)

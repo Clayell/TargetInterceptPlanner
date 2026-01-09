@@ -2,7 +2,7 @@
 
 # Target Intercept Planner (TIP)
 
-### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) while on the surface of the celestial body (planet, moon, gas giant, star, black hole, etc.).
+### Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) while on the surface of the celestial body. (planet, moon, gas giant, star, black hole, etc.)
 
 Launch into the parking orbit it gives you at the time it gives you, wait the time it gives you for the prograde-only maneuver to arrive, and then execute the maneuver with the delta-V it gives you. If all goes well, you should be headed directly on a collision course to your target.
 

@@ -35,7 +35,9 @@ Keep in mind that this mod currently assumes you can instantly get into the park
 
 Note: As the orbital period of the target approaches the sidereal day length of the planet, the time to the next window approaches infinity. It is impossible to find a launch window for a target in a synchronous orbit using this tool. Sorry!
 
-Forum Thread: N/A
+Forum Thread: https://forum.kerbalspaceprogram.com/topic/229514-1000-target-intercept-planner-tip/
+
+SpaceDock: https://spacedock.info/mod/4101/Target%20Intercept%20Planner
 
 Source Code: https://github.com/Clayell/TargetInterceptPlanner
 

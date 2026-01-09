@@ -1,0 +1,20 @@
+spec_version: v1.36
+identifier: TargetInterceptPlanner
+name: Target Intercept Planner (TIP)
+author: Clayell, RCrockford
+abstract: A rendezvous/intercept planner for KSP.
+description: Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) from the surface of the celestial body (planet, moon, gas giant, star, black hole, etc.) on which you are currently on.
+comment: Indexed by author. Please report any problems at the repository bugtracker.
+$vref: '#/ckan/ksp-avc'
+resources:
+  homepage: https://forum.kerbalspaceprogram.com/topic/229514-1000-target-intercept-planner-tip/
+  repository: https://github.com/Clayell/TargetInterceptPlanner
+  bugtracker: https://github.com/Clayell/TargetInterceptPlanner/issues
+  manual: https://github.com/Clayell/TargetInterceptPlanner/wiki
+  spacedock: https://spacedock.info/mod/4101/Target%20Intercept%20Planner
+depends:
+  - name: ClickThroughBlocker
+  - name: Harmony2
+  - name: ToolbarController
+recommends:
+  - name: KerbalAlarmClock

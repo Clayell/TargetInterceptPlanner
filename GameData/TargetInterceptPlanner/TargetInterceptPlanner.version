@@ -2,6 +2,10 @@
 	"NAME": "Target Intercept Planner",
 	"URL": "https://raw.githubusercontent.com/Clayell/TargetInterceptPlanner/master/GameData/TargetInterceptPlanner/TargetInterceptPlanner.version",
 	"DOWNLOAD": "https://github.com/Clayell/TargetInterceptPlanner/releases",
+	"GITHUB": {
+		"USERNAME": "Clayell",
+		"REPOSITORY": "TargetInterceptPlanner"
+	},
 	"VERSION": {
 		"MAJOR": 1,
 		"MINOR": 0,

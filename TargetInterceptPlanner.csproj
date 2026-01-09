@@ -94,6 +94,7 @@
     <Compile Include="Source\Tooltip.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="GameData\TargetInterceptPlanner.ckan" />
     <None Include="GameData\TargetInterceptPlanner\README.md" />
     <None Include="git-scripts\hooks\pre-commit" />
     <None Include="git-scripts\zip.ps1" />

@@ -1,7 +1,7 @@
 identifier: TargetInterceptPlanner
 name: Target Intercept Planner (TIP)
 author:
-  - Clayell
+  - Clayel
   - RCrockford
 abstract: A rendezvous/intercept planner for KSP.
 description: Provides a GUI for planning a transfer to a satellite (natural, artificial, or a specified orbit) while on the surface of a celestial body. (planet, moon, gas giant, star, black hole, etc.)

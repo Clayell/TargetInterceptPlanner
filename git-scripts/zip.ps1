@@ -4,7 +4,7 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 
 $AssemblyPath = Join-Path $ProjectRoot "bin\Release\TargetInterceptPlanner.dll"
 $SourceDir    = Join-Path $ProjectRoot "GameData"
-$OutputDir    = Join-Path $ProjectRoot ".git"
+$OutputDir    = Join-Path $ProjectRoot "bin\Release\"
 
 if (-not (Test-Path $AssemblyPath)) {
     Write-Error "Assembly not found: $AssemblyPath"

@@ -622,10 +622,10 @@ namespace TargetInterceptPlanner
                 { "COLORS", "All colors are stored as red, green, blue, and alpha, from 0 to 1" },
             };
 
-            List<string> lines = File.ReadAllLines(SettingsPath).ToList();
+            string[] lines = File.ReadAllLines(SettingsPath);
             foreach (KeyValuePair<string, string> kvp in comments)
             {
-                int index = lines.FindIndex(line => line.Contains(kvp.Key));
+                int index = Array.FindIndex(lines, line => line.Contains(kvp.Key));
                 if (index != -1) lines[index] += $" // {kvp.Value}"; // attach it to the end of the line
                 else LogWarning($"A line with key \"{kvp.Key}\" could not be found to attach a comment to");
             }
@@ -2085,7 +2085,7 @@ namespace TargetInterceptPlanner
             else
             {
                 // start after the last cached window + offset
-                startTime = windowCache.Last().absoluteLaunchTime - currentUT + offset;
+                startTime = windowCache[windowCache.Count - 1].absoluteLaunchTime - currentUT + offset;
             }
 
             // compute windows from windowCache.Count up to windowNumber

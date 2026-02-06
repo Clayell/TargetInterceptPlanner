@@ -233,6 +233,7 @@ namespace TargetInterceptPlanner
         bool showSettings = false; // Show settings UI
         bool showManualOrbit = false; // Show manual orbit setting UI
         bool useAltSkin = false; // Use Unity GUI skin instead of default
+        bool useSimplifiedTime = false;
         double tickSpeed = 0.2;
 
         double flightTime = double.NaN; // Desired total flight time from launch to intercept, in seconds (this gets initialized to the max flight time on the first load)
@@ -535,6 +536,7 @@ namespace TargetInterceptPlanner
                 { "targetVessel", targetVessel },
                 { "showSettings", showSettings },
                 { "useAltSkin", useAltSkin },
+                { "useSimplifiedTime", useSimplifiedTime },
                 { "tickSpeed", tickSpeed },
                 { "useHomeSolarDay", useHomeSolarDay },
                 { "flightTime", flightTime },
@@ -696,6 +698,7 @@ namespace TargetInterceptPlanner
             Read(ref targetVessel, "targetVessel");
             Read(ref showSettings, "showSettings");
             Read(ref useAltSkin, "useAltSkin");
+            Read(ref useSimplifiedTime, "useSimplifiedTime");
             Read(ref tickSpeed, "tickSpeed");
             Read(ref flightTime, "flightTime");
             Read(ref flightTimeMode, "flightTimeMode");
@@ -3177,7 +3180,14 @@ namespace TargetInterceptPlanner
                         ExpandCollapse(ref expandParking1, "Show Orbit Details");
                         GUILayout.EndHorizontal();
 
-                        GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {FormatDecimals(nextLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
+                        if (useSimplifiedTime)
+                        {
+                            GUILayout.Box($"{FormatDecimals(nextLaunchUT)}s", GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
+                        }
+                        else
+                        {
+                            GUILayout.Box(new GUIContent(FormatTime(nextLaunchETA), $"UT: {FormatDecimals(nextLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {nextLaunchETA}, we need absolute time
+                        }
 
                         // we need this outside for alarm description
                         double launchLAN1 = launchOrbit1.LAN;
@@ -3206,7 +3216,14 @@ namespace TargetInterceptPlanner
                             ExpandCollapse(ref expandParking2, "Show Orbit Details");
                             GUILayout.EndHorizontal();
 
-                            GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {FormatDecimals(extraLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
+                            if (useSimplifiedTime)
+                            {
+                                GUILayout.Box($"{FormatDecimals(extraLaunchUT)}s", GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
+                            }
+                            else
+                            {
+                                GUILayout.Box(new GUIContent(FormatTime(extraLaunchETA), $"UT: {FormatDecimals(extraLaunchUT)}s"), GUILayout.MinWidth(100)); // the tooltip will flash every second if we just do {extraLaunchETA}, we need absolute time
+                            }
 
                             if (expandParking2)
                             {
@@ -3698,8 +3715,10 @@ namespace TargetInterceptPlanner
             
             GUILayout.Space(5);
             GUILayout.BeginHorizontal();
-            GUILayout.Label(new GUIContent($"Hover over select text for tooltips. Current UT: <b>{FormatDecimals(currentUT)}</b>s", FormatTime(currentUT)), GUILayout.Width(windowWidth - (50 + 45))); // this sets the width of the window
-            // this tooltip is really only useful when paused, it flashes too quickly to be seen otherwise
+            string timeText = useSimplifiedTime ? "" : $" Current UT: <b>{FormatDecimals(currentUT)}</b>s";
+            string timeTooltip = useSimplifiedTime ? "" : FormatTime(currentUT);
+            GUILayout.Label(new GUIContent($"Hover over select text for tooltips.{timeText}", timeTooltip), GUILayout.Width(windowWidth - (50 + 45))); // this sets the width of the window
+            // this current time tooltip is really only useful when paused, it flashes too quickly to be seen otherwise
             GUILayout.FlexibleSpace();
             GUILayout.BeginVertical();
             GUILayout.Space(5);
@@ -3739,6 +3758,14 @@ namespace TargetInterceptPlanner
                 GUILayout.Label("Use Unity Skin");
                 MiddleCombined();
                 useAltSkin = GUILayout.Toggle(useAltSkin, "");
+                EndCombined();
+
+                DrawLine();
+
+                BeginCombined();
+                GUILayout.Label(new GUIContent("Use Simplified Time", "Remove the current UT display in this window, and make the time displays in the main window show UT instead of time remaining"));
+                MiddleCombined();
+                useSimplifiedTime = GUILayout.Toggle(useSimplifiedTime, "");
                 EndCombined();
 
                 if (StateChanged("useAltSkin", useAltSkin))

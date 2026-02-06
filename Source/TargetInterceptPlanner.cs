@@ -30,6 +30,14 @@ namespace TargetInterceptPlanner
             UnityEngine.Debug.LogError($"{prefix}: {message}");
         }
 
+        internal static void LogStopwatch(Stopwatch stopwatch, string label, bool reset = true)
+        {
+            stopwatch.Stop();
+            Log($"{label}: {stopwatch.Elapsed.TotalSeconds}s");
+            if (reset) stopwatch.Reset();
+            else stopwatch.Start();
+        }
+
         internal static void TryReadValue<T>(ref T target, ConfigNode node, string name)
         {
             if (node.HasValue(name))
@@ -2673,6 +2681,8 @@ namespace TargetInterceptPlanner
         {
             //TIPProfiler.Begin();
 
+            //Stopwatch stopwatch = Stopwatch.StartNew();
+
             using (TIPProfiler.Auto()) // this gets ignored if not building with the profiler
             {
                 windowWidth = 160;
@@ -3640,6 +3650,8 @@ namespace TargetInterceptPlanner
                 }
             }
 
+            //Util.LogStopwatch(stopwatch, "MakeMainWindow");
+
             //TIPProfiler.End();
         }
 
@@ -3648,6 +3660,8 @@ namespace TargetInterceptPlanner
 
         private void MakeSettingsWindow(int id)
         {
+            //Stopwatch stopwatch = Stopwatch.StartNew();
+
             windowWidth = 500;
             windowState = WindowState.Settings;
 
@@ -4225,6 +4239,8 @@ namespace TargetInterceptPlanner
                 GUI.DragWindow();
                 ResetWindow(ref needSettingsReset, ref settingsRect);
             }
+
+            //Util.LogStopwatch(stopwatch, "MakeSettingsWindow");
         }
 
         #endregion
@@ -4232,6 +4248,8 @@ namespace TargetInterceptPlanner
 
         private void MakeManualOrbitWindow(int id)
         {
+            //Stopwatch stopwatch = Stopwatch.StartNew();
+
             windowWidth = 500;
             windowState = WindowState.ManualOrbit;
             const double epsilon = 1e-9;
@@ -4795,6 +4813,8 @@ namespace TargetInterceptPlanner
                 GUI.DragWindow();
                 ResetWindow(ref needManualOrbitReset, ref manualOrbitRect);
             }
+
+            //Util.LogStopwatch(stopwatch, "MakeManualOrbitWindow");
         }
 
         #endregion

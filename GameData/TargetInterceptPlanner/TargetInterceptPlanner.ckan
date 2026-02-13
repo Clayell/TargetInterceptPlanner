@@ -5,7 +5,7 @@ description: Provides a GUI for planning a transfer to a satellite (natural, art
 comment: Indexed by author. Please report any problems at the repository bugtracker.
 $vref: '#/ckan/ksp-avc'
 resources:
-  homepage: https://forum.kerbalspaceprogram.com/topic/229514-1000-target-intercept-planner-tip/
+  homepage: https://forum.kerbalspaceprogram.com/topic/229514-v1000-target-intercept-planner-tip/
   repository: https://github.com/Clayell/TargetInterceptPlanner
   bugtracker: https://github.com/Clayell/TargetInterceptPlanner/issues
   manual: https://github.com/Clayell/TargetInterceptPlanner/wiki
